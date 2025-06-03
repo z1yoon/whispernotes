@@ -1,4 +1,4 @@
-# ClipSummary
+# whisper-notes
 
 A production-level application that allows users to summarize YouTube videos and local video files with multi-language subtitles.
 
@@ -42,7 +42,7 @@ A production-level application that allows users to summarize YouTube videos and
 ```bash
 # Clone the repository
 git clone <repository-url>
-cd clipSummary
+cd whisper-notes
 
 # Start the application using Docker Compose
 docker-compose up
@@ -52,7 +52,7 @@ Visit `http://localhost:3000` to access the application.
 
 ## Project Structure
 ```
-clipSummary/
+whisper-notes/
 ├── frontend/           # React frontend
 ├── backend/            # FastAPI backend
 ├── .github/workflows/  # CI/CD configuration
