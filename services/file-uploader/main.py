@@ -1,385 +1,292 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 import os
 import uuid
-import asyncio
 import json
-import aiofiles
-import hashlib
-from typing import Dict, List
 import logging
-from datetime import datetime
+from datetime import timedelta
+
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
+from minio import Minio
+from minio.error import S3Error
 import redis
-import httpx
+import pika
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="WhisperNotes File Uploader", version="1.0.0")
+# --- FastAPI App Initialization ---
+app = FastAPI(
+    title="WhisperNotes File Uploader",
+    version="1.0.1",
+    description="Handles large file uploads using MinIO multipart uploads and notifies processing services via RabbitMQ.",
+)
 
-# CORS middleware
+# --- CORS Middleware ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # In production, restrict this to the frontend URL
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Configuration
-UPLOAD_DIR = "/app/uploads"
-CHUNK_SIZE = 10 * 1024 * 1024  # 10MB chunks
-MAX_FILE_SIZE = 5 * 1024 * 1024 * 1024  # 5GB max file size
+# --- Configuration ---
+MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "minio:9000")
+MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
+MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin")
+MINIO_BUCKET = os.getenv("MINIO_BUCKET", "videos")
+MINIO_USE_SECURE = os.getenv("MINIO_USE_SECURE", "false").lower() == "true"
 
-# Redis for session management
-redis_client = redis.Redis(host=os.getenv("REDIS_HOST", "localhost"), port=6379, decode_responses=True)
+REDIS_HOST = os.getenv("REDIS_HOST", "redis")
+REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", None)
 
-# Service URLs
-VIDEO_PROCESSOR_URL = os.getenv("VIDEO_PROCESSOR_URL", "http://video-processor:8003")
-WHISPER_SERVICE_URL = os.getenv("WHISPER_SERVICE_URL", "http://whisper-transcriber:8005")
+RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "rabbitmq")
+RABBITMQ_PORT = int(os.getenv("RABBITMQ_PORT", 5672))
+RABBITMQ_USER = os.getenv("RABBITMQ_DEFAULT_USER", "user")
+RABBITMQ_PASS = os.getenv("RABBITMQ_DEFAULT_PASS", "password")
+VIDEO_PROCESSING_QUEUE = "video_processing_queue"
 
-# Ensure upload directory exists
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-# WebSocket connection manager
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: Dict[str, WebSocket] = {}
-
-    async def connect(self, websocket: WebSocket, session_id: str):
-        await websocket.accept()
-        self.active_connections[session_id] = websocket
-        logger.info(f"WebSocket connected for session: {session_id}")
-
-    def disconnect(self, session_id: str):
-        if session_id in self.active_connections:
-            del self.active_connections[session_id]
-            logger.info(f"WebSocket disconnected for session: {session_id}")
-
-    async def send_progress(self, session_id: str, data: dict):
-        if session_id in self.active_connections:
-            try:
-                await self.active_connections[session_id].send_text(json.dumps({
-                    "type": "upload_progress",
-                    "session_id": session_id,
-                    "data": data
-                }))
-            except Exception as e:
-                logger.error(f"Error sending progress to {session_id}: {e}")
-                self.disconnect(session_id)
-
-manager = ConnectionManager()
-
-# Pydantic models
-class UploadSession(BaseModel):
-    session_id: str
-    filename: str
-    file_size: int
-    file_type: str
-    participant_count: int
-    total_chunks: int
-    chunk_size: int
-    uploaded_chunks: List[int] = []
-    status: str = "uploading"
-    created_at: str
-    file_path: str = ""
-
-class ProgressUpdate(BaseModel):
-    progress: float
-    message: str
-    status: str
-    uploaded_chunks: int = 0
-    total_chunks: int = 0
-
-# Helper functions
-def calculate_file_hash(file_data: bytes) -> str:
-    """Calculate MD5 hash of file data"""
-    return hashlib.md5(file_data).hexdigest()
-
-def get_upload_session(session_id: str) -> UploadSession:
-    """Get upload session from Redis"""
-    session_data = redis_client.get(f"upload_session:{session_id}")
-    if session_data:
-        return UploadSession.parse_raw(session_data)
-    return None
-
-def save_upload_session(session: UploadSession):
-    """Save upload session to Redis"""
-    redis_client.setex(
-        f"upload_session:{session.session_id}",
-        3600,  # 1 hour expiration
-        session.json()
+# --- Service Clients ---
+try:
+    minio_client = Minio(
+        MINIO_ENDPOINT,
+        access_key=MINIO_ACCESS_KEY,
+        secret_key=MINIO_SECRET_KEY,
+        secure=MINIO_USE_SECURE,
     )
-
-async def send_to_video_processor(file_path: str, session_id: str, participant_count: int):
-    """Send file to video processor service"""
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                f"{VIDEO_PROCESSOR_URL}/process",
-                json={
-                    "file_path": file_path,
-                    "session_id": session_id,
-                    "participant_count": participant_count
-                }
-            )
-            
-            if response.status_code == 200:
-                logger.info(f"File sent to video processor: {session_id}")
-                return True
-            else:
-                logger.error(f"Failed to send to video processor: {response.text}")
-                return False
-                
+    logger.info("Successfully connected to MinIO.")
     except Exception as e:
-        logger.error(f"Error sending to video processor: {e}")
-        return False
+    logger.error(f"Failed to connect to MinIO: {e}")
+    minio_client = None
 
-# API Routes
-@app.post("/upload/initiate")
-async def initiate_upload(
-    filename: str = Form(...),
-    file_size: int = Form(...),
-    file_type: str = Form(...),
-    participant_count: int = Form(default=2)
-):
-    """Initiate a chunked file upload session"""
+try:
+    redis_client = redis.Redis(
+        host=REDIS_HOST,
+        port=REDIS_PORT,
+        password=REDIS_PASSWORD,
+        decode_responses=True
+    )
+    redis_client.ping()
+    logger.info("Successfully connected to Redis.")
+except Exception as e:
+    logger.error(f"Failed to connect to Redis: {e}")
+    redis_client = None
+
+# --- Pydantic Models ---
+class UploadInitializationRequest(BaseModel):
+    filename: str = Field(..., description="The name of the file to be uploaded.")
+    file_size: int = Field(..., gt=0, description="The total size of the file in bytes.")
+    content_type: str = Field(..., description="The MIME type of the file.")
     
-    # Validate file size
-    if file_size > MAX_FILE_SIZE:
-        raise HTTPException(
-            status_code=413,
-            detail=f"File size exceeds maximum allowed size of {MAX_FILE_SIZE / (1024**3):.1f}GB"
+class UploadInitializationResponse(BaseModel):
+    session_id: str = Field(..., description="A unique session ID for this upload.")
+    upload_id: str = Field(..., description="The upload ID from MinIO.")
+    object_name: str = Field(..., description="The name of the object as it will be stored in MinIO.")
+
+class PresignedUrlRequest(BaseModel):
+    part_number: int = Field(..., gt=0, description="The sequential number of the chunk.")
+
+class PresignedUrlResponse(BaseModel):
+    url: str = Field(..., description="The presigned URL for uploading a file chunk.")
+
+class Part(BaseModel):
+    ETag: str
+    PartNumber: int
+
+class CompletionRequest(BaseModel):
+    parts: list[Part] = Field(..., description="A list of the uploaded parts with their ETags and numbers.")
+
+# --- RabbitMQ Publisher ---
+def publish_to_video_processor(session_id: str, object_name: str, filename: str):
+    """Publish a message to RabbitMQ to trigger video processing."""
+    if not all([RABBITMQ_HOST, RABBITMQ_USER, RABBITMQ_PASS]):
+        logger.error("RabbitMQ credentials are not fully configured. Skipping message publishing.")
+        return
+
+    try:
+        credentials = pika.PlainCredentials(RABBITMQ_USER, RABBITMQ_PASS)
+        connection = pika.BlockingConnection(
+            pika.ConnectionParameters(host=RABBITMQ_HOST, port=RABBITMQ_PORT, credentials=credentials)
         )
-    
-    # Validate file type
-    allowed_types = ["video/mp4", "video/mov", "video/avi", "video/webm", "video/quicktime"]
-    if file_type not in allowed_types:
-        raise HTTPException(
-            status_code=400,
-            detail="Unsupported file type. Please upload MP4, MOV, AVI, or WebM files."
+        channel = connection.channel()
+        channel.queue_declare(queue=VIDEO_PROCESSING_QUEUE, durable=True)
+
+        message_body = json.dumps({
+            "session_id": session_id,
+            "object_name": object_name,
+            "original_filename": filename,
+        })
+
+        channel.basic_publish(
+            exchange="",
+            routing_key=VIDEO_PROCESSING_QUEUE,
+            body=message_body,
+            properties=pika.BasicProperties(
+                delivery_mode=2,  # make message persistent
+            ),
         )
-    
-    # Generate session ID
+        connection.close()
+        logger.info(f"Successfully published message for session {session_id} to RabbitMQ.")
+    except Exception as e:
+        logger.error(f"Failed to publish message for session {session_id} to RabbitMQ: {e}")
+
+# --- API Endpoints ---
+@app.on_event("startup")
+def startup_event():
+    """On startup, check connections and ensure MinIO bucket exists."""
+    if not redis_client:
+        logger.critical("Redis connection failed. Aborting startup.")
+        # In a real app, you might want to exit or have a retry mechanism
+        return
+    if not minio_client:
+        logger.critical("MinIO connection failed. Aborting startup.")
+        return
+        
+    try:
+        found = minio_client.bucket_exists(MINIO_BUCKET)
+        if not found:
+            minio_client.make_bucket(MINIO_BUCKET)
+            logger.info(f"Created MinIO bucket: {MINIO_BUCKET}")
+        else:
+            logger.info(f"MinIO bucket '{MINIO_BUCKET}' already exists.")
+    except S3Error as e:
+        logger.error(f"Error checking or creating MinIO bucket: {e}")
+        # Handle case where MinIO might not be ready
+    except Exception as e:
+        logger.error(f"An unexpected error occurred during startup bucket check: {e}")
+
+
+@app.post("/api/v1/uploads/initialize", response_model=UploadInitializationResponse)
+async def initialize_upload(request: UploadInitializationRequest):
+    """
+    Initiates a multipart upload with MinIO.
+    """
     session_id = str(uuid.uuid4())
-    
-    # Calculate total chunks
-    total_chunks = (file_size + CHUNK_SIZE - 1) // CHUNK_SIZE
-    
-    # Create upload session
-    session = UploadSession(
-        session_id=session_id,
-        filename=filename,
-        file_size=file_size,
-        file_type=file_type,
-        participant_count=participant_count,
-        total_chunks=total_chunks,
-        chunk_size=CHUNK_SIZE,
-        created_at=datetime.utcnow().isoformat(),
-        file_path=os.path.join(UPLOAD_DIR, f"{session_id}_{filename}")
-    )
-    
-    # Save session
-    save_upload_session(session)
-    
-    logger.info(f"Upload session initiated: {session_id} for file: {filename}")
-    
-    return {
-        "session_id": session_id,
-        "total_chunks": total_chunks,
-        "chunk_size": CHUNK_SIZE
-    }
+    # Sanitize filename and create a unique object name
+    safe_filename = "".join(c for c in request.filename if c.isalnum() or c in ('.', '_', '-')).strip()
+    object_name = f"{session_id}/{safe_filename}"
 
-@app.post("/upload/chunk/{session_id}")
-async def upload_chunk(
-    session_id: str,
-    chunk_number: int = Form(...),
-    chunk: UploadFile = File(...)
-):
-    """Upload a file chunk"""
-    
-    # Get upload session
-    session = get_upload_session(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Upload session not found")
-    
-    # Validate chunk number
-    if chunk_number >= session.total_chunks or chunk_number < 0:
-        raise HTTPException(status_code=400, detail="Invalid chunk number")
-    
-    # Check if chunk already uploaded
-    if chunk_number in session.uploaded_chunks:
-        return {"message": "Chunk already uploaded", "chunk_number": chunk_number}
-    
     try:
-        # Read chunk data
-        chunk_data = await chunk.read()
-        
-        # Write chunk to temporary file
-        chunk_file_path = f"{session.file_path}.chunk_{chunk_number}"
-        async with aiofiles.open(chunk_file_path, 'wb') as f:
-            await f.write(chunk_data)
-        
-        # Update session
-        session.uploaded_chunks.append(chunk_number)
-        save_upload_session(session)
-        
-        # Calculate progress
-        progress = (len(session.uploaded_chunks) / session.total_chunks) * 100
-        
-        # Send progress update via WebSocket
-        await manager.send_progress(session_id, {
-            "progress": progress,
-            "message": f"Uploaded chunk {chunk_number + 1} of {session.total_chunks}",
-            "status": "uploading",
-            "uploaded_chunks": len(session.uploaded_chunks),
-            "total_chunks": session.total_chunks
-        })
-        
-        logger.info(f"Chunk {chunk_number} uploaded for session {session_id}")
-        
-        return {
-            "message": "Chunk uploaded successfully",
-            "chunk_number": chunk_number,
-            "progress": progress
-        }
-        
-    except Exception as e:
-        logger.error(f"Error uploading chunk {chunk_number} for session {session_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to upload chunk")
-
-@app.post("/upload/complete/{session_id}")
-async def complete_upload(session_id: str):
-    """Complete the upload by combining all chunks"""
-    
-    # Get upload session
-    session = get_upload_session(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Upload session not found")
-    
-    # Check if all chunks are uploaded
-    if len(session.uploaded_chunks) != session.total_chunks:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Missing chunks. Expected {session.total_chunks}, got {len(session.uploaded_chunks)}"
+        # Start a new multipart upload
+        upload_id = minio_client.create_multipart_upload(
+            bucket_name=MINIO_BUCKET,
+            object_name=object_name,
         )
-    
-    try:
-        # Combine chunks into final file
-        async with aiofiles.open(session.file_path, 'wb') as final_file:
-            for chunk_number in range(session.total_chunks):
-                chunk_file_path = f"{session.file_path}.chunk_{chunk_number}"
-                
-                if os.path.exists(chunk_file_path):
-                    async with aiofiles.open(chunk_file_path, 'rb') as chunk_file:
-                        chunk_data = await chunk_file.read()
-                        await final_file.write(chunk_data)
-                    
-                    # Remove chunk file
-                    os.remove(chunk_file_path)
-                else:
-                    raise Exception(f"Chunk file {chunk_number} not found")
-        
-        # Update session status
-        session.status = "processing"
-        save_upload_session(session)
-        
-        # Generate file ID
-        file_id = str(uuid.uuid4())
-        
-        # Store file metadata
-        redis_client.setex(
-            f"file_metadata:{file_id}",
-            24 * 3600,  # 24 hours
-            json.dumps({
-                "file_id": file_id,
-                "session_id": session_id,
-                "filename": session.filename,
-                "file_path": session.file_path,
-                "file_size": session.file_size,
-                "participant_count": session.participant_count,
-                "status": "processing",
-                "created_at": session.created_at
-            })
-        )
-        
-        # Send to video processor service
-        await send_to_video_processor(session.file_path, session_id, session.participant_count)
-        
-        # Send completion update via WebSocket
-        await manager.send_progress(session_id, {
-            "progress": 100,
-            "message": "Upload completed! Starting video processing...",
-            "status": "processing",
-            "file_id": file_id
-        })
-        
-        logger.info(f"Upload completed for session {session_id}, file_id: {file_id}")
-        
-        return {
-            "message": "Upload completed successfully",
-            "file_id": file_id,
-            "status": "processing"
+        logger.info(f"Initialized multipart upload for {object_name} with upload ID: {upload_id}")
+
+        # Store session data in Redis, expiring after 24 hours
+        session_data = {
+            "upload_id": upload_id,
+            "object_name": object_name,
+            "filename": request.filename,
+            "file_size": request.file_size
         }
+        redis_client.set(f"upload_session:{session_id}", json.dumps(session_data), ex=86400)
         
+        return UploadInitializationResponse(
+            session_id=session_id,
+            upload_id=upload_id,
+            object_name=object_name,
+        )
+    except S3Error as e:
+        logger.error(f"MinIO error on initializing upload: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to initialize upload: {e}")
     except Exception as e:
-        logger.error(f"Error completing upload for session {session_id}: {e}")
-        
-        # Update session with error status
-        session.status = "error"
-        save_upload_session(session)
-        
-        # Send error update via WebSocket
-        await manager.send_progress(session_id, {
-            "progress": 0,
-            "message": f"Upload failed: {str(e)}",
-            "status": "error"
-        })
-        
-        raise HTTPException(status_code=500, detail="Failed to complete upload")
+        logger.error(f"An unexpected error occurred on initializing upload: {e}")
+        raise HTTPException(status_code=500, detail="An internal error occurred.")
 
-@app.get("/upload/status/{session_id}")
-async def get_upload_status(session_id: str):
-    """Get upload session status"""
-    session = get_upload_session(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Upload session not found")
-    
-    progress = (len(session.uploaded_chunks) / session.total_chunks) * 100 if session.total_chunks > 0 else 0
-    
-    return {
-        "session_id": session_id,
-        "status": session.status,
-        "progress": progress,
-        "uploaded_chunks": len(session.uploaded_chunks),
-        "total_chunks": session.total_chunks,
-        "filename": session.filename
-    }
 
-@app.websocket("/ws/{session_id}")
-async def websocket_endpoint(websocket: WebSocket, session_id: str):
-    """WebSocket endpoint for real-time upload progress"""
-    await manager.connect(websocket, session_id)
+@app.post("/api/v1/uploads/{session_id}/presigned-url", response_model=PresignedUrlResponse)
+async def get_presigned_upload_url(session_id: str, request: PresignedUrlRequest):
+    """
+    Generates a presigned URL for a specific part of a multipart upload.
+    """
+    session_data_raw = redis_client.get(f"upload_session:{session_id}")
+    if not session_data_raw:
+        raise HTTPException(status_code=404, detail="Upload session not found.")
+    
+    session_data = json.loads(session_data_raw)
+    upload_id = session_data.get("upload_id")
+    object_name = session_data.get("object_name")
+
+    if not upload_id or not object_name:
+         raise HTTPException(status_code=404, detail="Invalid session data.")
+
     try:
-        while True:
-            # Keep connection alive
-            await asyncio.sleep(1)
-    except WebSocketDisconnect:
-        manager.disconnect(session_id)
+        url = minio_client.get_presigned_url(
+            method='PUT',
+            bucket_name=MINIO_BUCKET,
+            object_name=object_name,
+            expires=timedelta(hours=1), # URL is valid for 1 hour
+            extra_query_params={
+                "partNumber": request.part_number,
+                "uploadId": upload_id
+            }
+        )
+        return PresignedUrlResponse(url=url)
+    except S3Error as e:
+        logger.error(f"MinIO error on generating presigned URL: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate presigned URL: {e}")
+    except Exception as e:
+        logger.error(f"An unexpected error occurred on generating presigned URL: {e}")
+        raise HTTPException(status_code=500, detail="An internal error occurred.")
 
-# Endpoint for other services to update progress
-@app.post("/upload/progress/{session_id}")
-async def update_progress(session_id: str, progress_data: ProgressUpdate):
-    """Update upload progress (called by other services)"""
-    await manager.send_progress(session_id, progress_data.dict())
-    return {"message": "Progress updated"}
+@app.post("/api/v1/uploads/{session_id}/complete")
+async def complete_upload(session_id: str, request: CompletionRequest):
+    """
+    Completes a multipart upload in MinIO.
+    """
+    session_data_raw = redis_client.get(f"upload_session:{session_id}")
+    if not session_data_raw:
+        raise HTTPException(status_code=404, detail="Upload session not found.")
+    
+    session_data = json.loads(session_data_raw)
+    upload_id = session_data.get("upload_id")
+    object_name = session_data.get("object_name")
+    filename = session_data.get("filename")
+
+    if not upload_id or not object_name:
+         raise HTTPException(status_code=404, detail="Invalid session data.")
+
+    try:
+        # MinIO client expects a list of objects with 'part_num' and 'etag'
+        parts_for_minio = [
+            {'part_num': part.PartNumber, 'etag': part.ETag}
+            for part in request.parts
+        ]
+
+        minio_client.complete_multipart_upload(
+            bucket_name=MINIO_BUCKET,
+            object_name=object_name,
+            upload_id=upload_id,
+            parts=parts_for_minio,
+        )
+        logger.info(f"Successfully completed multipart upload for {object_name}")
+
+        # Publish a message to RabbitMQ for the video processor
+        publish_to_video_processor(session_id, object_name, filename)
+
+        # Clean up session from Redis
+        redis_client.delete(f"upload_session:{session_id}")
+        
+        return {"message": "File upload completed successfully."}
+
+    except S3Error as e:
+        logger.error(f"MinIO error on completing upload: {e}")
+        # You might want to attempt to abort the multipart upload here
+        # minio_client.abort_multipart_upload(...)
+        raise HTTPException(status_code=500, detail=f"Failed to complete upload: {e}")
+    except Exception as e:
+        logger.error(f"An unexpected error occurred on completing upload: {e}")
+        raise HTTPException(status_code=500, detail="An internal error occurred.")
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
-    return {"status": "healthy", "service": "file-uploader"}
+    """Health check endpoint."""
+    return {"status": "ok"}
 
 if __name__ == "__main__":
     import uvicorn
