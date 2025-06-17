@@ -1,11 +1,11 @@
 'use client'
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import styled, { keyframes } from 'styled-components';
 import { motion } from 'framer-motion';
 import { LogIn, User, Lock, AlertCircle, Eye, EyeOff, Mic, Zap, ArrowRight } from 'lucide-react';
-import { useAuth } from '../hooks/useAuth';
+import { useAuth } from '@/providers/auth-provider';
 
 // TypeScript interfaces
 interface InputProps {
@@ -17,7 +17,7 @@ interface FloatingOrbProps {
 }
 
 interface FormData {
-  username: string;
+  email: string;
   password: string;
 }
 
@@ -293,18 +293,19 @@ const LoginButton = styled(motion.button)`
   }
 `;
 
-const ErrorMessage = styled(motion.div)`
+const ErrorMessage = styled.div`
+  background: rgba(239, 68, 68, 0.1);
+  color: #F87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  padding: 1rem 1.25rem;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  color: #EF4444;
   font-size: 0.9375rem;
-  padding: 1.25rem;
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  border-radius: 12px;
-  backdrop-filter: blur(10px);
   font-weight: 500;
+  margin-top: -1rem;
+  margin-bottom: 1rem;
 `;
 
 const FeatureList = styled.div`
@@ -362,44 +363,99 @@ const FloatingOrb = styled(motion.div)<FloatingOrbProps>`
   border: 1px solid rgba(136, 80, 242, 0.1);
 `;
 
+const IconWrapper = styled.div`
+  position: absolute;
+  left: 1.25rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #6A6A72;
+  pointer-events: none;
+`;
+
+const SubmitButton = styled(motion.button)`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 1.25rem;
+  border: none;
+  border-radius: 16px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  background: linear-gradient(90deg, #8850F2 0%, #A855F7 100%);
+  color: white;
+  
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+`;
+
+const spin = keyframes`
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+`;
+
+const Spinner = styled.div`
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top: 2px solid white;
+  border-radius: 50%;
+  width: 1.25rem;
+  height: 1.25rem;
+  animation: ${spin} 0.8s linear infinite;
+`;
+
 const LoginPage = () => {
-  const [formData, setFormData] = useState<FormData>({ username: '', password: '' });
-  const [showPassword, setShowPassword] = useState(false);
+  const [formData, setFormData] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
-  const { login } = useAuth();
+  const auth = useAuth();
+
+  useEffect(() => {
+    if (auth.isAuthenticated) {
+      console.log('LoginPage: User is authenticated, redirecting to /upload');
+      router.push('/upload');
+    }
+  }, [auth.isAuthenticated, router]);
+
+  // Add a separate effect that runs once on mount to check authentication
+  useEffect(() => {
+    const checkAuth = async () => {
+      console.log('LoginPage: Initial auth check');
+      await auth.refreshUser();
+      if (auth.isAuthenticated) {
+        console.log('LoginPage: Initial check found user is authenticated');
+        router.push('/upload');
+      }
+    };
+    
+    checkAuth();
+  }, []);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
-    if (error) setError('');
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError('');
-    setIsLoading(true);
 
-    // Validate inputs
-    if (!formData.username || !formData.password) {
-      setError('Please fill in all fields');
-      setIsLoading(false);
+    if (!formData.email || !formData.password) {
+      setError('Please enter both email and password.');
       return;
     }
 
-    try {
-      const result = await login(formData.username, formData.password);
-      
-      if (result.success) {
-        router.push('/dashboard');
-      } else {
-        setError(result.error);
-      }
-    } catch (err) {
-      setError('Login failed. Please try again.');
-    } finally {
-      setIsLoading(false);
+    console.log('Logging in with:', formData.email);
+    const result = await auth.login(formData.email, formData.password);
+    console.log('Login result:', result);
+
+    if (!result.success) {
+      setError(result.error || 'An unknown error occurred.');
     }
   };
 
@@ -429,9 +485,9 @@ const LoginPage = () => {
       />
 
       <LoginCard
-        initial={{ opacity: 0, y: 40 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.8, ease: "easeOut" }}
+        initial={{ opacity: 0, scale: 0.9, y: 50 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
       >
         <Header>
           <LogoContainer
@@ -448,78 +504,69 @@ const LoginPage = () => {
         </Header>
 
         <Form onSubmit={handleSubmit}>
+          {error && (
+            <ErrorMessage>
+              <AlertCircle size={20} />
+              <span>{error}</span>
+            </ErrorMessage>
+          )}
           <InputGroup>
-            <InputLabel htmlFor="username">Username</InputLabel>
+            <InputLabel htmlFor="email">Email Address</InputLabel>
             <InputWrapper>
-              <Input
-                id="username"
-                name="username"
-                type="text"
-                placeholder="Enter your username"
-                value={formData.username}
-                onChange={handleInputChange}
-                hasError={!!error}
-                required
-              />
-              <InputIcon>
+              <IconWrapper>
                 <User size={20} />
-              </InputIcon>
+              </IconWrapper>
+              <Input
+                type="email"
+                id="email"
+                name="email"
+                value={formData.email}
+                onChange={handleInputChange}
+                placeholder="you@example.com"
+                hasError={!!error}
+                disabled={auth.isLoading}
+              />
             </InputWrapper>
           </InputGroup>
-
           <InputGroup>
             <InputLabel htmlFor="password">Password</InputLabel>
             <InputWrapper>
+              <IconWrapper>
+                <Lock size={20} />
+              </IconWrapper>
               <Input
+                type={showPassword ? 'text' : 'password'}
                 id="password"
                 name="password"
-                type={showPassword ? 'text' : 'password'}
-                placeholder="Enter your password"
                 value={formData.password}
                 onChange={handleInputChange}
+                placeholder="••••••••••••"
                 hasError={!!error}
-                required
+                disabled={auth.isLoading}
               />
-              <InputIcon>
-                <Lock size={20} />
-              </InputIcon>
-              <PasswordToggle
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                aria-label={showPassword ? 'Hide password' : 'Show password'}
-              >
-                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              <PasswordToggle onClick={() => setShowPassword(!showPassword)}>
+                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
               </PasswordToggle>
             </InputWrapper>
           </InputGroup>
-
-          {error && (
-            <ErrorMessage
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              <AlertCircle size={18} />
-              {error}
-            </ErrorMessage>
-          )}
-
-          <LoginButton
-            type="submit"
-            disabled={isLoading}
-            whileHover={{ scale: 1.02 }}
+          <SubmitButton 
+            type="submit" 
+            disabled={auth.isLoading}
+            whileHover={{ y: -2, boxShadow: '0 10px 30px rgba(136, 80, 242, 0.3)' }}
             whileTap={{ scale: 0.98 }}
           >
-            {isLoading ? (
-              <LoadingSpinner />
+            {auth.isLoading ? (
+              <>
+                <Spinner />
+                <span>Authenticating...</span>
+              </>
             ) : (
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                <LogIn size={20} />
-                Sign In
+              <>
+                <span>Secure Login</span>
                 <ArrowRight size={20} />
-              </span>
+              </>
             )}
-          </LoginButton>
+          </SubmitButton>
         </Form>
 
         <FeatureList>

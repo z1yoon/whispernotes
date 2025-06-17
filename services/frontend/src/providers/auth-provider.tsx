@@ -1,47 +1,116 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState } from 'react'
-import { useAuthStore, type AuthState } from '@/stores/auth'
-import { Loader2 } from 'lucide-react'
+import { 
+  createContext, 
+  useContext, 
+  useEffect, 
+  useState,
+  type ReactNode,
+} from 'react'
+import axios from 'axios'
+import { useRouter } from 'next/navigation'
+
+// Define the shape of the auth context state
+interface AuthState {
+  user: any | null;
+  isAuthenticated: boolean;
+  isLoading: boolean;
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  logout: () => void;
+  refreshUser: () => Promise<void>;
+}
 
 const AuthContext = createContext<AuthState | null>(null)
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const auth = useAuthStore()
-  const [isInitialized, setIsInitialized] = useState(false)
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<any>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const router = useRouter()
+
+  const login = async (email: string, password: string) => {
+    setIsLoading(true);
+    try {
+      console.log('AuthProvider: Attempting login');
+      const response = await axios.post('/api/auth/login', { email, password });
+      console.log('AuthProvider: Login response:', response.status);
+      
+      if (response.status === 200) {
+        console.log('AuthProvider: Login successful, fetching profile');
+        const userProfile = await fetchUserProfile();
+        console.log('AuthProvider: User profile fetched:', !!userProfile);
+        
+        if (userProfile) {
+          console.log('AuthProvider: Redirecting to /upload');
+          setTimeout(() => {
+            router.push('/upload');
+          }, 100);
+          return { success: true };
+        } else {
+          return { success: false, error: 'Failed to get user profile' };
+        }
+      }
+      return { success: false, error: 'Login failed' };
+    } catch (error: any) {
+      console.error('AuthProvider: Login error:', error);
+      const errorMessage = error.response?.data?.error || 'An unexpected error occurred';
+      return { success: false, error: errorMessage };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const logout = () => {
+    setUser(null);
+    axios.post('/api/auth/logout');
+    router.push('/login');
+  };
+
+  const fetchUserProfile = async () => {
+    setIsLoading(true);
+    try {
+      console.log('AuthProvider: Fetching user profile');
+      const response = await axios.get('/api/auth/me');
+      console.log('AuthProvider: /me response status:', response.status);
+      
+      if (response.data.user) {
+        console.log('AuthProvider: Setting user data');
+        setUser(response.data.user);
+        return response.data.user;
+      }
+      return null;
+    } catch (error) {
+      console.error('AuthProvider: Error fetching user:', error);
+      setUser(null);
+      return null;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const refreshUser = async () => {
+    await fetchUserProfile();
+  };
 
   useEffect(() => {
-    // Only check auth if we have a token, don't show loading on first visit
-    const initAuth = async () => {
-      const token = auth.token
-      if (token) {
-        await auth.checkAuth()
-      }
-      setIsInitialized(true)
-    }
-    initAuth()
-  }, [auth])
-
-  // Don't show loading screen on first visit without token
-  if (!isInitialized && auth.token) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-[#09090A] via-[#181719] to-[#36343B] flex items-center justify-center">
-        <div className="flex items-center gap-3">
-          <Loader2 className="h-6 w-6 animate-spin text-purple-500" />
-          <span className="text-gray-400">Initializing...</span>
-        </div>
-      </div>
-    )
-  }
+    console.log('AuthProvider: Initial profile check');
+    fetchUserProfile();
+  }, []);
 
   return (
-    <AuthContext.Provider value={auth}>
+    <AuthContext.Provider value={{ 
+      user, 
+      isAuthenticated: !!user, 
+      isLoading, 
+      login, 
+      logout,
+      refreshUser
+    }}>
       {children}
     </AuthContext.Provider>
   )
 }
 
-export function useAuth(): AuthState {
+export const useAuth = () => {
   const context = useContext(AuthContext)
   if (!context) {
     throw new Error('useAuth must be used within an AuthProvider')

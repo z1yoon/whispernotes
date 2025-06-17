@@ -1,29 +1,10 @@
 import type { Metadata } from "next";
-import { Inter, Plus_Jakarta_Sans, Roboto, Roboto_Condensed } from "next/font/google";
+import { inter, plusJakarta, roboto, robotoCondensed } from "@/lib/fonts";
 import "./globals.css";
 import { QueryProvider } from "@/providers/query-provider";
 import { AuthProvider } from "@/providers/auth-provider";
 import { Toaster } from "react-hot-toast";
-import { Header } from "@/components/Header";
-
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
-const plusJakarta = Plus_Jakarta_Sans({ 
-  subsets: ["latin"],
-  variable: "--font-plus-jakarta",
-});
-
-// Fonts used in the Figma design
-const roboto = Roboto({
-  subsets: ["latin"],
-  weight: ["400", "700"],
-  variable: "--font-roboto",
-});
-
-const robotoCondensed = Roboto_Condensed({
-  subsets: ["latin"],
-  weight: ["700"],
-  variable: "--font-roboto-condensed",
-});
+import { ConditionalHeader } from "@/components/ConditionalHeader";
 
 export const metadata: Metadata = {
   title: "Whisper Notes - AI Transcription & Speaker Diarization",
@@ -52,7 +33,7 @@ export default function RootLayout({
       <body className="min-h-screen bg-background font-sans antialiased">
         <QueryProvider>
           <AuthProvider>
-            <Header />
+            <ConditionalHeader />
             <main className="relative flex min-h-screen flex-col">
               {children}
             </main>
