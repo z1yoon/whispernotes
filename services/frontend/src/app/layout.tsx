@@ -1,14 +1,28 @@
 import type { Metadata } from "next";
-import { Inter, Plus_Jakarta_Sans } from "next/font/google";
+import { Inter, Plus_Jakarta_Sans, Roboto, Roboto_Condensed } from "next/font/google";
 import "./globals.css";
 import { QueryProvider } from "@/providers/query-provider";
 import { AuthProvider } from "@/providers/auth-provider";
 import { Toaster } from "react-hot-toast";
+import { Header } from "@/components/Header";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const plusJakarta = Plus_Jakarta_Sans({ 
   subsets: ["latin"],
   variable: "--font-plus-jakarta",
+});
+
+// Fonts used in the Figma design
+const roboto = Roboto({
+  subsets: ["latin"],
+  weight: ["400", "700"],
+  variable: "--font-roboto",
+});
+
+const robotoCondensed = Roboto_Condensed({
+  subsets: ["latin"],
+  weight: ["700"],
+  variable: "--font-roboto-condensed",
 });
 
 export const metadata: Metadata = {
@@ -31,10 +45,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${inter.variable} ${plusJakarta.variable}`}>
-      <body className="min-h-screen bg-gray-50 font-sans antialiased">
+    <html
+      lang="en"
+      className={`${inter.variable} ${plusJakarta.variable} ${roboto.variable} ${robotoCondensed.variable}`}
+    >
+      <body className="min-h-screen bg-background font-sans antialiased">
         <QueryProvider>
           <AuthProvider>
+            <Header />
             <main className="relative flex min-h-screen flex-col">
               {children}
             </main>

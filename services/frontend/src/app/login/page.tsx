@@ -3,169 +3,23 @@
 import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import styled from 'styled-components'
-import { motion } from 'framer-motion'
-import { 
-  ArrowLeft,
-  Eye, 
-  EyeOff
-} from 'lucide-react'
+import { ArrowLeft, Eye, EyeOff } from 'lucide-react'
 import { useAuth } from '@/providers/auth-provider'
 import toast from 'react-hot-toast'
-
-const Container = styled.div`
-  min-h-screen;
-  background: linear-gradient(135deg, #0B0A0A 0%, #1C1A1F 37.5%, #363036 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2rem;
-`
-
-const LoginCard = styled(motion.div)`
-  background: rgba(32, 32, 36, 0.9);
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(136, 80, 242, 0.2);
-  border-radius: 20px;
-  padding: 3rem;
-  width: 100%;
-  max-width: 400px;
-  position: relative;
-`
-
-const BackButton = styled(Link)`
-  position: absolute;
-  top: 1.5rem;
-  left: 1.5rem;
-  color: #8D8D99;
-  text-decoration: none;
-  transition: color 0.3s ease;
-  
-  &:hover {
-    color: #FFFFFF;
-  }
-`
-
-const Logo = styled.div`
-  text-align: center;
-  margin-bottom: 2rem;
-  
-  .icon {
-    width: 48px;
-    height: 48px;
-    background: linear-gradient(135deg, #8850F2 0%, #A855F7 100%);
-    border-radius: 12px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    margin-bottom: 1rem;
-  }
-  
-  h1 {
-    color: #FFFFFF;
-    font-size: 1.5rem;
-    font-weight: 700;
-    margin: 0;
-  }
-`
-
-const Form = styled.form`
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-`
-
-const InputGroup = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-`
-
-const Label = styled.label`
-  color: #C4C4CC;
-  font-size: 0.875rem;
-  font-weight: 500;
-`
-
-const InputWrapper = styled.div`
-  position: relative;
-`
-
-const Input = styled.input`
-  width: 100%;
-  padding: 0.875rem 1rem;
-  background: rgba(18, 18, 20, 0.8);
-  border: 1px solid rgba(136, 80, 242, 0.2);
-  border-radius: 8px;
-  color: #FFFFFF;
-  font-size: 1rem;
-  transition: all 0.3s ease;
-  
-  &:focus {
-    outline: none;
-    border-color: #8850F2;
-    box-shadow: 0 0 0 3px rgba(136, 80, 242, 0.1);
-  }
-  
-  &::placeholder {
-    color: #666;
-  }
-`
-
-const PasswordToggle = styled.button`
-  position: absolute;
-  right: 0.875rem;
-  top: 50%;
-  transform: translateY(-50%);
-  background: none;
-  border: none;
-  color: #8D8D99;
-  cursor: pointer;
-  transition: color 0.3s ease;
-  
-  &:hover {
-    color: #C4C4CC;
-  }
-`
-
-const SubmitButton = styled(motion.button)`
-  padding: 0.875rem;
-  background: linear-gradient(135deg, #8850F2 0%, #A855F7 100%);
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-weight: 600;
-  cursor: pointer;
-  margin-top: 1rem;
-  transition: all 0.3s ease;
-  
-  &:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 10px 30px rgba(136, 80, 242, 0.3);
-  }
-  
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-    transform: none;
-    box-shadow: none;
-  }
-`
-
-const SignupLink = styled.div`
-  text-align: center;
-  margin-top: 2rem;
-  color: #8D8D99;
-  
-  a {
-    color: #8850F2;
-    text-decoration: none;
-    
-    &:hover {
-      text-decoration: underline;
-    }
-  }
-`
+import {
+  AuthContainer,
+  AuthCard,
+  BackButton,
+  Title,
+  Form,
+  InputGroup,
+  Label,
+  InputWrapper,
+  Input,
+  PasswordToggle,
+  SubmitButton,
+  AuthLink,
+} from '@/components/AuthStyles'
 
 export default function LoginPage() {
   const [formData, setFormData] = useState({
@@ -180,12 +34,14 @@ export default function LoginPage() {
 
   // Handle signup pending message
   useEffect(() => {
-    const message = searchParams.get('message')
-    if (message === 'signup-pending') {
-      toast.success('Account request submitted! Wait for admin approval.', {
-        duration: 5000,
-        icon: '⏳'
-      })
+    if (searchParams) {
+      const message = searchParams.get('message')
+      if (message === 'signup-pending') {
+        toast.success('Account request submitted! Wait for admin approval.', {
+          duration: 5000,
+          icon: '⏳'
+        })
+      }
     }
   }, [searchParams])
 
@@ -198,64 +54,42 @@ export default function LoginPage() {
     e.preventDefault()
     setIsLoading(true)
 
-    if (!formData.email || !formData.password) {
-      toast.error('Please fill in all fields')
-      setIsLoading(false)
-      return
-    }
-
     try {
-      const result = await login(formData.email, formData.password)
-      
-      if (result.success) {
-        toast.success('Welcome to Whisper Notes!')
-        router.push('/dashboard')
-      } else {
-        if (result.error?.includes('pending')) {
-          toast.error('Account is pending admin approval')
-        } else if (result.error?.includes('rejected')) {
-          toast.error('Account request was rejected. Contact admin.')
-        } else {
-          toast.error(result.error || 'Invalid credentials')
-        }
-      }
-    } catch (error) {
-      toast.error('Connection error. Please try again.')
+      await login(formData.email, formData.password)
+      toast.success('Login successful!')
+      router.push('/dashboard')
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.error || 'Login failed. Please try again.'
+      toast.error(errorMessage)
     } finally {
       setIsLoading(false)
     }
   }
 
   return (
-    <Container>
-      <LoginCard
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
+    <AuthContainer>
+      <AuthCard
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.3 }}
       >
         <BackButton href="/">
-          <ArrowLeft size={20} />
+          <ArrowLeft size={16} />
+          Back to Home
         </BackButton>
-
-        <Logo>
-          <div className="icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-              <path d="M12 2L13.09 8.26L17 9L13.09 9.74L12 16L10.91 9.74L7 9L10.91 8.26L12 2Z" fill="white"/>
-            </svg>
-          </div>
-          <h1>Sign In</h1>
-        </Logo>
+        
+        <Title>Login</Title>
 
         <Form onSubmit={handleSubmit}>
           <InputGroup>
             <Label htmlFor="email">Email</Label>
             <Input
+              type="email"
               id="email"
               name="email"
-              type="text"
-              placeholder="Enter your email"
               value={formData.email}
               onChange={handleInputChange}
+              placeholder="you@example.com"
               required
             />
           </InputGroup>
@@ -264,18 +98,15 @@ export default function LoginPage() {
             <Label htmlFor="password">Password</Label>
             <InputWrapper>
               <Input
+                type={showPassword ? 'text' : 'password'}
                 id="password"
                 name="password"
-                type={showPassword ? 'text' : 'password'}
-                placeholder="Enter your password"
                 value={formData.password}
                 onChange={handleInputChange}
+                placeholder="••••••••"
                 required
               />
-              <PasswordToggle
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-              >
+              <PasswordToggle type="button" onClick={() => setShowPassword(!showPassword)}>
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </PasswordToggle>
             </InputWrapper>
@@ -284,17 +115,17 @@ export default function LoginPage() {
           <SubmitButton
             type="submit"
             disabled={isLoading}
-            whileHover={{ y: -2 }}
+            whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
           >
-            {isLoading ? 'Signing in...' : 'Sign In'}
+            {isLoading ? 'Logging in...' : 'Login'}
           </SubmitButton>
         </Form>
 
-        <SignupLink>
-          Don't have an account? <Link href="/signup">Sign up</Link>
-        </SignupLink>
-      </LoginCard>
-    </Container>
+        <AuthLink>
+          Don't have an account? <Link href="/signup">Sign Up</Link>
+        </AuthLink>
+      </AuthCard>
+    </AuthContainer>
   )
 }
