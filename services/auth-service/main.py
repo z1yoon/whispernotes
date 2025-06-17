@@ -81,9 +81,10 @@ def init_db():
         )
     """)
     
-    # Create default admin user if it doesn't exist
-    admin_email = "admin@whispernotes.com"
-    admin_password = "admin123"  # Change this in production
+    # Retrieve admin credentials from environment variables
+    admin_email = os.getenv("ADMIN_EMAIL", "admin@whispernotes.com")
+    admin_password = os.getenv("ADMIN_PASSWORD", "admin123")
+    admin_username = os.getenv("ADMIN_USERNAME", "admin")
     
     cursor.execute("SELECT id FROM users WHERE email = ?", (admin_email,))
     if not cursor.fetchone():
@@ -91,7 +92,7 @@ def init_db():
         cursor.execute("""
             INSERT INTO users (email, password_hash, name, role)
             VALUES (?, ?, ?, ?)
-        """, (admin_email, password_hash, "System Administrator", "admin"))
+        """, (admin_email, password_hash, admin_username, "admin"))
         logger.info(f"Created default admin user: {admin_email}")
     
     conn.commit()

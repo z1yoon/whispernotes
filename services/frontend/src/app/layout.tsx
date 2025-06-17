@@ -1,11 +1,15 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import { QueryProvider } from "@/providers/query-provider";
 import { AuthProvider } from "@/providers/auth-provider";
 import { Toaster } from "react-hot-toast";
 
-const inter = Inter({ subsets: ["latin"] });
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
+const plusJakarta = Plus_Jakarta_Sans({ 
+  subsets: ["latin"],
+  variable: "--font-plus-jakarta",
+});
 
 export const metadata: Metadata = {
   title: "Whisper Notes - AI Transcription & Speaker Diarization",
@@ -27,11 +31,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className={inter.className}>
+    <html lang="en" className={`${inter.variable} ${plusJakarta.variable}`}>
+      <body className="min-h-screen bg-gray-50 font-sans antialiased">
         <QueryProvider>
           <AuthProvider>
-            {children}
+            <main className="relative flex min-h-screen flex-col">
+              {children}
+            </main>
             <Toaster
               position="top-right"
               toastOptions={{
@@ -40,6 +46,8 @@ export default function RootLayout({
                   background: "#1f2937",
                   color: "#f9fafb",
                   border: "1px solid #374151",
+                  borderRadius: "0.5rem",
+                  padding: "1rem",
                 },
                 success: {
                   iconTheme: {

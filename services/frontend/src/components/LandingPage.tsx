@@ -8,10 +8,10 @@ import {
   Upload, 
   Play, 
   FileText, 
-  Users, 
   ArrowRight,
-  CheckCircle,
-  Mic
+  Mic,
+  Video,
+  Users
 } from 'lucide-react';
 
 const LandingContainer = styled.div`
@@ -164,34 +164,117 @@ const AILogo = styled.div`
   }
 `;
 
-const FeaturePreview = styled(motion.div)`
-  position: absolute;
-  right: 5%;
+const FeatureGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 2rem;
+  max-width: 900px;
+  margin: 0 auto 4rem;
+  padding: 0 2rem;
+`;
+
+const FeatureCard = styled(motion.div)`
+  background: rgba(32, 32, 36, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 2rem;
+  text-align: center;
+  backdrop-filter: blur(10px);
+  
+  .icon {
+    width: 48px;
+    height: 48px;
+    background: linear-gradient(135deg, #8850F2 0%, #A855F7 100%);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 1rem;
+    color: white;
+  }
+  
+  h3 {
+    color: #FFFFFF;
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+  }
+  
+  p {
+    color: #8D8D99;
+    font-size: 0.875rem;
+    line-height: 1.5;
+  }
+`;
+
+const ProcessingDemo = styled(motion.div)`
+  position: fixed;
+  right: 2rem;
   top: 50%;
   transform: translateY(-50%);
-  width: 400px;
-  height: 600px;
-  background: linear-gradient(135deg, #CE76F7 0%, #DEDFE1 51.55%, #B1E850 100%);
-  border-radius: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0.8;
+  width: 320px;
+  background: rgba(32, 32, 36, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 1.5rem;
+  backdrop-filter: blur(20px);
+  z-index: 10;
   
   @media (max-width: 1400px) {
     display: none;
   }
 `;
 
-const MockupOverlay = styled.div`
-  position: absolute;
-  inset: 16px;
-  background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 600"><rect width="400" height="600" fill="%23000" opacity="0.1" rx="12"/></svg>');
-  background-size: cover;
-  border-radius: 12px;
-  backdrop-filter: blur(20px);
-  border: 16px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 4px 80px rgba(0, 0, 0, 0.55);
+const ProcessingHeader = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  
+  .icon {
+    width: 32px;
+    height: 32px;
+    background: linear-gradient(135deg, #8850F2 0%, #A855F7 100%);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+  }
+  
+  h3 {
+    color: #FFFFFF;
+    font-size: 1rem;
+    font-weight: 600;
+  }
+`;
+
+const ProcessingStep = styled.div<{ active?: boolean }>`
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 0;
+  opacity: ${props => props.active ? 1 : 0.5};
+  
+  .step-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: ${props => props.active ? 'linear-gradient(135deg, #8850F2 0%, #A855F7 100%)' : 'rgba(255, 255, 255, 0.1)'};
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+  
+  .step-text {
+    color: #FFFFFF;
+    font-size: 0.875rem;
+  }
 `;
 
 const GradientBorder = styled.div`
@@ -204,13 +287,29 @@ const GradientBorder = styled.div`
 `;
 
 const LandingPage = () => {
+  const [currentStep, setCurrentStep] = React.useState(0);
+  const steps = [
+    'Upload Video',
+    'Extract Audio',
+    'AI Transcription',
+    'Speaker ID',
+    'Download Results'
+  ];
+
+  React.useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentStep(prev => (prev + 1) % steps.length);
+    }, 2000);
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <LandingContainer>
       <LogoSection>
         <LogoIcon>
           <Mic size={24} />
         </LogoIcon>
-        <LogoText>Whisper Notes</LogoText>
+        <LogoText>WhisperNotes</LogoText>
       </LogoSection>
 
       <HeroTitle
@@ -218,7 +317,9 @@ const LandingPage = () => {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.8 }}
       >
-        AI Transcription
+        AI
+        <br />
+        Transcription
       </HeroTitle>
       
       <HeroSubtitle
@@ -228,12 +329,50 @@ const LandingPage = () => {
       >
         Speaker Diarization
       </HeroSubtitle>
+
+      <FeatureGrid>
+        <FeatureCard
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.3 }}
+        >
+          <div className="icon">
+            <Upload size={24} />
+          </div>
+          <h3>Video Upload</h3>
+          <p>Upload MP4, AVI, MOV files up to 500MB</p>
+        </FeatureCard>
+
+        <FeatureCard
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.4 }}
+        >
+          <div className="icon">
+            <Mic size={24} />
+          </div>
+          <h3>AI Transcription</h3>
+          <p>Powered by Whisper AI for accurate speech-to-text</p>
+        </FeatureCard>
+
+        <FeatureCard
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.5 }}
+        >
+          <div className="icon">
+            <Users size={24} />
+          </div>
+          <h3>Speaker ID</h3>
+          <p>Automatically identify and separate different speakers</p>
+        </FeatureCard>
+      </FeatureGrid>
       
       <CTAButton
         href="/login"
         initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.8, delay: 0.4 }}
+        transition={{ duration: 0.8, delay: 0.6 }}
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
       >
@@ -241,13 +380,27 @@ const LandingPage = () => {
         Start Processing
       </CTAButton>
 
-      <FeaturePreview
+      <ProcessingDemo
         initial={{ opacity: 0, x: 100 }}
-        animate={{ opacity: 0.8, x: 0 }}
-        transition={{ duration: 1, delay: 0.6 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 1, delay: 0.8 }}
       >
-        <MockupOverlay />
-      </FeaturePreview>
+        <ProcessingHeader>
+          <div className="icon">
+            <Video size={16} />
+          </div>
+          <h3>Live Processing Demo</h3>
+        </ProcessingHeader>
+        
+        {steps.map((step, index) => (
+          <ProcessingStep key={step} active={index <= currentStep}>
+            <div className="step-icon">
+              {index < currentStep ? '✓' : index + 1}
+            </div>
+            <div className="step-text">{step}</div>
+          </ProcessingStep>
+        ))}
+      </ProcessingDemo>
 
       <BrandTag
         initial={{ opacity: 0, y: 50 }}
@@ -258,7 +411,7 @@ const LandingPage = () => {
           <div className="icon">
             <Upload size={16} />
           </div>
-          <div className="text">Video to Text AI</div>
+          <div className="text">AI Process Engine</div>
         </AILogo>
       </BrandTag>
 

@@ -42,7 +42,7 @@ export default function AdminPage() {
 
   // Check if user is admin
   useEffect(() => {
-    if (user && user.username !== 'admin') {
+    if (user && user.role !== 'admin') {
       toast.error('Access denied. Admin only.')
       router.push('/dashboard')
       return
@@ -144,7 +144,7 @@ export default function AdminPage() {
     }
   }
 
-  if (!user || user.username !== 'admin') {
+  if (!user || user.role !== 'admin') {
     return null
   }
 

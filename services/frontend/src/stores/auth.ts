@@ -1,7 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import axios from 'axios'
-import { jwtDecode } from 'jwt-decode'
 
 export interface User {
   id: string
@@ -16,7 +15,7 @@ export interface AuthState {
   token: string | null
   isAuthenticated: boolean
   isLoading: boolean
-  login: (username: string, password: string) => Promise<{ success: boolean; error?: string }>
+  login: (identifier: string, password: string) => Promise<{ success: boolean; error?: string }>
   logout: () => void
   checkAuth: () => Promise<boolean>
 }
@@ -40,41 +39,22 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       isLoading: false,
 
-      login: async (username: string, password: string) => {
+      login: async (identifier: string, password: string) => {
+        // 'identifier' can be email or username, depending on backend implementation
         set({ isLoading: true })
         
         try {
-          // Create form data for OAuth2 password flow
-          const formData = new FormData()
-          formData.append('username', username)
-          formData.append('password', password)
-
-          const response = await authAPI.post('/token', formData, {
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-            },
+          const response = await authAPI.post('/auth/login', {
+            email: identifier,
+            password,
           })
 
-          const { access_token, token_type } = response.data
+          const { access_token, token_type, user } = response.data
           
-          // Get user info using the token
-          const userResponse = await authAPI.get('/users/me', {
-            headers: {
-              'Authorization': `${token_type} ${access_token}`
-            }
-          })
-
-          const user = userResponse.data
-          
-          // Check if user account is approved
-          if (user.status === 'pending') {
+          // Check if user account is active
+          if (!user.is_active) {
             set({ isLoading: false })
-            return { success: false, error: 'Account is pending admin approval' }
-          }
-          
-          if (user.status === 'rejected') {
-            set({ isLoading: false })
-            return { success: false, error: 'Account request was rejected. Contact admin.' }
+            return { success: false, error: 'Account is inactive. Contact administrator.' }
           }
           
           // Set axios default header for future requests
@@ -84,83 +64,55 @@ export const useAuthStore = create<AuthState>()(
             user,
             token: access_token,
             isAuthenticated: true,
-            isLoading: false
+            isLoading: false,
           })
 
           return { success: true }
         } catch (error: any) {
           set({ isLoading: false })
           
-          if (error.response?.status === 401) {
-            return { success: false, error: 'Invalid credentials. Please check your username and password.' }
-          } else if (error.response?.status === 403) {
-            return { success: false, error: 'Account access denied. Contact administrator.' }
-          } else if (error.code === 'ECONNREFUSED' || error.code === 'NETWORK_ERROR') {
-            return { success: false, error: 'Unable to connect to server. Please try again later.' }
+          if (axios.isAxiosError(error)) {
+            if (error.response?.status === 401) {
+              return { success: false, error: 'Invalid credentials. Please check your email and password.' }
+            }
+            return { success: false, error: error.response?.data?.detail || 'Login failed. Please try again.' }
           }
           
-          const errorMessage = error.response?.data?.detail || 'Login failed. Please try again.'
-          return { success: false, error: errorMessage }
+          return { success: false, error: 'Unexpected error. Please try again.' }
         }
       },
 
       logout: () => {
-        // Clear axios default header
         delete authAPI.defaults.headers.common['Authorization']
-        
-        set({
-          user: null,
-          token: null,
-          isAuthenticated: false,
-          isLoading: false
-        })
+        set({ user: null, token: null, isAuthenticated: false, isLoading: false })
       },
 
       checkAuth: async () => {
         const { token } = get()
+        if (!token) return false
         
-        if (!token) {
-          return false
-        }
-
         try {
-          // Check if token is expired
-          const decoded: any = jwtDecode(token)
-          const currentTime = Date.now() / 1000
-          
-          if (decoded.exp < currentTime) {
-            get().logout()
-            return false
-          }
-
-          // Set axios default header
+          // Set header and verify token with backend
           authAPI.defaults.headers.common['Authorization'] = `Bearer ${token}`
-          
-          // Verify token with backend
-          const response = await authAPI.get('/users/me')
+          const response = await authAPI.get('/auth/me')
           const user = response.data
           
-          // Check if user is still active
-          if (user.status !== 'active') {
+          if (!user.is_active) {
             get().logout()
             return false
           }
           
           set({ user, isAuthenticated: true })
           return true
-        } catch (error) {
+        } catch {
           get().logout()
           return false
         }
-      }
+      },
     }),
     {
       name: 'auth-storage',
-      partialize: (state) => ({
-        user: state.user,
-        token: state.token,
-        isAuthenticated: state.isAuthenticated
-      })
+      partialize: (state) => ({ user: state.user, token: state.token, isAuthenticated: state.isAuthenticated }),
     }
   )
 )
