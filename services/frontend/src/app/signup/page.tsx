@@ -2,29 +2,173 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { motion } from 'framer-motion'
-import { 
-  User, 
-  Mail, 
-  Lock, 
-  Eye, 
-  EyeOff, 
-  ArrowLeft,
-  FileAudio,
-  UserPlus,
-  Building,
-  Phone
-} from 'lucide-react'
 import Link from 'next/link'
+import styled from 'styled-components'
+import { motion } from 'framer-motion'
+import { ArrowLeft, Eye, EyeOff } from 'lucide-react'
 import toast from 'react-hot-toast'
+
+const Container = styled.div`
+  min-height: 100vh;
+  background: #1a1a1a;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+`
+
+const SignupCard = styled(motion.div)`
+  background: #2a2a2a;
+  border: 1px solid #333;
+  border-radius: 16px;
+  padding: 3rem;
+  width: 100%;
+  max-width: 400px;
+  position: relative;
+`
+
+const BackButton = styled(Link)`
+  position: absolute;
+  top: 1.5rem;
+  left: 1.5rem;
+  color: #888;
+  text-decoration: none;
+  
+  &:hover {
+    color: white;
+  }
+`
+
+const Title = styled.h1`
+  font-size: 2rem;
+  font-weight: 600;
+  text-align: center;
+  margin-bottom: 1rem;
+  margin-top: 1rem;
+`
+
+const Subtitle = styled.p`
+  text-align: center;
+  color: #888;
+  margin-bottom: 2rem;
+  font-size: 0.875rem;
+`
+
+const Form = styled.form`
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+`
+
+const InputGroup = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+`
+
+const Label = styled.label`
+  font-size: 0.875rem;
+  color: #ccc;
+`
+
+const InputWrapper = styled.div`
+  position: relative;
+`
+
+const Input = styled.input`
+  width: 100%;
+  padding: 0.875rem;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 8px;
+  color: white;
+  font-size: 1rem;
+  
+  &:focus {
+    outline: none;
+    border-color: #8b5cf6;
+  }
+  
+  &::placeholder {
+    color: #666;
+  }
+`
+
+const TextArea = styled.textarea`
+  width: 100%;
+  padding: 0.875rem;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 8px;
+  color: white;
+  font-size: 1rem;
+  min-height: 80px;
+  resize: vertical;
+  font-family: inherit;
+  
+  &:focus {
+    outline: none;
+    border-color: #8b5cf6;
+  }
+  
+  &::placeholder {
+    color: #666;
+  }
+`
+
+const PasswordToggle = styled.button`
+  position: absolute;
+  right: 0.875rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: #666;
+  cursor: pointer;
+  
+  &:hover {
+    color: #888;
+  }
+`
+
+const SubmitButton = styled(motion.button)`
+  padding: 0.875rem;
+  background: linear-gradient(135deg, #8b5cf6, #a855f7);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 500;
+  cursor: pointer;
+  margin-top: 1rem;
+  
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`
+
+const LoginLink = styled.div`
+  text-align: center;
+  margin-top: 2rem;
+  color: #888;
+  
+  a {
+    color: #8b5cf6;
+    text-decoration: none;
+    
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+`
 
 export default function SignupPage() {
   const [formData, setFormData] = useState({
     username: '',
     email: '',
     fullName: '',
-    organization: '',
-    phone: '',
     password: '',
     confirmPassword: '',
     purpose: ''
@@ -63,262 +207,154 @@ export default function SignupPage() {
     }
 
     try {
-      // TODO: Replace with actual API call
-      const response = await fetch('/api/auth/signup', {
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001'
+      const response = await fetch(`${API_BASE_URL}/auth/request-access`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          email: formData.email,
+          name: formData.fullName,
+          reason: formData.purpose || 'N/A',
+        }),
       })
 
-      if (response.ok) {
-        toast.success('Account request submitted! Admin will review your application.')
-        router.push('/login?message=signup-pending')
-      } else {
-        const error = await response.json()
-        toast.error(error.message || 'Signup failed')
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || 'Request failed')
       }
-    } catch (error) {
-      // For demo purposes, simulate success
+
       toast.success('Account request submitted! Admin will review your application.')
-      setTimeout(() => {
-        router.push('/login?message=signup-pending')
-      }, 2000)
+      router.push('/login?message=signup-pending')
+    } catch (error) {
+      toast.error('Signup failed. Please try again.')
     } finally {
       setIsLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#09090A] via-[#181719] to-[#36343B] flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        {/* Back Button */}
-        <Link
-          href="/login"
-          className="inline-flex items-center gap-2 text-gray-400 hover:text-white mb-8 transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          <span className="text-sm">Back to Login</span>
-        </Link>
+    <Container>
+      <SignupCard
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+      >
+        <BackButton href="/">
+          <ArrowLeft size={20} />
+        </BackButton>
 
-        {/* Signup Card */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          className="bg-gray-900/80 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 shadow-2xl"
-        >
-          {/* Header */}
-          <div className="text-center mb-8">
-            <div className="flex items-center justify-center gap-3 mb-6">
-              <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl flex items-center justify-center">
-                <FileAudio className="w-6 h-6 text-white" />
-              </div>
-              <span className="text-2xl font-semibold text-white">Whisper Notes</span>
-            </div>
-            <h2 className="text-xl font-bold text-white mb-2">Request Access</h2>
-            <p className="text-gray-400 text-sm">Submit your details for admin approval</p>
-          </div>
+        <Title>Sign Up</Title>
+        <Subtitle>Request access for admin approval</Subtitle>
 
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Username */}
-            <div>
-              <label htmlFor="username" className="block text-sm font-medium text-gray-300 mb-1">
-                Username *
-              </label>
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" />
-                <input
-                  id="username"
-                  name="username"
-                  type="text"
-                  required
-                  value={formData.username}
-                  onChange={handleInputChange}
-                  className="w-full pl-10 pr-4 py-2.5 bg-gray-800/50 border border-gray-600 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all text-sm"
-                  placeholder="Choose username"
-                />
-              </div>
-            </div>
+        <Form onSubmit={handleSubmit}>
+          <InputGroup>
+            <Label htmlFor="username">Username *</Label>
+            <Input
+              id="username"
+              name="username"
+              type="text"
+              placeholder="Choose a username"
+              value={formData.username}
+              onChange={handleInputChange}
+              required
+            />
+          </InputGroup>
 
-            {/* Email */}
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-1">
-                Email *
-              </label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" />
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  required
-                  value={formData.email}
-                  onChange={handleInputChange}
-                  className="w-full pl-10 pr-4 py-2.5 bg-gray-800/50 border border-gray-600 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all text-sm"
-                  placeholder="your@email.com"
-                />
-              </div>
-            </div>
+          <InputGroup>
+            <Label htmlFor="email">Email *</Label>
+            <Input
+              id="email"
+              name="email"
+              type="email"
+              placeholder="your@email.com"
+              value={formData.email}
+              onChange={handleInputChange}
+              required
+            />
+          </InputGroup>
 
-            {/* Full Name */}
-            <div>
-              <label htmlFor="fullName" className="block text-sm font-medium text-gray-300 mb-1">
-                Full Name *
-              </label>
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" />
-                <input
-                  id="fullName"
-                  name="fullName"
-                  type="text"
-                  required
-                  value={formData.fullName}
-                  onChange={handleInputChange}
-                  className="w-full pl-10 pr-4 py-2.5 bg-gray-800/50 border border-gray-600 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all text-sm"
-                  placeholder="Your full name"
-                />
-              </div>
-            </div>
+          <InputGroup>
+            <Label htmlFor="fullName">Full Name *</Label>
+            <Input
+              id="fullName"
+              name="fullName"
+              type="text"
+              placeholder="Your full name"
+              value={formData.fullName}
+              onChange={handleInputChange}
+              required
+            />
+          </InputGroup>
 
-            {/* Organization */}
-            <div>
-              <label htmlFor="organization" className="block text-sm font-medium text-gray-300 mb-1">
-                Organization
-              </label>
-              <div className="relative">
-                <Building className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" />
-                <input
-                  id="organization"
-                  name="organization"
-                  type="text"
-                  value={formData.organization}
-                  onChange={handleInputChange}
-                  className="w-full pl-10 pr-4 py-2.5 bg-gray-800/50 border border-gray-600 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all text-sm"
-                  placeholder="Company/Organization"
-                />
-              </div>
-            </div>
-
-            {/* Phone */}
-            <div>
-              <label htmlFor="phone" className="block text-sm font-medium text-gray-300 mb-1">
-                Phone
-              </label>
-              <div className="relative">
-                <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" />
-                <input
-                  id="phone"
-                  name="phone"
-                  type="tel"
-                  value={formData.phone}
-                  onChange={handleInputChange}
-                  className="w-full pl-10 pr-4 py-2.5 bg-gray-800/50 border border-gray-600 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all text-sm"
-                  placeholder="Phone number"
-                />
-              </div>
-            </div>
-
-            {/* Password */}
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-1">
-                Password *
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" />
-                <input
-                  id="password"
-                  name="password"
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  value={formData.password}
-                  onChange={handleInputChange}
-                  className="w-full pl-10 pr-12 py-2.5 bg-gray-800/50 border border-gray-600 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all text-sm"
-                  placeholder="Create password"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors"
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-
-            {/* Confirm Password */}
-            <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-300 mb-1">
-                Confirm Password *
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" />
-                <input
-                  id="confirmPassword"
-                  name="confirmPassword"
-                  type={showConfirmPassword ? 'text' : 'password'}
-                  required
-                  value={formData.confirmPassword}
-                  onChange={handleInputChange}
-                  className="w-full pl-10 pr-12 py-2.5 bg-gray-800/50 border border-gray-600 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all text-sm"
-                  placeholder="Confirm password"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors"
-                >
-                  {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-
-            {/* Purpose */}
-            <div>
-              <label htmlFor="purpose" className="block text-sm font-medium text-gray-300 mb-1">
-                Purpose of use
-              </label>
-              <textarea
-                id="purpose"
-                name="purpose"
-                rows={3}
-                value={formData.purpose}
+          <InputGroup>
+            <Label htmlFor="password">Password *</Label>
+            <InputWrapper>
+              <Input
+                id="password"
+                name="password"
+                type={showPassword ? 'text' : 'password'}
+                placeholder="Create a password"
+                value={formData.password}
                 onChange={handleInputChange}
-                className="w-full px-4 py-2.5 bg-gray-800/50 border border-gray-600 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all text-sm resize-none"
-                placeholder="How do you plan to use Whisper Notes?"
+                required
               />
-            </div>
+              <PasswordToggle
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </PasswordToggle>
+            </InputWrapper>
+          </InputGroup>
 
-            {/* Submit Button */}
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 text-white py-3 px-4 rounded-xl font-semibold hover:from-purple-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-gray-900 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 transform hover:scale-[1.02] mt-6"
-            >
-              {isLoading ? (
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              ) : (
-                <>
-                  <UserPlus className="w-5 h-5" />
-                  Request Account
-                </>
-              )}
-            </button>
-          </form>
+          <InputGroup>
+            <Label htmlFor="confirmPassword">Confirm Password *</Label>
+            <InputWrapper>
+              <Input
+                id="confirmPassword"
+                name="confirmPassword"
+                type={showConfirmPassword ? 'text' : 'password'}
+                placeholder="Confirm your password"
+                value={formData.confirmPassword}
+                onChange={handleInputChange}
+                required
+              />
+              <PasswordToggle
+                type="button"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+              >
+                {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </PasswordToggle>
+            </InputWrapper>
+          </InputGroup>
 
-          {/* Login Link */}
-          <div className="text-center mt-6">
-            <p className="text-gray-400 text-sm">
-              Already have an account?{' '}
-              <Link href="/login" className="text-purple-400 hover:text-purple-300 transition-colors">
-                Sign in
-              </Link>
-            </p>
-          </div>
-        </motion.div>
-      </div>
-    </div>
+          <InputGroup>
+            <Label htmlFor="purpose">Purpose (Optional)</Label>
+            <TextArea
+              id="purpose"
+              name="purpose"
+              placeholder="Why do you need access to this platform?"
+              value={formData.purpose}
+              onChange={handleInputChange}
+            />
+          </InputGroup>
+
+          <SubmitButton
+            type="submit"
+            disabled={isLoading}
+            whileHover={{ y: -2 }}
+            whileTap={{ scale: 0.98 }}
+          >
+            {isLoading ? 'Submitting...' : 'Request Access'}
+          </SubmitButton>
+        </Form>
+
+        <LoginLink>
+          Already have an account? <Link href="/login">Sign in</Link>
+        </LoginLink>
+      </SignupCard>
+    </Container>
   )
 }

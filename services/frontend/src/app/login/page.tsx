@@ -2,24 +2,174 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
+import styled from 'styled-components'
 import { motion } from 'framer-motion'
 import { 
-  User, 
-  Lock, 
-  LogIn, 
-  Eye, 
-  EyeOff, 
   ArrowLeft,
-  FileAudio,
-  Info
+  Eye, 
+  EyeOff
 } from 'lucide-react'
-import Link from 'next/link'
 import { useAuth } from '@/providers/auth-provider'
 import toast from 'react-hot-toast'
 
+const Container = styled.div`
+  min-h-screen;
+  background: linear-gradient(135deg, #0B0A0A 0%, #1C1A1F 37.5%, #363036 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+`
+
+const LoginCard = styled(motion.div)`
+  background: rgba(32, 32, 36, 0.9);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(136, 80, 242, 0.2);
+  border-radius: 20px;
+  padding: 3rem;
+  width: 100%;
+  max-width: 400px;
+  position: relative;
+`
+
+const BackButton = styled(Link)`
+  position: absolute;
+  top: 1.5rem;
+  left: 1.5rem;
+  color: #8D8D99;
+  text-decoration: none;
+  transition: color 0.3s ease;
+  
+  &:hover {
+    color: #FFFFFF;
+  }
+`
+
+const Logo = styled.div`
+  text-align: center;
+  margin-bottom: 2rem;
+  
+  .icon {
+    width: 48px;
+    height: 48px;
+    background: linear-gradient(135deg, #8850F2 0%, #A855F7 100%);
+    border-radius: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 1rem;
+  }
+  
+  h1 {
+    color: #FFFFFF;
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin: 0;
+  }
+`
+
+const Form = styled.form`
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+`
+
+const InputGroup = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+`
+
+const Label = styled.label`
+  color: #C4C4CC;
+  font-size: 0.875rem;
+  font-weight: 500;
+`
+
+const InputWrapper = styled.div`
+  position: relative;
+`
+
+const Input = styled.input`
+  width: 100%;
+  padding: 0.875rem 1rem;
+  background: rgba(18, 18, 20, 0.8);
+  border: 1px solid rgba(136, 80, 242, 0.2);
+  border-radius: 8px;
+  color: #FFFFFF;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+  
+  &:focus {
+    outline: none;
+    border-color: #8850F2;
+    box-shadow: 0 0 0 3px rgba(136, 80, 242, 0.1);
+  }
+  
+  &::placeholder {
+    color: #666;
+  }
+`
+
+const PasswordToggle = styled.button`
+  position: absolute;
+  right: 0.875rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: #8D8D99;
+  cursor: pointer;
+  transition: color 0.3s ease;
+  
+  &:hover {
+    color: #C4C4CC;
+  }
+`
+
+const SubmitButton = styled(motion.button)`
+  padding: 0.875rem;
+  background: linear-gradient(135deg, #8850F2 0%, #A855F7 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 1rem;
+  transition: all 0.3s ease;
+  
+  &:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 10px 30px rgba(136, 80, 242, 0.3);
+  }
+  
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
+`
+
+const SignupLink = styled.div`
+  text-align: center;
+  margin-top: 2rem;
+  color: #8D8D99;
+  
+  a {
+    color: #8850F2;
+    text-decoration: none;
+    
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+`
+
 export default function LoginPage() {
   const [formData, setFormData] = useState({
-    username: '',
+    email: '',
     password: ''
   })
   const [showPassword, setShowPassword] = useState(false)
@@ -48,14 +198,14 @@ export default function LoginPage() {
     e.preventDefault()
     setIsLoading(true)
 
-    if (!formData.username || !formData.password) {
+    if (!formData.email || !formData.password) {
       toast.error('Please fill in all fields')
       setIsLoading(false)
       return
     }
 
     try {
-      const result = await login(formData.username, formData.password)
+      const result = await login(formData.email, formData.password)
       
       if (result.success) {
         toast.success('Welcome to Whisper Notes!')
@@ -77,132 +227,74 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#09090A] via-[#181719] to-[#36343B] flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        {/* Back Button */}
-        <Link
-          href="/"
-          className="inline-flex items-center gap-2 text-gray-400 hover:text-white mb-8 transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          <span className="text-sm">Back to Home</span>
-        </Link>
+    <Container>
+      <LoginCard
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+      >
+        <BackButton href="/">
+          <ArrowLeft size={20} />
+        </BackButton>
 
-        {/* Login Card */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          className="bg-gray-900/80 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 shadow-2xl"
-        >
-          {/* Header */}
-          <div className="text-center mb-8">
-            <div className="flex items-center justify-center gap-3 mb-6">
-              <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl flex items-center justify-center">
-                <FileAudio className="w-6 h-6 text-white" />
-              </div>
-              <span className="text-2xl font-semibold text-white">Whisper Notes</span>
-            </div>
-            <p className="text-gray-400">Sign in to your account</p>
+        <Logo>
+          <div className="icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+              <path d="M12 2L13.09 8.26L17 9L13.09 9.74L12 16L10.91 9.74L7 9L10.91 8.26L12 2Z" fill="white"/>
+            </svg>
           </div>
+          <h1>Sign In</h1>
+        </Logo>
 
-          {/* Info Banner for Pending Users */}
-          {searchParams.get('message') === 'signup-pending' && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4 mb-6"
-            >
-              <div className="flex items-start gap-3">
-                <Info className="w-5 h-5 text-blue-400 mt-0.5 flex-shrink-0" />
-                <div>
-                  <h4 className="text-blue-300 font-medium text-sm mb-1">Account Under Review</h4>
-                  <p className="text-blue-200/80 text-xs leading-relaxed">
-                    Your account request has been submitted. An admin will review and approve your account soon. 
-                    You'll receive an email notification once approved.
-                  </p>
-                </div>
-              </div>
-            </motion.div>
-          )}
+        <Form onSubmit={handleSubmit}>
+          <InputGroup>
+            <Label htmlFor="email">Email</Label>
+            <Input
+              id="email"
+              name="email"
+              type="text"
+              placeholder="Enter your email"
+              value={formData.email}
+              onChange={handleInputChange}
+              required
+            />
+          </InputGroup>
 
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Username Field */}
-            <div>
-              <label htmlFor="username" className="block text-sm font-medium text-gray-300 mb-2">
-                Username
-              </label>
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-500" />
-                <input
-                  id="username"
-                  name="username"
-                  type="text"
-                  required
-                  value={formData.username}
-                  onChange={handleInputChange}
-                  className="w-full pl-10 pr-4 py-3 bg-gray-800/50 border border-gray-600 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
-                  placeholder="Enter username"
-                />
-              </div>
-            </div>
+          <InputGroup>
+            <Label htmlFor="password">Password</Label>
+            <InputWrapper>
+              <Input
+                id="password"
+                name="password"
+                type={showPassword ? 'text' : 'password'}
+                placeholder="Enter your password"
+                value={formData.password}
+                onChange={handleInputChange}
+                required
+              />
+              <PasswordToggle
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </PasswordToggle>
+            </InputWrapper>
+          </InputGroup>
 
-            {/* Password Field */}
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-2">
-                Password
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-500" />
-                <input
-                  id="password"
-                  name="password"
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  value={formData.password}
-                  onChange={handleInputChange}
-                  className="w-full pl-10 pr-12 py-3 bg-gray-800/50 border border-gray-600 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
-                  placeholder="Enter password"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors"
-                >
-                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                </button>
-              </div>
-            </div>
+          <SubmitButton
+            type="submit"
+            disabled={isLoading}
+            whileHover={{ y: -2 }}
+            whileTap={{ scale: 0.98 }}
+          >
+            {isLoading ? 'Signing in...' : 'Sign In'}
+          </SubmitButton>
+        </Form>
 
-            {/* Submit Button */}
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 text-white py-3 px-4 rounded-xl font-semibold hover:from-purple-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-gray-900 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 transform hover:scale-[1.02]"
-            >
-              {isLoading ? (
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              ) : (
-                <>
-                  <LogIn className="w-5 h-5" />
-                  Sign In
-                </>
-              )}
-            </button>
-          </form>
-
-          {/* Signup Link */}
-          <div className="text-center mt-6">
-            <p className="text-gray-400 text-sm">
-              Don't have an account?{' '}
-              <Link href="/signup" className="text-purple-400 hover:text-purple-300 transition-colors font-medium">
-                Request Access
-              </Link>
-            </p>
-          </div>
-        </motion.div>
-      </div>
-    </div>
+        <SignupLink>
+          Don't have an account? <Link href="/signup">Sign up</Link>
+        </SignupLink>
+      </LoginCard>
+    </Container>
   )
 }
