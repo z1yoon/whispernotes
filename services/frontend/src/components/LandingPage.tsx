@@ -48,7 +48,7 @@ const TopNav = styled.div`
   z-index: 10;
 `;
 
-const AuthButton = styled.a<{ variant?: 'primary' | 'secondary'; $isButton?: boolean }>`
+const AuthButton = styled.a<{ $variant?: 'primary' | 'secondary'; $isButton?: boolean }>`
   padding: 0.75rem 1.5rem;
   border-radius: 8px;
   font-family: 'Roboto', sans-serif;
@@ -63,7 +63,7 @@ const AuthButton = styled.a<{ variant?: 'primary' | 'secondary'; $isButton?: boo
   border: none;
   background: none;
   
-  ${props => props.variant === 'primary' ? `
+  ${props => props.$variant === 'primary' ? `
     background: linear-gradient(90deg, #8850F2 0%, #A855F7 100%);
     color: white;
     &:hover {
@@ -262,7 +262,7 @@ const LandingPage = () => {
 
           <AuthButton 
             as="button" 
-            variant="primary"
+            $variant="primary"
             onClick={handleLogout}
             $isButton={true}
           >
@@ -274,7 +274,7 @@ const LandingPage = () => {
             <AdminSection>
               <AuthButton 
                 as="button" 
-                variant="secondary"
+                $variant="secondary"
                 onClick={handleAdminPanel}
                 $isButton={true}
               >
@@ -286,8 +286,8 @@ const LandingPage = () => {
         </AuthenticatedNav>
       ) : (
         <TopNav>
-          <AuthButton href="/login" variant="secondary">Login</AuthButton>
-          <AuthButton href="/signup" variant="primary">Sign Up</AuthButton>
+          <AuthButton href="/login" $variant="secondary">Login</AuthButton>
+          <AuthButton href="/signup" $variant="primary">Sign Up</AuthButton>
         </TopNav>
       )}
 
@@ -347,7 +347,7 @@ const LandingPage = () => {
               $isAuthenticated={isAuthenticated}
             >
               <SharedUpload 
-                variant="landing"
+                $variant="landing"
                 isAuthenticated={isAuthenticated}
                 onStartProcessing={handleStartProcessing}
                 onUploadClick={handleUploadClick}

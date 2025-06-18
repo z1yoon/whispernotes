@@ -278,11 +278,41 @@ class AccessRequest(BaseModel):
 
 @app.post("/api/v1/auth/request-access", status_code=status.HTTP_201_CREATED)
 async def request_access(request: AccessRequest, db=Depends(get_db)):
-    # Check if user already exists
+    # Check if email is already in use by an active user
     existing_user = db.execute(text("SELECT id FROM users WHERE email = :email"), {"email": request.email}).first()
     if existing_user:
-        raise HTTPException(status_code=400, detail="An account with this email already exists.")
-
+        raise HTTPException(status_code=400, detail="An account with this email already exists. Please log in instead.")
+    
+    # Check if email already has an access request (any status - pending, approved, or rejected)
+    existing_request = db.execute(
+        text("SELECT id, status FROM access_requests WHERE email = :email"), 
+        {"email": request.email}
+    ).first()
+    
+    if existing_request:
+        # Provide specific message based on request status
+        if existing_request.status == 'pending':
+            raise HTTPException(
+                status_code=400, 
+                detail="You already have a pending access request. Please wait for admin approval."
+            )
+        elif existing_request.status == 'approved':
+            raise HTTPException(
+                status_code=400, 
+                detail="Your access request was already approved. Please log in with your credentials."
+            )
+        elif existing_request.status == 'rejected':
+            raise HTTPException(
+                status_code=400, 
+                detail="Your previous access request was rejected. Please contact an administrator."
+            )
+        else:
+            raise HTTPException(
+                status_code=400, 
+                detail="An account with this email has already been requested. Please use a different email."
+            )
+    
+    # If we get here, email is not in use - create the access request
     hashed_password = get_password_hash(request.password)
     try:
         db.execute(
@@ -298,11 +328,16 @@ async def request_access(request: AccessRequest, db=Depends(get_db)):
             }
         )
         db.commit()
-    except IntegrityError:
+        logger.info(f"New access request created for: {request.email}")
+        return {"message": "Access request submitted successfully. Please wait for admin approval."}
+    except IntegrityError as e:
         db.rollback()
-        raise HTTPException(status_code=400, detail="Access request for this email already pending.")
-    
-    return {"message": "Access request submitted successfully. Please wait for admin approval."}
+        logger.error(f"Error creating access request: {str(e)}")
+        raise HTTPException(status_code=400, detail="Error processing your request. This email may already be registered.")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Unexpected error creating access request: {str(e)}")
+        raise HTTPException(status_code=500, detail="An unexpected error occurred. Please try again later.")
 
 @app.get("/api/v1/auth/me", response_model=User)
 async def read_users_me(current_user: User = Depends(get_current_user)):
@@ -421,11 +456,33 @@ async def delete_user(user_id: str, db=Depends(get_db), admin_user: User = Depen
     if user.id == admin_user.id:
         raise HTTPException(status_code=400, detail="Cannot delete your own account.")
     
-    # Delete the user
-    db.execute(text("DELETE FROM users WHERE id = :id"), {"id": user_id})
-    db.commit()
-    
-    return {"message": f"User {user.full_name} has been deleted."}
+    try:
+        # First, handle foreign key constraints by nullifying references
+        
+        # Set reviewed_by to NULL for any access requests reviewed by this user
+        db.execute(
+            text("UPDATE access_requests SET reviewed_by = NULL WHERE reviewed_by = :user_id"),
+            {"user_id": user_id}
+        )
+        
+        # Now delete the user
+        result = db.execute(text("DELETE FROM users WHERE id = :id"), {"id": user_id})
+        
+        if result.rowcount == 0:
+            # This shouldn't happen since we already checked if user exists
+            db.rollback()
+            raise HTTPException(status_code=404, detail="User not found or already deleted.")
+            
+        db.commit()
+        return {"message": f"User {user.full_name} has been deleted."}
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting user {user_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete user: {str(e)}"
+        )
 
 @app.get("/health")
 async def health_check():

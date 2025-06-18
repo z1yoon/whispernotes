@@ -106,7 +106,7 @@ const UsernameButton = styled.div`
   gap: 0.5rem;
 `;
 
-const AuthButton = styled.button<{ variant?: 'primary' | 'secondary' }>`
+const AuthButton = styled.button<{ $variant?: 'primary' | 'secondary' }>`
   padding: 0.75rem 1.5rem;
   border-radius: 8px;
   font-family: 'Roboto', sans-serif;
@@ -119,7 +119,7 @@ const AuthButton = styled.button<{ variant?: 'primary' | 'secondary' }>`
   gap: 0.5rem;
   border: none;
   
-  ${props => props.variant === 'primary' ? `
+  ${props => props.$variant === 'primary' ? `
     background: linear-gradient(90deg, #8850F2 0%, #A855F7 100%);
     color: white;
     &:hover {
@@ -834,7 +834,7 @@ export default function AdminPage() {
             {displayUsername}
           </UsernameButton>
           
-          <AuthButton variant="primary" onClick={handleLogout}>
+          <AuthButton $variant="primary" onClick={handleLogout}>
             <LogOut size={16} />
             Logout
           </AuthButton>

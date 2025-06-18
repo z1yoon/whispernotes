@@ -464,11 +464,44 @@ const SignupPage = () => {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || data.detail || 'Signup failed');
+        // Handle specific error cases with appropriate notifications
+        const errorMsg = data.error || data.detail || 'Signup failed';
+        
+        // Email already exists cases
+        if (errorMsg.toLowerCase().includes('already exists') || 
+            errorMsg.toLowerCase().includes('already registered')) {
+          
+          notification.error('Email Already Registered', errorMsg);
+          
+          // If this appears to be an existing user, suggest login
+          if (errorMsg.toLowerCase().includes('please log in')) {
+            setTimeout(() => {
+              router.push('/login');
+            }, 2000);
+          }
+          
+        } 
+        // Pending approval case
+        else if (errorMsg.toLowerCase().includes('pending')) {
+          notification.warning('Request Already Pending', errorMsg);
+          setTimeout(() => {
+            router.push('/login?message=signup-pending');
+          }, 2000);
+        }
+        // Rejected request case
+        else if (errorMsg.toLowerCase().includes('rejected')) {
+          notification.error('Request Previously Rejected', errorMsg);
+        }
+        // Other error cases
+        else {
+          notification.error('Signup Failed', errorMsg);
+        }
+        
+        throw new Error(errorMsg);
       }
 
       // Show brief success message
-      notification.success('Request submitted', 'Awaiting admin approval');
+      notification.success('Request Submitted', 'Your account request is awaiting admin approval');
 
       // Wait a moment then redirect
       setTimeout(() => {
