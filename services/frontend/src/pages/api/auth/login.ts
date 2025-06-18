@@ -40,7 +40,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       console.log('API login: Cookie set, returning success');
       return res.status(200).json({ success: true });
     } catch (error: any) {
-      console.error('API login: Error during login:', error.message);
+      // Handle expected auth errors (401, 403) differently than unexpected errors
+      if (error.response?.status === 401 || error.response?.status === 403) {
+        // Auth error - user not found, incorrect password, account pending/rejected, etc.
+        const status = error.response.status;
+        const detail = error.response.data?.detail || 'Authentication failed';
+        
+        // Log this as info rather than error since it's an expected auth flow
+        console.log(`API login: Auth response (${status}): ${detail}`);
+        
+        return res.status(status).json({ 
+          success: false, 
+          detail: detail 
+        });
+      }
+      
+      // For all other unexpected errors, log full details
+      console.error('API login: Unexpected error during login:', error.message);
+      
       if (error.response) {
         console.error('API login: Response status:', error.response.status);
         console.error('API login: Response data:', error.response.data);
@@ -52,7 +69,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       
       const status = error.response?.status || 500;
       const message = error.response?.data?.detail || 'Login failed';
-      return res.status(status).json({ success: false, error: message });
+      return res.status(status).json({ success: false, detail: message });
     }
   } else {
     res.setHeader('Allow', ['POST']);

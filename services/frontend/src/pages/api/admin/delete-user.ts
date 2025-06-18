@@ -15,12 +15,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const token = req.headers.authorization?.replace('Bearer ', '');
+    const token = req.cookies.token;
     
     if (!token) {
-      return res.status(401).json({ error: 'No token provided' });
+      return res.status(401).json({ error: 'Not authenticated' });
     }
 
+    console.log('Deleting user with ID:', id);
+    
     const response = await axios.delete(
       `${AUTH_SERVICE_URL}/api/v1/admin/users/${id}`,
       {
@@ -31,6 +33,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     );
 
+    console.log('User deletion response:', response.status);
     res.status(200).json(response.data);
   } catch (error: any) {
     console.error('Delete user error:', error.response?.data || error.message);

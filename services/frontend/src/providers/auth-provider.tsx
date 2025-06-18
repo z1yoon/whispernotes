@@ -63,20 +63,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       throw new Error('Login failed');
     } catch (error: any) {
-      console.error('AuthProvider: Login error:', error);
-      
-      // Handle different HTTP status codes and pass through specific error messages
-      if (error.response?.status === 403) {
-        // 403 Forbidden - pass through the specific message from the server
-        const serverMessage = error.response?.data?.detail || error.response?.data?.error || 'Access forbidden';
-        throw new Error(serverMessage);
-      } else if (error.response?.status === 401) {
-        // 401 Unauthorized - pass through the server message
-        const serverMessage = error.response?.data?.detail || error.response?.data?.error || 'Incorrect email or password';
-        throw new Error(serverMessage);
+      // Don't log expected auth errors as errors to avoid console clutter
+      // Just log them as info instead
+      if (error.response?.status === 403 || error.response?.status === 401) {
+        // These are expected errors for authorization issues - don't log as errors
+        const serverMessage = error.response?.data?.detail || error.response?.data?.error || '';
+        
+        if (error.response?.status === 403) {
+          // 403 Forbidden - pass through the specific message from the server
+          const errorMessage = serverMessage || 'Access forbidden';
+          console.log('AuthProvider: Expected auth error (403) -', errorMessage);
+          throw new Error(errorMessage);
+        } else {
+          // 401 Unauthorized - help the user understand if they might need to sign up
+          let errorMessage = serverMessage || 'Incorrect email or password';
+          console.log('AuthProvider: Expected auth error (401) -', errorMessage);
+          throw new Error(errorMessage);
+        }
       } else {
+        // Log unexpected errors normally
+        console.error('AuthProvider: Unexpected login error:', error);
+        
         // Other errors
-        const errorMessage = error.response?.data?.detail || error.response?.data?.error || error.message || 'An unexpected error occurred';
+        const errorMessage = error.response?.data?.detail || 
+                            error.response?.data?.error || 
+                            error.message || 
+                            'An unexpected error occurred';
         throw new Error(errorMessage);
       }
     } finally {

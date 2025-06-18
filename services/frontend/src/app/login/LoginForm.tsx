@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Eye, EyeOff } from 'lucide-react'
 import { useAuth } from '@/providers/auth-provider'
-import toast from 'react-hot-toast'
+import { useNotification } from '@/components/NotificationProvider'
 import {
   AuthContainer,
   AuthCard,
@@ -31,6 +31,8 @@ export default function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { login, isAuthenticated } = useAuth()
+  const notification = useNotification()
+  const initializedRef = useRef(false)
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -39,18 +41,25 @@ export default function LoginForm() {
     }
   }, [isAuthenticated, router])
 
-  // Handle signup pending message
+  // Handle signup pending message - only on initial render
   useEffect(() => {
-    if (searchParams) {
-      const message = searchParams.get('message')
-      if (message === 'signup-pending') {
-        toast.success('Account request submitted! Wait for admin approval.', {
-          duration: 5000,
-          icon: '⏳'
-        })
-      }
+    // Skip if we've already shown the notification
+    if (initializedRef.current) return;
+    
+    const message = searchParams?.get('message')
+    if (message === 'signup-pending') {
+      // Show notification only once
+      notification.info('Account Request Submitted', 'Please wait for admin approval')
+      initializedRef.current = true;
+      
+      // Remove the message parameter from URL to prevent showing notification again on refresh
+      const url = new URL(window.location.href);
+      url.searchParams.delete('message');
+      
+      // Use replace to avoid adding to browser history
+      window.history.replaceState({}, '', url.toString());
     }
-  }, [searchParams])
+  }, [searchParams, notification]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
@@ -64,11 +73,33 @@ export default function LoginForm() {
     try {
       await login(formData.email, formData.password)
       // Success - redirect to landing page where upload functionality will be shown
-      toast.success('Login successful!')
+      notification.success('Login Successful', 'Welcome back!')
       router.replace('/')
     } catch (error: any) {
-      // Display the exact error message from the auth provider
-      toast.error(error.message)
+      const errorMessage = error.message || 'An unknown error occurred';
+      console.log('Login error:', errorMessage);
+      
+      // Show specific notifications based on error message
+      if (errorMessage.toLowerCase().includes('rejected')) {
+        notification.error('Access Denied', 'Your access request was rejected. Please contact an administrator.');
+      } else if (errorMessage.toLowerCase().includes('incorrect email or password')) {
+        // When credentials are incorrect, suggest signing up if this might be a new user
+        const signUpLink = `<a href="/signup" class="notification-button">Sign Up Now</a>`;
+        notification.info(
+          'Account Not Found!', 
+          `This email may not be registered.<br/><br/>${signUpLink}`
+        );
+      } else if (errorMessage.toLowerCase().includes('pending')) {
+        notification.warning('Pending Approval', 'Your account is awaiting admin approval');
+      } else if (errorMessage.toLowerCase().includes('not found') || errorMessage.toLowerCase().includes('invalid credentials')) {
+        const signUpLink = `<a href="/signup" class="notification-button">Create Account</a>`;
+        notification.info(
+          'New User?', 
+          `No account found with these credentials.<br/><br/>${signUpLink}`
+        );
+      } else {
+        notification.error('Login Failed', errorMessage);
+      }
     } finally {
       setIsLoading(false)
     }
@@ -133,7 +164,7 @@ export default function LoginForm() {
         </Form>
 
         <AuthLink>
-          Don't have an account? <Link href="/signup">Sign Up</Link>
+          Don't have an account? <Link href="/signup" style={{ color: '#a855f7', fontWeight: 'bold' }}>Sign Up</Link>
         </AuthLink>
       </AuthCard>
     </AuthContainer>
