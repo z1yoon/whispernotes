@@ -1,10 +1,21 @@
 'use client'
 
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import styled from 'styled-components';
-import { motion } from 'framer-motion';
-import Link from 'next/link';
-import { Upload, Mic, Users, Brain } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { 
+  Upload,
+  Users,
+  LogOut,
+  Brain,
+  Shield,
+  User
+} from 'lucide-react';
+import toast from 'react-hot-toast';
+import { SharedUpload } from './SharedUpload';
+
+import { useAuth } from '@/providers/auth-provider';
+import { useRouter } from 'next/navigation';
 
 const LandingContainer = styled.div`
   min-height: 100vh;
@@ -37,13 +48,20 @@ const TopNav = styled.div`
   z-index: 10;
 `;
 
-const AuthButton = styled(Link)<{ variant?: 'primary' | 'secondary' }>`
+const AuthButton = styled.a<{ variant?: 'primary' | 'secondary'; $isButton?: boolean }>`
   padding: 0.75rem 1.5rem;
   border-radius: 8px;
   font-family: 'Roboto', sans-serif;
   font-weight: 600;
   color: #FFFFFF;
   transition: all 0.2s;
+  cursor: pointer;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: none;
+  background: none;
   
   ${props => props.variant === 'primary' ? `
     background: linear-gradient(90deg, #8850F2 0%, #A855F7 100%);
@@ -93,56 +111,6 @@ const RightSection = styled.div`
     filter: blur(80px);
     border-radius: 30px;
     z-index: 1;
-  }
-`;
-
-const VideoUploadCard = styled.div`
-  width: 680px;
-  max-width: 90%;
-  height: 420px;
-  background: rgba(32, 32, 36, 0.65);
-  border-radius: 24px;
-  backdrop-filter: blur(14px);
-  box-shadow: 0px 12px 40px rgba(0, 0, 0, 0.45);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  position: relative;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  z-index: 2;
-
-  &::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    padding: 2px;
-    border-radius: inherit;
-    background: linear-gradient(135deg, #8850F2 0%, #A855F7 30%, #B0E54F 100%);
-    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-    -webkit-mask-composite: xor;
-            mask-composite: exclude;
-    pointer-events: none;
-    opacity: 0.8;
-  }
-
-  .upload-badge {
-    width: 96px;
-    height: 96px;
-    background: linear-gradient(135deg, #8850F2 0%, #A855F7 100%);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 8px 24px rgba(168, 85, 247, 0.35);
-    margin-bottom: 24px;
-  }
-
-  &:hover {
-    box-shadow: 0px 16px 48px rgba(0, 0, 0, 0.55);
-    transform: translateY(-3px);
   }
 `;
 
@@ -207,11 +175,77 @@ const GradientBorder = styled.div`
   background: linear-gradient(90deg, #0B0726 0%, #342C66 25%, #7142C9 50%, #A29AF5 83.99%, #DEE0FC 100%);
 `;
 
+const AuthenticatedNav = styled.div`
+  position: absolute;
+  top: 0;
+  right: 0;
+  padding: 2rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  z-index: 10;
+`;
+
+const UsernameButton = styled.div`
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-family: 'Roboto', sans-serif;
+  font-weight: 600;
+  color: #FFFFFF;
+  background: rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+`;
+
+const AdminSection = styled.div`
+  display: flex;
+`;
+
+const MainContentWrapper = styled.div`
+  width: 100%;
+  height: 100vh;
+`;
+
+const SharedUploadCard = styled(motion.div)<{ $isAuthenticated: boolean }>`
+  width: 680px;
+  max-width: 90%;
+  position: relative;
+  z-index: 2;
+`;
+
 const LandingPage = () => {
-  const handleUploadClick = () => {
-    // You can implement the upload logic here
-    console.log('Upload clicked');
+  const { isAuthenticated, user, logout } = useAuth();
+  const router = useRouter();
+
+  const handleUploadClick = (e: React.MouseEvent) => {
+    if (!isAuthenticated) {
+      e.preventDefault();
+      e.stopPropagation();
+      toast.error('Please login to upload files');
+      router.push('/login');
+    }
   };
+
+  const handleStartProcessing = (files: any[], options: any) => {
+    toast.success(`Processing ${files.length} file(s) with ${options.numberOfSpeakers} speakers`);
+    // Add your processing logic here
+    console.log('Processing files:', files, 'with options:', options);
+  };
+
+  const handleLogout = () => {
+    logout();
+    toast.success('Logged out successfully');
+  };
+
+  const handleAdminPanel = () => {
+    router.push('/admin');
+  };
+
+  const isAdmin = user?.role === 'admin' || user?.is_admin;
+  
+  // Get display username from user data (removed environment variable fallback)
+  const displayUsername = user?.full_name || user?.username || 'User';
 
   return (
     <LandingContainer>
@@ -219,69 +253,109 @@ const LandingPage = () => {
         National Institute of Education
       </InstituteName>
 
-      <TopNav>
-        <AuthButton href="/login" variant="secondary">Login</AuthButton>
-        <AuthButton href="/signup" variant="primary">Sign Up</AuthButton>
-      </TopNav>
+      {isAuthenticated ? (
+        <AuthenticatedNav>
+          <UsernameButton>
+            {isAdmin ? <Shield size={12} /> : <User size={12} />}
+            {displayUsername}
+          </UsernameButton>
 
-      <MainContent>
-        <LeftSection>
-          <TitleSection>
-            <HeroTitle
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8 }}
-            >
-              WhisperNotes
-              <br />
-              AI Transcription
-            </HeroTitle>
-            <HeroSubtitle
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.2 }}
-            >
-              Speaker Diarization
-            </HeroSubtitle>
+          <AuthButton 
+            as="button" 
+            variant="primary"
+            onClick={handleLogout}
+            $isButton={true}
+          >
+            <LogOut size={16} />
+            Logout
+          </AuthButton>
 
-            <SimplifiedFeatures
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4, staggerChildren: 0.1 }}
-            >
-              <FeatureItem>
-                <div className="icon-wrapper">
-                  <Upload size={20} />
-                </div>
-                <span>Smart Upload</span>
-              </FeatureItem>
-              <FeatureItem>
-                <div className="icon-wrapper">
-                  <Brain size={20} />
-                </div>
-                <span>AI Processing</span>
-              </FeatureItem>
-              <FeatureItem>
-                <div className="icon-wrapper">
-                  <Users size={20} />
-                </div>
-                <span>Speaker Recognition</span>
-              </FeatureItem>
-            </SimplifiedFeatures>
-          </TitleSection>
-        </LeftSection>
+          {isAdmin && (
+            <AdminSection>
+              <AuthButton 
+                as="button" 
+                variant="secondary"
+                onClick={handleAdminPanel}
+                $isButton={true}
+              >
+                <Shield size={16} />
+                Admin
+              </AuthButton>
+            </AdminSection>
+          )}
+        </AuthenticatedNav>
+      ) : (
+        <TopNav>
+          <AuthButton href="/login" variant="secondary">Login</AuthButton>
+          <AuthButton href="/signup" variant="primary">Sign Up</AuthButton>
+        </TopNav>
+      )}
 
-        <RightSection>
-          <VideoUploadCard onClick={handleUploadClick}>
-            <div className="upload-badge">
-              <Upload size={40} />
-            </div>
-            <h2 className="text-2xl font-semibold mb-2 text-gray-300">Upload Your Video</h2>
-            <p className="text-gray-300 mb-4 text-center w-3/4">Drag & drop or click to browse files</p>
-            <p className="text-gray-500 text-sm">MP4 · AVI · MOV · Up to 500 MB</p>
-          </VideoUploadCard>
-        </RightSection>
-      </MainContent>
+      <MainContentWrapper>
+        <MainContent>
+          <LeftSection>
+            <TitleSection>
+              <HeroTitle
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.8 }}
+              >
+                WhisperNotes
+                <br />
+                AI Transcription
+              </HeroTitle>
+              <HeroSubtitle
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.8, delay: 0.2 }}
+              >
+                Speaker Diarization
+              </HeroSubtitle>
+
+              <SimplifiedFeatures
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.4, staggerChildren: 0.1 }}
+              >
+                <FeatureItem>
+                  <div className="icon-wrapper">
+                    <Upload size={20} />
+                  </div>
+                  <span>Smart Upload</span>
+                </FeatureItem>
+                <FeatureItem>
+                  <div className="icon-wrapper">
+                    <Brain size={20} />
+                  </div>
+                  <span>AI Processing</span>
+                </FeatureItem>
+                <FeatureItem>
+                  <div className="icon-wrapper">
+                    <Users size={20} />
+                  </div>
+                  <span>Speaker Recognition</span>
+                </FeatureItem>
+              </SimplifiedFeatures>
+            </TitleSection>
+          </LeftSection>
+
+          <RightSection>
+            <SharedUploadCard
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.5 }}
+              $isAuthenticated={isAuthenticated}
+            >
+              <SharedUpload 
+                variant="landing"
+                isAuthenticated={isAuthenticated}
+                onStartProcessing={handleStartProcessing}
+                onUploadClick={handleUploadClick}
+              />
+            </SharedUploadCard>
+          </RightSection>
+        </MainContent>
+      </MainContentWrapper>
 
       <GradientBorder />
     </LandingContainer>

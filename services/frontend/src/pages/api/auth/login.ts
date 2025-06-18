@@ -7,22 +7,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const { email, password } = req.body;
     console.log('API login: Email provided:', !!email);
 
-    // The auth-service with corrected URL
-    const authServiceUrl = 'http://host.docker.internal:8000/api/v1/auth/login';
+    // Use the Docker service name for internal communication
+    const authServiceUrl = process.env.AUTH_SERVICE_URL || 'http://auth-service:8000';
+    const loginEndpoint = `${authServiceUrl}/api/v1/auth/login`;
     const jwtExpireMinutes = parseInt(process.env.JWT_EXPIRE_MINUTES || '60', 10);
 
     try {
-      console.log('API login: Sending form data to auth service:', authServiceUrl);
+      console.log('API login: Sending form data to auth service:', loginEndpoint);
       
       // Form data for FastAPI's OAuth2PasswordRequestForm
       const formData = new URLSearchParams();
       formData.append('username', email);
       formData.append('password', password);
       
-      const response = await axios.post(authServiceUrl, formData, {
+      const response = await axios.post(loginEndpoint, formData, {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded'
-        }
+        },
+        timeout: 10000 // 10 second timeout
       });
 
       console.log('API login: Auth service response:', response.status);
@@ -56,4 +58,4 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     res.setHeader('Allow', ['POST']);
     res.status(405).end(`Method ${req.method} Not Allowed`);
   }
-} 
+}

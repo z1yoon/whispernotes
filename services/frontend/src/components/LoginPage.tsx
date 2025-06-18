@@ -6,6 +6,7 @@ import styled, { keyframes } from 'styled-components';
 import { motion } from 'framer-motion';
 import { LogIn, User, Lock, AlertCircle, Eye, EyeOff, Mic, Zap, ArrowRight } from 'lucide-react';
 import { useAuth } from '@/providers/auth-provider';
+import { useNotification } from '@/components/NotificationProvider';
 
 // TypeScript interfaces
 interface InputProps {
@@ -414,31 +415,21 @@ const LoginPage = () => {
   const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
   const auth = useAuth();
+  const notification = useNotification();
 
+  // Redirect if already authenticated
   useEffect(() => {
-    if (auth.isAuthenticated) {
+    if (auth.isAuthenticated && !auth.isLoading) {
       console.log('LoginPage: User is authenticated, redirecting to /upload');
-      router.push('/upload');
+      router.replace('/upload');
     }
-  }, [auth.isAuthenticated, router]);
-
-  // Add a separate effect that runs once on mount to check authentication
-  useEffect(() => {
-    const checkAuth = async () => {
-      console.log('LoginPage: Initial auth check');
-      await auth.refreshUser();
-      if (auth.isAuthenticated) {
-        console.log('LoginPage: Initial check found user is authenticated');
-        router.push('/upload');
-      }
-    };
-    
-    checkAuth();
-  }, []);
+  }, [auth.isAuthenticated, auth.isLoading, router]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+    // Clear error when user starts typing
+    if (error) setError('');
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -450,14 +441,48 @@ const LoginPage = () => {
       return;
     }
 
-    console.log('Logging in with:', formData.email);
-    const result = await auth.login(formData.email, formData.password);
-    console.log('Login result:', result);
-
-    if (!result.success) {
-      setError(result.error || 'An unknown error occurred.');
+    try {
+      await auth.login(formData.email, formData.password);
+      notification.success('Welcome back!', 'Login successful');
+    } catch (error: any) {
+      const errorMessage = error.message || 'An unknown error occurred.';
+      setError(errorMessage);
+      
+      // Show specific notifications based on error type
+      if (errorMessage.toLowerCase().includes('rejected')) {
+        notification.error('Access Denied', 'Your access request was rejected. Please contact an administrator.');
+      } else if (errorMessage.toLowerCase().includes('incorrect email or password')) {
+        notification.error('Invalid Credentials', 'Email or password is incorrect');
+      } else if (errorMessage.toLowerCase().includes('pending')) {
+        notification.warning('Pending Approval', 'Your account is awaiting admin approval');
+      } else {
+        notification.error('Login Failed', errorMessage);
+      }
     }
   };
+
+  // Show loading state while checking authentication
+  if (auth.isLoading) {
+    return (
+      <LoginContainer>
+        <LoginCard
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.5 }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '2rem' }}>
+            <Spinner />
+            <span style={{ marginLeft: '1rem', color: '#E4E4E7' }}>Loading...</span>
+          </div>
+        </LoginCard>
+      </LoginContainer>
+    );
+  }
+
+  // Don't render login form if user is authenticated
+  if (auth.isAuthenticated) {
+    return null;
+  }
 
   return (
     <LoginContainer>
@@ -525,6 +550,7 @@ const LoginPage = () => {
                 placeholder="you@example.com"
                 hasError={!!error}
                 disabled={auth.isLoading}
+                autoComplete="email"
               />
             </InputWrapper>
           </InputGroup>
@@ -543,8 +569,12 @@ const LoginPage = () => {
                 placeholder="••••••••••••"
                 hasError={!!error}
                 disabled={auth.isLoading}
+                autoComplete="current-password"
               />
-              <PasswordToggle onClick={() => setShowPassword(!showPassword)}>
+              <PasswordToggle 
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+              >
                 {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
               </PasswordToggle>
             </InputWrapper>

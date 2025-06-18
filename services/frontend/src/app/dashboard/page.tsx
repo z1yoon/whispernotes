@@ -14,7 +14,9 @@ import {
   Plus,
   Search,
   Play,
-  FileAudio as AudioIcon
+  FileAudio as AudioIcon,
+  Shield,
+  User
 } from 'lucide-react'
 import Link from 'next/link'
 import { useAuth } from '@/providers/auth-provider'
@@ -30,6 +32,9 @@ interface FileData {
   uploadedAt: string
   actionItems: number
 }
+
+// Force dynamic rendering to prevent SSR issues
+export const dynamic = 'force-dynamic'
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -125,11 +130,13 @@ export default function DashboardPage() {
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
-                  <span className="text-sm font-medium text-gray-700">
-                    {user?.username?.charAt(0).toUpperCase()}
-                  </span>
+                  {user?.is_admin ? (
+                    <Shield className="w-4 h-4 text-purple-600" />
+                  ) : (
+                    <User className="w-4 h-4 text-gray-600" />
+                  )}
                 </div>
-                <span className="text-sm font-medium text-gray-700">{user?.username}</span>
+                <span className="text-sm font-medium text-gray-700">{user?.full_name || user?.username}</span>
               </div>
               
               <button
@@ -148,7 +155,7 @@ export default function DashboardPage() {
         {/* Welcome Section */}
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-gray-900 mb-2">
-            Welcome back, {user?.username}
+            Dashboard
           </h1>
           <p className="text-gray-600">
             Manage your transcription files and track processing status
