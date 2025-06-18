@@ -1,6 +1,6 @@
 'use client'
 
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle, XCircle, AlertCircle, Info, X } from 'lucide-react';
@@ -100,6 +100,38 @@ const NotificationMessage = styled.div`
   color: #C4C4CC;
   font-size: 0.8125rem;
   line-height: 1.4;
+  a {
+    color: #A855F7;
+    text-decoration: underline;
+    transition: opacity 0.2s;
+    font-weight: 500;
+    
+    &:hover {
+      opacity: 0.8;
+    }
+  }
+  
+  .notification-button {
+    display: inline-block;
+    background: linear-gradient(135deg, #8850F2 0%, #A855F7 100%);
+    color: white;
+    font-weight: 600;
+    padding: 0.5rem 1rem;
+    border-radius: 0.5rem;
+    text-decoration: none;
+    transition: all 0.2s ease;
+    margin-top: 0.5rem;
+    text-align: center;
+    
+    &:hover {
+      opacity: 0.9;
+      transform: translateY(-1px);
+    }
+    
+    &:active {
+      transform: translateY(1px);
+    }
+  }
 `;
 
 const CloseButton = styled.button`
@@ -145,37 +177,66 @@ const NotificationContext = createContext<NotificationContextType | null>(null);
 // Provider Component
 export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const timeoutsRef = useRef<Record<string, NodeJS.Timeout>>({});
+  
+  // Keep track of recent notifications to prevent duplicates
+  const recentNotificationsRef = useRef<Set<string>>(new Set());
 
   const removeNotification = useCallback((id: string) => {
     setNotifications(prev => prev.filter(notification => notification.id !== id));
+    // Clear the timeout if it exists
+    if (timeoutsRef.current[id]) {
+      clearTimeout(timeoutsRef.current[id]);
+      delete timeoutsRef.current[id];
+    }
   }, []);
 
   const showNotification = useCallback((notification: Omit<Notification, 'id'>) => {
-    console.log('=== NOTIFICATION DEBUG ===');
-    console.log('showNotification called with:', notification);
+    // Create a signature to detect duplicates (using title + type + message)
+    const signature = `${notification.type}:${notification.title}:${notification.message || ''}`;
+    
+    // Check if this exact notification was recently shown (debouncing)
+    if (recentNotificationsRef.current.has(signature)) {
+      console.log('Duplicate notification prevented:', signature);
+      return;
+    }
     
     const id = Math.random().toString(36).substr(2, 9);
     const newNotification: Notification = {
       id,
-      duration: 5000, // Longer duration for testing
+      duration: 5000, // Default duration
       ...notification,
     };
 
-    console.log('Adding notification to state:', newNotification);
-    setNotifications(prev => {
-      const updated = [...prev, newNotification];
-      console.log('Updated notifications array:', updated);
-      return updated;
-    });
-
-    // Auto remove notification
+    // Add to notifications state
+    setNotifications(prev => [...prev, newNotification]);
+    
+    // Add to recent notifications set to prevent duplicates
+    recentNotificationsRef.current.add(signature);
+    
+    // Auto remove notification after duration
     if (newNotification.duration && newNotification.duration > 0) {
-      setTimeout(() => {
-        console.log('Auto-removing notification:', id);
+      // Store timeout reference
+      const timeoutId = setTimeout(() => {
+        // Remove from notifications
         removeNotification(id);
+        
+        // Remove from recent notifications after a delay to prevent immediate re-showing
+        setTimeout(() => {
+          recentNotificationsRef.current.delete(signature);
+        }, 1000);
       }, newNotification.duration);
+      
+      timeoutsRef.current[id] = timeoutId;
     }
   }, [removeNotification]);
+
+  // Clean up all timeouts on unmount
+  React.useEffect(() => {
+    return () => {
+      Object.values(timeoutsRef.current).forEach(timeout => clearTimeout(timeout));
+    };
+  }, []);
 
   const success = useCallback((title: string, message?: string) => {
     showNotification({ type: 'success', title, message });
@@ -193,7 +254,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     showNotification({ type: 'info', title, message });
   }, [showNotification]);
 
-  const contextValue: NotificationContextType = {
+  const contextValue = React.useMemo(() => ({
     notifications,
     showNotification,
     removeNotification,
@@ -201,7 +262,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     error,
     warning,
     info,
-  };
+  }), [notifications, showNotification, removeNotification, success, error, warning, info]);
 
   return (
     <NotificationContext.Provider value={contextValue}>
@@ -227,7 +288,9 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
               <NotificationContent>
                 <NotificationTitle>{notification.title}</NotificationTitle>
                 {notification.message && (
-                  <NotificationMessage>{notification.message}</NotificationMessage>
+                  <NotificationMessage 
+                    dangerouslySetInnerHTML={{ __html: notification.message }}
+                  />
                 )}
               </NotificationContent>
               

@@ -735,21 +735,50 @@ export default function AdminPage() {
   }
 
   const handleDeleteUser = async (userId: string) => {
+    // Confirmation before deletion
+    if (!confirm("Are you sure you want to delete this user? This action cannot be undone.")) {
+      return;
+    }
+    
     try {
+      const userToDelete = existingUsers.find(u => u.id === userId);
+      if (!userToDelete) {
+        notification.error('Error', 'User not found');
+        return;
+      }
+
+      console.log('Deleting user:', userToDelete.email);
       const response = await fetch(`/api/admin/delete-user?id=${userId}`, {
         method: 'DELETE'
-      })
+      });
       
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to delete user')
+        const errorData = await response.json();
+        console.error('Delete user error response:', errorData);
+        
+        // Handle specific error cases
+        if (response.status === 401) {
+          notification.error('Authentication Error', 'Your session has expired. Please log in again.');
+          logout();
+          router.push('/login');
+          return;
+        } else if (response.status === 403) {
+          notification.error('Permission Denied', 'You do not have permission to delete users.');
+          return;
+        } else if (response.status === 404) {
+          notification.error('User Not Found', 'The user you are trying to delete no longer exists.');
+          loadExistingUsers(); // Refresh the list
+          return;
+        }
+        
+        throw new Error(errorData.error || 'Failed to delete user');
       }
       
-      notification.success('User deleted successfully!')
-      loadExistingUsers() // Reload the list
+      notification.success('User Deleted', `${userToDelete.full_name} has been deleted successfully.`);
+      loadExistingUsers(); // Reload the list
     } catch (error: any) {
-      console.error('Delete user error:', error)
-      notification.error(error.message || 'Failed to delete user')
+      console.error('Delete user error:', error);
+      notification.error('Delete Failed', error.message || 'Failed to delete user');
     }
   }
 
