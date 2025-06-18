@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -8,19 +8,14 @@ import {
   FileVideo, 
   FileAudio, 
   X, 
-  Check, 
-  AlertCircle,
-  Settings, 
-  Clock, 
-  Zap,
-  Plus,
-  Minus,
-  User,
   Users,
-  Mic
+  Minus,
+  Plus,
+  Zap
 } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
-import toast from 'react-hot-toast';
+import { useNotification } from './NotificationProvider';
+import axios from 'axios';
 
 // TypeScript interfaces
 interface FileData {
@@ -35,15 +30,12 @@ interface FileData {
 
 interface ProcessingOptions {
   speakerDiarization: boolean;
-  actionItemExtraction: boolean;
-  timestampGeneration: boolean;
-  languageDetection: boolean;
   numberOfSpeakers: number;
   speakerNames: string[];
 }
 
 interface SharedUploadProps {
-  variant?: 'landing' | 'page';
+  $variant?: 'landing' | 'page';
   isAuthenticated?: boolean;
   onStartProcessing?: (files: FileData[], options: ProcessingOptions) => void;
   onUploadClick?: (e: React.MouseEvent) => void;
@@ -249,51 +241,41 @@ const SpeakerControls = styled.div`
   border-radius: 8px;
 `;
 
-const SpeakerButton = styled.button`
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  border: 1px solid rgba(136, 80, 242, 0.3);
-  background: rgba(136, 80, 242, 0.1);
-  color: #8850F2;
+const SpeakerButton = styled.button<{ disabled?: boolean }>`
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: ${props => props.disabled ? 'rgba(255, 255, 255, 0.05)' : 'rgba(136, 80, 242, 0.2)'};
+  border: 1px solid ${props => props.disabled ? 'rgba(255, 255, 255, 0.1)' : 'rgba(136, 80, 242, 0.3)'};
+  color: ${props => props.disabled ? '#71717A' : '#A855F7'};
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
+  cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
   transition: all 0.2s ease;
-
-  &:hover {
-    background: rgba(136, 80, 242, 0.2);
-    border-color: rgba(136, 80, 242, 0.5);
+  
+  &:hover:not(:disabled) {
+    background: rgba(136, 80, 242, 0.3);
+    border-color: rgba(136, 80, 242, 0.4);
   }
 `;
 
-const ProcessButton = styled(motion.button)`
+const ProcessButton = styled(motion.button)<{ disabled?: boolean }>`
   width: 100%;
-  padding: 1rem 1.5rem;
   background: linear-gradient(135deg, #8850F2 0%, #A855F7 100%);
   border: none;
   border-radius: 12px;
-  color: white;
-  font-weight: 700;
+  padding: 1rem;
+  color: #FFFFFF;
   font-size: 1rem;
-  cursor: pointer;
+  font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
-  transition: all 0.2s ease;
-
-  &:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 25px rgba(136, 80, 242, 0.4);
-  }
-
-  &:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-    transform: none;
-  }
+  gap: 0.75rem;
+  cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
+  opacity: ${props => props.disabled ? 0.7 : 1};
+  transition: all 0.3s ease;
 `;
 
 const FileFormats = styled.div`
@@ -304,67 +286,125 @@ const FileFormats = styled.div`
   margin: 1rem 0;
 `;
 
-const FormatBadge = styled.span`
-  background: rgba(136, 80, 242, 0.2);
-  color: #A855F7;
+const FormatBadge = styled.div`
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
   padding: 0.25rem 0.5rem;
-  border-radius: 6px;
   font-size: 0.75rem;
+  font-weight: 700;
+  color: #FFFFFF;
+`;
+
+const ProgressOverlay = styled(motion.div)`
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  border-radius: 24px;
+  padding: 2rem;
+`;
+
+const ProgressIndicator = styled.div`
+  width: 80%;
+  max-width: 400px;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 1.5rem 0;
+  position: relative;
+`;
+
+const ProgressBar = styled.div<{ $progress: number }>`
+  height: 100%;
+  width: ${props => props.$progress}%;
+  background: linear-gradient(90deg, #8850F2 0%, #A855F7 100%);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+`;
+
+const ProgressText = styled.div`
+  color: #FFFFFF;
+  font-size: 1rem;
   font-weight: 600;
+  text-align: center;
+`;
+
+const StatusText = styled.div`
+  color: #A1A1AA;
+  font-size: 0.875rem;
+  margin-top: 0.5rem;
+  text-align: center;
 `;
 
 export const SharedUpload: React.FC<SharedUploadProps> = ({
-  variant = 'page',
+  $variant = 'page',
   isAuthenticated = true,
   onStartProcessing,
   onUploadClick,
   className
 }) => {
   const [files, setFiles] = useState<FileData[]>([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingProgress, setProcessingProgress] = useState(0);
+  const [processingStatus, setProcessingStatus] = useState('');
+  const fileIdCounter = useRef(0);
+  const notification = useNotification();
+  
   const [options, setOptions] = useState<ProcessingOptions>({
     speakerDiarization: true,
-    actionItemExtraction: true,
-    timestampGeneration: true,
-    languageDetection: true,
     numberOfSpeakers: 2,
     speakerNames: ['Speaker 1', 'Speaker 2']
   });
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
-    const newFiles: FileData[] = acceptedFiles.map(file => ({
-      id: Date.now() + Math.random(),
-      file,
-      name: file.name,
-      size: file.size,
-      type: file.type.startsWith('video/') ? 'video' : 'audio',
-      status: 'ready',
-      progress: 0
-    }));
+    const newFiles = acceptedFiles.map(file => {
+      const isVideo = file.type.includes('video');
+      const isAudio = file.type.includes('audio');
+      const fileType: 'video' | 'audio' = isVideo ? 'video' : isAudio ? 'audio' : 'video';
+      
+      return {
+        id: fileIdCounter.current++,
+        file,
+        name: file.name,
+        size: file.size,
+        type: fileType,
+        status: 'ready' as const,
+        progress: 0
+      };
+    });
     
     setFiles(prev => [...prev, ...newFiles]);
-    toast.success(`${acceptedFiles.length} file(s) added successfully`);
-  }, []);
+    notification.success(`Files Added`, `${acceptedFiles.length} file(s) added successfully`);
+  }, [notification]);
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({ 
     onDrop,
     accept: {
-      'video/*': ['.mp4', '.mov', '.avi', '.webm'],
-      'audio/*': ['.mp3', '.wav', '.m4a', '.flac', '.aac', '.ogg']
+      'video/*': ['.mp4', '.avi', '.mov', '.webm'],
+      'audio/*': ['.mp3', '.wav', '.m4a', '.flac']
     },
     maxSize: 5 * 1024 * 1024 * 1024, // 5GB
-    disabled: !isAuthenticated
   });
 
   const removeFile = (fileId: number) => {
-    setFiles(prev => prev.filter(f => f.id !== fileId));
+    setFiles(prev => prev.filter(file => file.id !== fileId));
   };
 
   const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
   };
 
   const updateSpeakerCount = (count: number) => {
@@ -378,41 +418,132 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
     }));
   };
 
-  const handleStartProcessing = () => {
-    if (onStartProcessing) {
-      onStartProcessing(files, options);
+  const handleStartProcessing = async () => {
+    if (files.length === 0) {
+      notification.error("No Files", "Please upload at least one file to process");
+      return;
+    }
+    
+    setIsProcessing(true);
+    setProcessingProgress(0);
+    setProcessingStatus('Initializing upload...');
+    
+    try {
+      // Simulate multipart upload with progress
+      let overallProgress = 0;
+      
+      for (const file of files) {
+        // For each file, we'd handle a real upload in a production environment
+        setProcessingStatus(`Uploading ${file.name}...`);
+        
+        // Simulate chunked upload with progress
+        for (let i = 0; i < 100; i += 5) {
+          await new Promise(resolve => setTimeout(resolve, 50));
+          setProcessingProgress(i);
+        }
+        
+        overallProgress += 1;
+        setProcessingProgress((overallProgress / files.length) * 100);
+      }
+      
+      // After all files are uploaded, process them
+      setProcessingStatus('Processing audio for transcription...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      setProcessingStatus('Analyzing speakers...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      setProcessingStatus('Generating diarized transcript...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      setProcessingProgress(100);
+      setProcessingStatus('Processing complete!');
+      
+      // Store in localStorage for demonstration (in production would use API)
+      const processedData = {
+        files: files.map(f => ({ name: f.name, type: f.type, size: f.size })),
+        options: options,
+        timestamp: new Date().toISOString(),
+        transcription: {
+          status: 'completed',
+          speakers: options.numberOfSpeakers,
+          speakerNames: options.speakerNames
+        }
+      };
+      
+      const history = JSON.parse(localStorage.getItem('transcriptionHistory') || '[]');
+      history.push(processedData);
+      localStorage.setItem('transcriptionHistory', JSON.stringify(history));
+      
+      // Show success notification
+      notification.success(
+        'Processing Complete', 
+        `${files.length} file${files.length > 1 ? 's' : ''} processed with ${options.numberOfSpeakers} speaker diarization`
+      );
+      
+      // Call the onStartProcessing callback if provided
+      if (onStartProcessing) {
+        onStartProcessing(files, options);
+      }
+      
+      // Wait a moment before redirecting
+      setTimeout(() => {
+        setIsProcessing(false);
+      }, 1500);
+      
+    } catch (error) {
+      console.error('Processing error:', error);
+      notification.error('Processing Failed', 'There was an error processing your files');
+      setIsProcessing(false);
     }
   };
 
   return (
     <UploadContainer
-      $variant={variant}
+      $variant={$variant}
       className={className}
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.5 }}
     >
+      {/* Processing overlay */}
+      <AnimatePresence>
+        {isProcessing && (
+          <ProgressOverlay
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <ProgressText>Processing your files</ProgressText>
+            <ProgressIndicator>
+              <ProgressBar $progress={processingProgress} />
+            </ProgressIndicator>
+            <StatusText>{processingStatus}</StatusText>
+          </ProgressOverlay>
+        )}
+      </AnimatePresence>
+      
       <DropZone
         {...(!isAuthenticated ? { onClick: onUploadClick } : getRootProps())}
         $isDragActive={isDragActive}
         $isAuthenticated={isAuthenticated}
-        $variant={variant}
+        $variant={$variant}
       >
         {isAuthenticated && <input {...getInputProps()} />}
         <div className="upload-badge">
-          <Upload size={variant === 'landing' ? 40 : 32} color="white" />
+          <Upload size={$variant === 'landing' ? 40 : 32} color="white" />
         </div>
         <div className="upload-title">
           {isAuthenticated && isDragActive ? 'Drop files here' : 
-           variant === 'landing' ? 'Upload Your Video' : 'Drag & Drop Files'}
+           $variant === 'landing' ? 'Upload Your Video' : 'Drag & Drop Files'}
         </div>
         <div className="upload-subtitle">
-          {variant === 'landing' ? 
+          {$variant === 'landing' ? 
             'Drag & drop or click to browse files' : 
             'Upload your audio or video files for AI-powered transcription and speaker diarization'}
         </div>
         
-        {variant === 'page' && (
+        {$variant === 'page' && (
           <FileFormats>
             <FormatBadge>MP4</FormatBadge>
             <FormatBadge>MOV</FormatBadge>
@@ -426,7 +557,7 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
         )}
         
         <div className="upload-info">
-          {variant === 'landing' ? 
+          {$variant === 'landing' ? 
             'MP4 · AVI · MOV · MP3 · WAV · No size limit' : 
             'Maximum file size: 5GB per file'}
         </div>
@@ -473,100 +604,38 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
 
             <ProcessingOptions>
               <OptionsTitle>
-                <Settings size={20} />
-                Processing Options
+                <Users size={20} />
+                Speaker Diarization
               </OptionsTitle>
               
-              <OptionGroup>
-                <CheckboxLabel>
-                  <Checkbox
-                    type="checkbox"
-                    checked={options.speakerDiarization}
-                    onChange={(e) => setOptions(prev => ({ 
-                      ...prev, 
-                      speakerDiarization: e.target.checked 
-                    }))}
-                  />
-                  <Users size={16} />
-                  Speaker Diarization
-                </CheckboxLabel>
-                
-                {options.speakerDiarization && (
-                  <SpeakerControls>
-                    <SpeakerButton 
-                      onClick={() => updateSpeakerCount(options.numberOfSpeakers - 1)}
-                      disabled={options.numberOfSpeakers <= 1}
-                    >
-                      <Minus size={14} />
-                    </SpeakerButton>
-                    <span style={{ color: '#FFFFFF', fontSize: '0.875rem', fontWeight: 700 }}>
-                      {options.numberOfSpeakers}
-                    </span>
-                    <SpeakerButton 
-                      onClick={() => updateSpeakerCount(options.numberOfSpeakers + 1)}
-                      disabled={options.numberOfSpeakers >= 10}
-                    >
-                      <Plus size={14} />
-                    </SpeakerButton>
-                    <span style={{ color: '#71717A', fontSize: '0.75rem', fontWeight: 700 }}>speakers</span>
-                  </SpeakerControls>
-                )}
-              </OptionGroup>
-              
-              <OptionGroup>
-                <CheckboxLabel>
-                  <Checkbox
-                    type="checkbox"
-                    checked={options.actionItemExtraction}
-                    onChange={(e) => setOptions(prev => ({ 
-                      ...prev, 
-                      actionItemExtraction: e.target.checked 
-                    }))}
-                  />
-                  <Check size={16} />
-                  Extract Action Items
-                </CheckboxLabel>
-              </OptionGroup>
-              
-              <OptionGroup>
-                <CheckboxLabel>
-                  <Checkbox
-                    type="checkbox"
-                    checked={options.timestampGeneration}
-                    onChange={(e) => setOptions(prev => ({ 
-                      ...prev, 
-                      timestampGeneration: e.target.checked 
-                    }))}
-                  />
-                  <Clock size={16} />
-                  Generate Timestamps
-                </CheckboxLabel>
-              </OptionGroup>
-              
-              <OptionGroup>
-                <CheckboxLabel>
-                  <Checkbox
-                    type="checkbox"
-                    checked={options.languageDetection}
-                    onChange={(e) => setOptions(prev => ({ 
-                      ...prev, 
-                      languageDetection: e.target.checked 
-                    }))}
-                  />
-                  <Mic size={16} />
-                  Auto Language Detection
-                </CheckboxLabel>
-              </OptionGroup>
+              <SpeakerControls>
+                <SpeakerButton 
+                  onClick={() => updateSpeakerCount(options.numberOfSpeakers - 1)}
+                  disabled={options.numberOfSpeakers <= 1}
+                >
+                  <Minus size={14} />
+                </SpeakerButton>
+                <span style={{ color: '#FFFFFF', fontSize: '0.875rem', fontWeight: 700 }}>
+                  {options.numberOfSpeakers}
+                </span>
+                <SpeakerButton 
+                  onClick={() => updateSpeakerCount(options.numberOfSpeakers + 1)}
+                  disabled={options.numberOfSpeakers >= 10}
+                >
+                  <Plus size={14} />
+                </SpeakerButton>
+                <span style={{ color: '#71717A', fontSize: '0.75rem', fontWeight: 700 }}>speakers</span>
+              </SpeakerControls>
             </ProcessingOptions>
 
             <ProcessButton
               onClick={handleStartProcessing}
-              disabled={files.some(file => file.status === 'uploading')}
+              disabled={files.length === 0 || isProcessing}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >
               <Zap size={20} />
-              Start Processing ({options.numberOfSpeakers} speakers)
+              {isProcessing ? 'Processing...' : `Start Processing (${options.numberOfSpeakers} speakers)`}
             </ProcessButton>
           </motion.div>
         )}

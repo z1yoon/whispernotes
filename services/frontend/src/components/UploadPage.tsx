@@ -1,11 +1,11 @@
 'use client'
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import styled from 'styled-components';
 import { ArrowLeft } from 'lucide-react';
-import toast from 'react-hot-toast';
 import { SharedUpload } from './SharedUpload';
+import { useNotification } from './NotificationProvider';
 
 const UploadContainer = styled.div`
   min-height: 100vh;
@@ -57,20 +57,38 @@ const MainContent = styled.div`
 
 const UploadPage = () => {
   const router = useRouter();
+  const notification = useNotification();
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const handleStartProcessing = (files: any[], options: any) => {
-    toast.success(`Processing ${files.length} file(s) with ${options.numberOfSpeakers} speakers`);
+    setIsProcessing(true);
     
-    // Redirect to dashboard after processing simulation
+    // Log details about the processing options
+    console.log('Processing options:', {
+      files: files.map(f => f.name),
+      speakerCount: options.numberOfSpeakers,
+      toDoList: options.generateToDoList,
+      userCount: options.userCountEnabled
+    });
+    
+    // Show notification about what's being processed
+    notification.success(
+      'Processing Started', 
+      `Processing ${files.length} file(s) with ${options.generateToDoList ? 'to-do list' : ''} ${options.userCountEnabled ? 'and user count' : ''}`
+    );
+    
+    // Redirect to dashboard after processing is complete
     setTimeout(() => {
+      notification.info('Processing Complete', 'Your files have been processed successfully');
       router.push('/dashboard');
-    }, 2000);
+      setIsProcessing(false);
+    }, 3000);
   };
 
   return (
     <UploadContainer>
       <Header>
-        <BackButton onClick={() => router.push('/dashboard')}>
+        <BackButton onClick={() => router.push('/dashboard')} disabled={isProcessing}>
           <ArrowLeft size={18} />
         </BackButton>
         <HeaderTitle>Upload Files</HeaderTitle>
@@ -78,7 +96,7 @@ const UploadPage = () => {
 
       <MainContent>
         <SharedUpload 
-          variant="page"
+          $variant="page"
           isAuthenticated={true}
           onStartProcessing={handleStartProcessing}
         />
