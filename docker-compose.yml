@@ -18,6 +18,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - whisper-network
 
   redis:
     image: redis:7-alpine
@@ -31,6 +33,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - whisper-network
 
   rabbitmq:
     image: rabbitmq:3-management-alpine
@@ -48,6 +52,8 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
+    networks:
+      - whisper-network
 
   minio:
     image: minio/minio:latest
@@ -65,6 +71,8 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    networks:
+      - whisper-network
 
   # Core Application Services
   auth-service:
@@ -93,6 +101,8 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    networks:
+      - whisper-network
 
   file-uploader:
     build:
@@ -124,6 +134,8 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    networks:
+      - whisper-network
 
   video-processor:
     build:
@@ -152,6 +164,8 @@ services:
           memory: 2G
         reservations:
           memory: 1G
+    networks:
+      - whisper-network
 
   whisper-transcriber:
     build:
@@ -184,6 +198,8 @@ services:
           memory: 4G
         reservations:
           memory: 2G
+    networks:
+      - whisper-network
 
   frontend:
     build:
@@ -199,8 +215,14 @@ services:
     environment:
       - NODE_ENV=development
       - WATCHPACK_POLLING=true
+      - NEXT_TELEMETRY_DISABLED=1
+      - AUTH_SERVICE_URL=http://auth-service:8000
+      - FILE_UPLOADER_URL=http://file-uploader:8000
     networks:
       - whisper-network
+    depends_on:
+      - auth-service
+      - file-uploader
     stdin_open: true
     tty: true
 

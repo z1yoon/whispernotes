@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
+import styled from 'styled-components'
 import {
   Users,
   Check,
@@ -15,334 +16,1053 @@ import {
   LogOut,
   Shield,
   Search,
-  Filter
+  Filter,
+  User,
+  ArrowLeft,
+  UserCheck,
+  UserX,
+  Settings,
+  Trash2
 } from 'lucide-react'
 import { useAuth } from '@/providers/auth-provider'
-import toast from 'react-hot-toast'
+import { useNotification } from '@/components/NotificationProvider'
+
+// Styled components matching landing page design
+const AdminContainer = styled.div`
+  min-height: 100vh;
+  background: linear-gradient(90deg, #09090A 0%, #181719 37%, #36343B 100%);
+  position: relative;
+`;
+
+const Header = styled.div`
+  background: rgba(32, 32, 36, 0.9);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(136, 80, 242, 0.2);
+  padding: 1.5rem 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+`;
+
+const HeaderLeft = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+`;
+
+const BackButton = styled.button`
+  background: rgba(136, 80, 242, 0.1);
+  border: 1px solid rgba(136, 80, 242, 0.2);
+  color: #C4C4CC;
+  padding: 0.75rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  
+  &:hover {
+    background: rgba(136, 80, 242, 0.2);
+    border-color: rgba(136, 80, 242, 0.3);
+    color: #FFFFFF;
+  }
+`;
+
+const HeaderTitle = styled.div`
+  .title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #FFFFFF;
+    margin: 0;
+    font-family: 'Inter', sans-serif;
+  }
+  
+  .subtitle {
+    font-size: 0.875rem;
+    color: #8D8D99;
+    margin: 0;
+  }
+`;
+
+const HeaderActions = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+`;
+
+const UsernameButton = styled.div`
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-family: 'Roboto', sans-serif;
+  font-weight: 600;
+  color: #FFFFFF;
+  background: rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+`;
+
+const AuthButton = styled.button<{ variant?: 'primary' | 'secondary' }>`
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-family: 'Roboto', sans-serif;
+  font-weight: 600;
+  color: #FFFFFF;
+  transition: all 0.2s;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: none;
+  
+  ${props => props.variant === 'primary' ? `
+    background: linear-gradient(90deg, #8850F2 0%, #A855F7 100%);
+    color: white;
+    &:hover {
+      opacity: 0.9;
+    }
+  ` : `
+    background: rgba(255, 255, 255, 0.1);
+    &:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+  `}
+`;
+
+const MainContent = styled.div`
+  padding: 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+`;
+
+const StatsGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 3rem;
+`;
+
+const StatCard = styled(motion.div)`
+  background: rgba(32, 32, 36, 0.65);
+  border-radius: 24px;
+  backdrop-filter: blur(14px);
+  box-shadow: 0px 12px 40px rgba(0, 0, 0, 0.45);
+  padding: 2rem;
+  position: relative;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    padding: 2px;
+    border-radius: inherit;
+    background: linear-gradient(135deg, #8850F2 0%, #A855F7 30%, #B0E54F 100%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+            mask-composite: exclude;
+    pointer-events: none;
+    opacity: 0.8;
+  }
+
+  .stat-label {
+    color: #8D8D99;
+    font-size: 0.875rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+  }
+
+  .stat-value {
+    color: #FFFFFF;
+    font-size: 3rem;
+    font-weight: 700;
+    margin: 0;
+  }
+`;
+
+const AdminPanel = styled(motion.div)`
+  background: rgba(32, 32, 36, 0.65);
+  border-radius: 24px;
+  backdrop-filter: blur(14px);
+  box-shadow: 0px 12px 40px rgba(0, 0, 0, 0.45);
+  position: relative;
+  overflow: hidden;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    padding: 2px;
+    border-radius: inherit;
+    background: linear-gradient(135deg, #8850F2 0%, #A855F7 30%, #B0E54F 100%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+            mask-composite: exclude;
+    pointer-events: none;
+    opacity: 0.8;
+  }
+`;
+
+const PanelHeader = styled.div`
+  padding: 2rem;
+  border-bottom: 1px solid rgba(136, 80, 242, 0.2);
+
+  .panel-title {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    color: #FFFFFF;
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 1.5rem;
+  }
+`;
+
+const SearchFilter = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+
+  @media (min-width: 768px) {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .search-input {
+    flex: 1;
+    position: relative;
+
+    input {
+      width: 100%;
+      padding: 1rem 1rem 1rem 3rem;
+      background: rgba(20, 20, 24, 0.8);
+      border: 1px solid rgba(136, 80, 242, 0.3);
+      border-radius: 12px;
+      color: #FFFFFF;
+      font-size: 0.875rem;
+      font-weight: 600;
+
+      &::placeholder {
+        color: #8D8D99;
+      }
+
+      &:focus {
+        outline: none;
+        border-color: #8850F2;
+        box-shadow: 0 0 0 3px rgba(136, 80, 242, 0.1);
+      }
+    }
+
+    .search-icon {
+      position: absolute;
+      left: 1rem;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #8D8D99;
+    }
+  }
+
+  .filter-buttons {
+    display: flex;
+    gap: 0.5rem;
+  }
+`;
+
+const FilterButton = styled.button<{ active: boolean }>`
+  padding: 1rem 1.5rem;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 0.875rem;
+  transition: all 0.2s;
+  border: 1px solid rgba(136, 80, 242, 0.3);
+  
+  ${props => props.active ? `
+    background: linear-gradient(135deg, #8850F2 0%, #A855F7 100%);
+    color: #FFFFFF;
+    border-color: #8850F2;
+  ` : `
+    background: rgba(20, 20, 24, 0.5);
+    color: #8D8D99;
+    
+    &:hover {
+      background: rgba(136, 80, 242, 0.1);
+      color: #FFFFFF;
+    }
+  `}
+`;
+
+const UsersList = styled.div`
+  max-height: 600px;
+  overflow-y: auto;
+  
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: rgba(20, 20, 24, 0.3);
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background: rgba(136, 80, 242, 0.5);
+    border-radius: 3px;
+  }
+`;
+
+const UserCard = styled(motion.div)`
+  padding: 2rem;
+  border-bottom: 1px solid rgba(136, 80, 242, 0.1);
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  &:hover {
+    background: rgba(136, 80, 242, 0.05);
+  }
+`;
+
+const UserHeader = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+
+  .user-avatar {
+    width: 48px;
+    height: 48px;
+    background: linear-gradient(135deg, #8850F2 0%, #A855F7 100%);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+  }
+
+  .user-info {
+    flex: 1;
+
+    .user-name {
+      color: #FFFFFF;
+      font-size: 1.125rem;
+      font-weight: 700;
+      margin-bottom: 0.25rem;
+    }
+
+    .user-username {
+      color: #8D8D99;
+      font-size: 0.875rem;
+      font-weight: 600;
+    }
+  }
+`;
+
+const StatusBadge = styled.span<{ status: string }>`
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border: 1px solid;
+  
+  ${props => {
+    switch (props.status) {
+      case 'pending':
+        return `
+          background: rgba(251, 191, 36, 0.1);
+          color: #FCD34D;
+          border-color: rgba(251, 191, 36, 0.3);
+        `;
+      case 'approved':
+        return `
+          background: rgba(34, 197, 94, 0.1);
+          color: #4ADE80;
+          border-color: rgba(34, 197, 94, 0.3);
+        `;
+      case 'rejected':
+        return `
+          background: rgba(239, 68, 68, 0.1);
+          color: #F87171;
+          border-color: rgba(239, 68, 68, 0.3);
+        `;
+      default:
+        return `
+          background: rgba(107, 114, 128, 0.1);
+          color: #9CA3AF;
+          border-color: rgba(107, 114, 128, 0.3);
+        `;
+    }
+  }}
+`;
+
+const UserDetails = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+
+  .detail-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: #BDBDC2;
+    font-size: 0.875rem;
+    font-weight: 600;
+
+    .icon {
+      color: #8D8D99;
+    }
+  }
+`;
+
+const PurposeSection = styled.div`
+  margin-bottom: 1.5rem;
+
+  .purpose-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: #BDBDC2;
+    font-size: 0.875rem;
+    font-weight: 700;
+    margin-bottom: 0.75rem;
+  }
+
+  .purpose-text {
+    color: #8D8D99;
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1.5;
+    padding-left: 1.5rem;
+  }
+`;
+
+const ActionButtons = styled.div`
+  display: flex;
+  gap: 1rem;
+  justify-content: flex-end;
+
+  button {
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.875rem;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.2s;
+
+    &.approve {
+      background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+      color: white;
+
+      &:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 8px 25px rgba(16, 185, 129, 0.4);
+      }
+    }
+
+    &.reject {
+      background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
+      color: white;
+
+      &:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 8px 25px rgba(239, 68, 68, 0.4);
+      }
+    }
+
+    &.delete {
+      background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
+      color: white;
+
+      &:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 8px 25px rgba(239, 68, 68, 0.4);
+      }
+    }
+  }
+`;
+
+const EmptyState = styled.div`
+  padding: 4rem 2rem;
+  text-align: center;
+
+  .empty-icon {
+    width: 4rem;
+    height: 4rem;
+    color: #8D8D99;
+    margin: 0 auto 1rem;
+  }
+
+  .empty-text {
+    color: #8D8D99;
+    font-size: 1.125rem;
+    font-weight: 600;
+  }
+`;
+
+const LoadingState = styled.div`
+  padding: 4rem 2rem;
+  text-align: center;
+
+  .loading-spinner {
+    width: 2rem;
+    height: 2rem;
+    border: 2px solid rgba(136, 80, 242, 0.3);
+    border-top-color: #8850F2;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 1rem;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .loading-text {
+    color: #8D8D99;
+    font-size: 1.125rem;
+    font-weight: 600;
+  }
+`;
+
+const AdminBadge = styled.span<{ isAdmin: boolean }>`
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border: 1px solid;
+  
+  ${props => props.isAdmin ? `
+    background: rgba(136, 80, 242, 0.1);
+    color: #A855F7;
+    border-color: rgba(136, 80, 242, 0.3);
+  ` : `
+    background: rgba(107, 114, 128, 0.1);
+    color: #9CA3AF;
+    border-color: rgba(107, 114, 128, 0.3);
+  `}
+`;
+
+const TabButtons = styled.div`
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 2rem;
+`;
+
+const TabButton = styled.button<{ active: boolean }>`
+  padding: 1rem 2rem;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 1rem;
+  transition: all 0.2s;
+  border: 1px solid rgba(136, 80, 242, 0.3);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  
+  ${props => props.active ? `
+    background: linear-gradient(135deg, #8850F2 0%, #A855F7 100%);
+    color: #FFFFFF;
+    border-color: #8850F2;
+  ` : `
+    background: rgba(20, 20, 24, 0.5);
+    color: #8D8D99;
+    
+    &:hover {
+      background: rgba(136, 80, 242, 0.1);
+      color: #FFFFFF;
+    }
+  `}
+`;
+
+interface ExistingUser {
+  id: string
+  email: string
+  full_name: string
+  is_admin: boolean
+  is_active: boolean
+}
 
 interface PendingUser {
   id: number
-  username: string
   email: string
-  fullName: string
-  organization?: string
-  phone?: string
-  purpose?: string
-  requestedAt: string
-  status: 'pending' | 'approved' | 'rejected'
+  full_name: string
+  reason: string
+  status: string
+  requested_at: string
 }
 
 export default function AdminPage() {
+  const [activeTab, setActiveTab] = useState<'requests' | 'users'>('requests')
   const [pendingUsers, setPendingUsers] = useState<PendingUser[]>([])
-  const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending')
+  const [existingUsers, setExistingUsers] = useState<ExistingUser[]>([])
+  const [filter, setFilter] = useState<string>('pending')
+  const [userFilter, setUserFilter] = useState<string>('all')
   const [searchTerm, setSearchTerm] = useState('')
+  const [userSearchTerm, setUserSearchTerm] = useState('')
   const [isLoading, setIsLoading] = useState(true)
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false)
   const { user, logout } = useAuth()
+  const notification = useNotification()
   const router = useRouter()
 
   // Check if user is admin
   useEffect(() => {
-    if (user && user.role !== 'admin') {
-      toast.error('Access denied. Admin only.')
-      router.push('/dashboard')
+    if (user && !user.is_admin) {
+      notification.error('Access denied', 'Admin privileges required.')
+      router.push('/')
       return
     }
     
-    // Load pending users
-    loadPendingUsers()
-  }, [user, router])
+    if (user && user.is_admin) {
+      loadPendingUsers()
+      loadExistingUsers()
+    }
+  }, [user, router, notification])
 
   const loadPendingUsers = async () => {
     try {
-      // TODO: Replace with actual API call
-      // For demo, use mock data
-      const mockUsers: PendingUser[] = [
-        {
-          id: 1,
-          username: 'john_doe',
-          email: 'john@example.com',
-          fullName: 'John Doe',
-          organization: 'Tech Corp',
-          phone: '+1-555-0123',
-          purpose: 'Need transcription for business meetings and interviews',
-          requestedAt: '2025-06-17T10:30:00Z',
-          status: 'pending'
-        },
-        {
-          id: 2,
-          username: 'jane_smith',
-          email: 'jane.smith@university.edu',
-          fullName: 'Jane Smith',
-          organization: 'University Research',
-          phone: '+1-555-0456',
-          purpose: 'Academic research on speech patterns and linguistics',
-          requestedAt: '2025-06-16T14:15:00Z',
-          status: 'pending'
-        },
-        {
-          id: 3,
-          username: 'mike_johnson',
-          email: 'mike@startup.com',
-          fullName: 'Mike Johnson',
-          organization: 'AI Startup',
-          purpose: 'Content creation and podcast transcription',
-          requestedAt: '2025-06-15T09:45:00Z',
-          status: 'approved'
-        }
-      ]
+      setIsLoading(true)
+      const response = await fetch('/api/admin/access-requests')
       
-      setPendingUsers(mockUsers)
-      setIsLoading(false)
-    } catch (error) {
-      toast.error('Failed to load user requests')
+      if (!response.ok) {
+        throw new Error('Failed to fetch access requests')
+      }
+      
+      const data = await response.json()
+      setPendingUsers(data)
+    } catch (error: any) {
+      console.error('Load users error:', error)
+      notification.error('Failed to load user requests')
+      setPendingUsers([])
+    } finally {
       setIsLoading(false)
     }
   }
 
-  const handleApprove = async (userId: number) => {
+  const loadExistingUsers = async () => {
     try {
-      // TODO: Replace with actual API call
-      setPendingUsers(prev => 
-        prev.map(user => 
-          user.id === userId ? { ...user, status: 'approved' } : user
-        )
-      )
-      toast.success('User approved successfully')
-    } catch (error) {
-      toast.error('Failed to approve user')
+      setIsLoadingUsers(true)
+      const response = await fetch('/api/admin/users')
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch users')
+      }
+      
+      const data = await response.json()
+      setExistingUsers(data)
+    } catch (error: any) {
+      console.error('Load existing users error:', error)
+      notification.error('Failed to load users')
+      setExistingUsers([])
+    } finally {
+      setIsLoadingUsers(false)
     }
   }
 
-  const handleReject = async (userId: number) => {
+  const handleToggleAdmin = async (userId: string, currentAdminStatus: boolean) => {
     try {
-      // TODO: Replace with actual API call
-      setPendingUsers(prev => 
-        prev.map(user => 
-          user.id === userId ? { ...user, status: 'rejected' } : user
-        )
-      )
-      toast.success('User rejected')
-    } catch (error) {
-      toast.error('Failed to reject user')
+      const response = await fetch(`/api/admin/toggle-admin?id=${userId}`, {
+        method: 'POST'
+      })
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to toggle admin status')
+      }
+      
+      const action = currentAdminStatus ? 'removed from' : 'promoted to'
+      notification.success(`User ${action} admin successfully!`)
+      loadExistingUsers() // Reload the list
+    } catch (error: any) {
+      console.error('Toggle admin error:', error)
+      notification.error(error.message || 'Failed to toggle admin status')
+    }
+  }
+
+  const handleApprove = async (requestId: number) => {
+    try {
+      const response = await fetch(`/api/admin/approve-request?id=${requestId}`, {
+        method: 'POST'
+      })
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to approve request')
+      }
+      
+      notification.success('User approved successfully!')
+      loadPendingUsers() // Reload the list
+    } catch (error: any) {
+      console.error('Approve error:', error)
+      notification.error(error.message || 'Failed to approve user')
+    }
+  }
+
+  const handleReject = async (requestId: number) => {
+    try {
+      const response = await fetch(`/api/admin/reject-request?id=${requestId}`, {
+        method: 'POST'
+      })
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to reject request')
+      }
+      
+      notification.success('User rejected')
+      loadPendingUsers() // Reload the list
+    } catch (error: any) {
+      console.error('Reject error:', error)
+      notification.error(error.message || 'Failed to reject user')
+    }
+  }
+
+  const handleBack = () => {
+    router.push('/')
+  }
+
+  const handleLogout = () => {
+    logout()
+    router.push('/')
+  }
+
+  const handleDeleteUser = async (userId: string) => {
+    try {
+      const response = await fetch(`/api/admin/delete-user?id=${userId}`, {
+        method: 'DELETE'
+      })
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to delete user')
+      }
+      
+      notification.success('User deleted successfully!')
+      loadExistingUsers() // Reload the list
+    } catch (error: any) {
+      console.error('Delete user error:', error)
+      notification.error(error.message || 'Failed to delete user')
     }
   }
 
   const filteredUsers = pendingUsers.filter(user => {
     const matchesFilter = filter === 'all' || user.status === filter
-    const matchesSearch = user.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         user.username.toLowerCase().includes(searchTerm.toLowerCase())
+    const matchesSearch = user.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         user.email.toLowerCase().includes(searchTerm.toLowerCase())
     return matchesFilter && matchesSearch
   })
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'pending': return 'text-yellow-400 bg-yellow-400/10 border-yellow-400/30'
-      case 'approved': return 'text-green-400 bg-green-400/10 border-green-400/30'
-      case 'rejected': return 'text-red-400 bg-red-400/10 border-red-400/30'
-      default: return 'text-gray-400 bg-gray-400/10 border-gray-400/30'
-    }
+  const filteredExistingUsers = existingUsers.filter(user => {
+    const matchesFilter = userFilter === 'all' || 
+                         (userFilter === 'admin' && user.is_admin) ||
+                         (userFilter === 'user' && !user.is_admin)
+    const matchesSearch = user.full_name.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
+                         user.email.toLowerCase().includes(userSearchTerm.toLowerCase())
+    return matchesFilter && matchesSearch
+  })
+
+  const stats = {
+    total: pendingUsers.length,
+    pending: pendingUsers.filter(u => u.status === 'pending').length,
+    approved: pendingUsers.filter(u => u.status === 'approved').length,
+    rejected: pendingUsers.filter(u => u.status === 'rejected').length,
+    totalUsers: existingUsers.length,
+    admins: existingUsers.filter(u => u.is_admin).length,
+    regularUsers: existingUsers.filter(u => !u.is_admin).length
   }
 
-  if (!user || user.role !== 'admin') {
+  // Get display username from user data (removed environment variable fallback)
+  const displayUsername = user?.full_name || user?.username || 'Admin';
+
+  if (!user || !user.is_admin) {
     return null
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#09090A] via-[#181719] to-[#36343B]">
-      {/* Header */}
-      <header className="border-b border-gray-700/50 bg-gray-900/50 backdrop-blur-xl">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-gradient-to-br from-red-500 to-orange-600 rounded-lg flex items-center justify-center">
-                <Shield className="w-4 h-4 text-white" />
-              </div>
-              <h1 className="text-xl font-semibold text-white">Admin Panel</h1>
-            </div>
-            <button
-              onClick={logout}
-              className="flex items-center gap-2 px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors"
-            >
-              <LogOut className="w-4 h-4" />
-              <span className="text-sm">Logout</span>
-            </button>
-          </div>
-        </div>
-      </header>
+    <AdminContainer>
+      <Header>
+        <HeaderLeft>
+          <BackButton onClick={handleBack}>
+            <ArrowLeft size={18} />
+          </BackButton>
+          <HeaderTitle>
+            <div className="title">Admin Panel</div>
+            <div className="subtitle">Manage Users & Access Requests</div>
+          </HeaderTitle>
+        </HeaderLeft>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-6 py-8">
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          {[
-            { label: 'Total Requests', value: pendingUsers.length, color: 'blue' },
-            { label: 'Pending', value: pendingUsers.filter(u => u.status === 'pending').length, color: 'yellow' },
-            { label: 'Approved', value: pendingUsers.filter(u => u.status === 'approved').length, color: 'green' },
-            { label: 'Rejected', value: pendingUsers.filter(u => u.status === 'rejected').length, color: 'red' }
-          ].map((stat, index) => (
-            <motion.div
+        <HeaderActions>
+          <UsernameButton>
+            <Shield size={12} />
+            {displayUsername}
+          </UsernameButton>
+          
+          <AuthButton variant="primary" onClick={handleLogout}>
+            <LogOut size={16} />
+            Logout
+          </AuthButton>
+        </HeaderActions>
+      </Header>
+
+      <MainContent>
+        <StatsGrid>
+          {(activeTab === 'requests' ? [
+            { label: 'Total Requests', value: stats.total },
+            { label: 'Pending', value: stats.pending },
+            { label: 'Approved', value: stats.approved },
+            { label: 'Rejected', value: stats.rejected }
+          ] : [
+            { label: 'Total Users', value: stats.totalUsers },
+            { label: 'Administrators', value: stats.admins },
+            { label: 'Regular Users', value: stats.regularUsers },
+            { label: 'Active Users', value: stats.totalUsers }
+          ]).map((stat, index) => (
+            <StatCard
               key={stat.label}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: index * 0.1 }}
-              className="bg-gray-900/60 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-6"
             >
-              <div className="text-gray-400 text-sm font-medium">{stat.label}</div>
-              <div className="text-3xl font-bold text-white mt-2">{stat.value}</div>
-            </motion.div>
+              <div className="stat-label">{stat.label}</div>
+              <div className="stat-value">{stat.value}</div>
+            </StatCard>
           ))}
-        </div>
+        </StatsGrid>
 
-        {/* Filters and Search */}
-        <motion.div
+        <TabButtons>
+          <TabButton 
+            active={activeTab === 'requests'} 
+            onClick={() => setActiveTab('requests')}
+          >
+            <Users size={20} />
+            Access Requests
+          </TabButton>
+          <TabButton 
+            active={activeTab === 'users'} 
+            onClick={() => setActiveTab('users')}
+          >
+            <Settings size={20} />
+            User Management
+          </TabButton>
+        </TabButtons>
+
+        <AdminPanel
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.4 }}
-          className="bg-gray-900/60 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-6 mb-8"
         >
-          <div className="flex flex-col md:flex-row gap-4">
-            {/* Search */}
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" />
+          <PanelHeader>
+            <div className="panel-title">
+              {activeTab === 'requests' ? (
+                <>
+                  <Users size={24} />
+                  User Requests ({filteredUsers.length})
+                </>
+              ) : (
+                <>
+                  <Settings size={24} />
+                  Existing Users ({filteredExistingUsers.length})
+                </>
+              )}
+            </div>
+
+            <SearchFilter>
+              <div className="search-input">
+                <Search className="search-icon" size={16} />
                 <input
                   type="text"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Search by name, email, or username..."
-                  className="w-full pl-10 pr-4 py-3 bg-gray-800/50 border border-gray-600 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                  value={activeTab === 'requests' ? searchTerm : userSearchTerm}
+                  onChange={(e) => activeTab === 'requests' ? 
+                    setSearchTerm(e.target.value) : 
+                    setUserSearchTerm(e.target.value)}
+                  placeholder="Search by name or email..."
                 />
               </div>
-            </div>
 
-            {/* Filter */}
-            <div className="flex gap-2">
-              {['all', 'pending', 'approved', 'rejected'].map((status) => (
-                <button
-                  key={status}
-                  onClick={() => setFilter(status as any)}
-                  className={`px-4 py-3 rounded-xl font-medium text-sm transition-all ${
-                    filter === status
-                      ? 'bg-purple-600 text-white'
-                      : 'bg-gray-800/50 text-gray-400 hover:text-white hover:bg-gray-700/50'
-                  }`}
-                >
-                  {status.charAt(0).toUpperCase() + status.slice(1)}
-                </button>
-              ))}
-            </div>
-          </div>
-        </motion.div>
+              <div className="filter-buttons">
+                {activeTab === 'requests' ? 
+                  ['pending', 'approved', 'rejected', 'all'].map((status) => (
+                    <FilterButton
+                      key={status}
+                      active={filter === status}
+                      onClick={() => setFilter(status)}
+                    >
+                      {status.charAt(0).toUpperCase() + status.slice(1)}
+                    </FilterButton>
+                  )) :
+                  ['all', 'admin', 'user'].map((status) => (
+                    <FilterButton
+                      key={status}
+                      active={userFilter === status}
+                      onClick={() => setUserFilter(status)}
+                    >
+                      {status === 'admin' ? 'Admins' : 
+                       status === 'user' ? 'Users' : 'All'}
+                    </FilterButton>
+                  ))
+                }
+              </div>
+            </SearchFilter>
+          </PanelHeader>
 
-        {/* Users List */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.6 }}
-          className="bg-gray-900/60 backdrop-blur-xl border border-gray-700/50 rounded-2xl overflow-hidden"
-        >
-          <div className="p-6 border-b border-gray-700/50">
-            <h2 className="text-xl font-bold text-white flex items-center gap-3">
-              <Users className="w-5 h-5 text-purple-400" />
-              User Requests ({filteredUsers.length})
-            </h2>
-          </div>
-
-          {isLoading ? (
-            <div className="p-12 text-center">
-              <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-              <p className="text-gray-400">Loading user requests...</p>
-            </div>
-          ) : filteredUsers.length === 0 ? (
-            <div className="p-12 text-center">
-              <Users className="w-12 h-12 text-gray-500 mx-auto mb-4" />
-              <p className="text-gray-400">No user requests found</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-gray-700/50">
-              {filteredUsers.map((user, index) => (
-                <motion.div
+          <UsersList>
+            {(activeTab === 'requests' ? isLoading : isLoadingUsers) ? (
+              <LoadingState>
+                <div className="loading-spinner" />
+                <div className="loading-text">
+                  Loading {activeTab === 'requests' ? 'user requests' : 'users'}...
+                </div>
+              </LoadingState>
+            ) : (activeTab === 'requests' ? filteredUsers : filteredExistingUsers).length === 0 ? (
+              <EmptyState>
+                <Users className="empty-icon" />
+                <div className="empty-text">
+                  No {activeTab === 'requests' ? 'user requests' : 'users'} found
+                </div>
+              </EmptyState>
+            ) : activeTab === 'requests' ? (
+              // Existing access requests rendering
+              filteredUsers.map((user, index) => (
+                <UserCard
                   key={user.id}
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ duration: 0.4, delay: index * 0.1 }}
-                  className="p-6 hover:bg-gray-800/30 transition-colors"
                 >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-3">
-                        <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl flex items-center justify-center">
-                          <Users className="w-5 h-5 text-white" />
-                        </div>
-                        <div>
-                          <h3 className="text-white font-semibold">{user.fullName}</h3>
-                          <p className="text-gray-400 text-sm">@{user.username}</p>
-                        </div>
-                        <span className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(user.status)}`}>
-                          {user.status}
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                        <div className="flex items-center gap-2 text-sm text-gray-300">
-                          <Mail className="w-4 h-4 text-gray-500" />
-                          {user.email}
-                        </div>
-                        {user.organization && (
-                          <div className="flex items-center gap-2 text-sm text-gray-300">
-                            <Building className="w-4 h-4 text-gray-500" />
-                            {user.organization}
-                          </div>
-                        )}
-                        {user.phone && (
-                          <div className="flex items-center gap-2 text-sm text-gray-300">
-                            <Phone className="w-4 h-4 text-gray-500" />
-                            {user.phone}
-                          </div>
-                        )}
-                        <div className="flex items-center gap-2 text-sm text-gray-300">
-                          <Clock className="w-4 h-4 text-gray-500" />
-                          {new Date(user.requestedAt).toLocaleDateString()}
-                        </div>
-                      </div>
-
-                      {user.purpose && (
-                        <div className="mb-4">
-                          <div className="flex items-center gap-2 mb-2">
-                            <FileText className="w-4 h-4 text-gray-500" />
-                            <span className="text-sm font-medium text-gray-300">Purpose:</span>
-                          </div>
-                          <p className="text-sm text-gray-400 pl-6">{user.purpose}</p>
-                        </div>
-                      )}
+                  <UserHeader>
+                    <div className="user-avatar">
+                      <User size={20} />
                     </div>
+                    <div className="user-info">
+                      <div className="user-name">{user.full_name}</div>
+                      <div className="user-username">{user.email}</div>
+                    </div>
+                    <StatusBadge status={user.status}>
+                      {user.status}
+                    </StatusBadge>
+                  </UserHeader>
 
-                    {user.status === 'pending' && (
-                      <div className="flex gap-2 ml-4">
-                        <button
-                          onClick={() => handleApprove(user.id)}
-                          className="flex items-center gap-1 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors"
-                        >
-                          <Check className="w-4 h-4" />
-                          Approve
-                        </button>
-                        <button
-                          onClick={() => handleReject(user.id)}
-                          className="flex items-center gap-1 px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors"
-                        >
-                          <X className="w-4 h-4" />
-                          Reject
-                        </button>
+                  <UserDetails>
+                    <div className="detail-item">
+                      <Mail className="icon" size={16} />
+                      {user.email}
+                    </div>
+                    <div className="detail-item">
+                      <Clock className="icon" size={16} />
+                      {new Date(user.requested_at).toLocaleDateString()}
+                    </div>
+                  </UserDetails>
+
+                  {user.reason && (
+                    <PurposeSection>
+                      <div className="purpose-label">
+                        <FileText size={16} />
+                        Purpose:
                       </div>
-                    )}
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          )}
-        </motion.div>
-      </main>
-    </div>
+                      <div className="purpose-text">{user.reason}</div>
+                    </PurposeSection>
+                  )}
+
+                  {user.status === 'pending' && (
+                    <ActionButtons>
+                      <button
+                        className="approve"
+                        onClick={() => handleApprove(user.id)}
+                      >
+                        <Check size={16} />
+                        Approve
+                      </button>
+                      <button
+                        className="reject"
+                        onClick={() => handleReject(user.id)}
+                      >
+                        <X size={16} />
+                        Reject
+                      </button>
+                    </ActionButtons>
+                  )}
+                </UserCard>
+              ))
+            ) : (
+              // New existing users rendering
+              filteredExistingUsers.map((existingUser, index) => (
+                <UserCard
+                  key={existingUser.id}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.4, delay: index * 0.1 }}
+                >
+                  <UserHeader>
+                    <div className="user-avatar">
+                      {existingUser.is_admin ? <Shield size={20} /> : <User size={20} />}
+                    </div>
+                    <div className="user-info">
+                      <div className="user-name">{existingUser.full_name}</div>
+                      <div className="user-username">{existingUser.email}</div>
+                    </div>
+                    <AdminBadge isAdmin={existingUser.is_admin}>
+                      {existingUser.is_admin ? 'Admin' : 'User'}
+                    </AdminBadge>
+                  </UserHeader>
+
+                  <UserDetails>
+                    <div className="detail-item">
+                      <Mail className="icon" size={16} />
+                      {existingUser.email}
+                    </div>
+                    <div className="detail-item">
+                      <div className="icon">
+                        {existingUser.is_active ? 
+                          <UserCheck size={16} style={{ color: '#10B981' }} /> : 
+                          <UserX size={16} style={{ color: '#EF4444' }} />
+                        }
+                      </div>
+                      {existingUser.is_active ? 'Active' : 'Inactive'}
+                    </div>
+                  </UserDetails>
+
+                  {existingUser.id !== user?.id && (
+                    <ActionButtons>
+                      <button
+                        className={existingUser.is_admin ? "reject" : "approve"}
+                        onClick={() => handleToggleAdmin(existingUser.id, existingUser.is_admin)}
+                      >
+                        {existingUser.is_admin ? (
+                          <>
+                            <UserX size={16} />
+                            Remove Admin
+                          </>
+                        ) : (
+                          <>
+                            <UserCheck size={16} />
+                            Make Admin
+                          </>
+                        )}
+                      </button>
+
+                      <button
+                        className="delete"
+                        onClick={() => handleDeleteUser(existingUser.id)}
+                      >
+                        <Trash2 size={16} />
+                        Delete
+                      </button>
+                    </ActionButtons>
+                  )}
+                </UserCard>
+              ))
+            )}
+          </UsersList>
+        </AdminPanel>
+      </MainContent>
+    </AdminContainer>
   )
 }

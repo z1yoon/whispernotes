@@ -10,14 +10,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const authServiceUrl = 'http://host.docker.internal:8000/api/v1/auth/me';
+    // Use the Docker service name for internal communication
+    const authServiceUrl = process.env.AUTH_SERVICE_URL || 'http://auth-service:8000';
+    const meEndpoint = `${authServiceUrl}/api/v1/auth/me`;
 
     try {
-      console.log('API /me: Calling auth service:', authServiceUrl);
-      const response = await axios.get(authServiceUrl, {
+      console.log('API /me: Calling auth service:', meEndpoint);
+      const response = await axios.get(meEndpoint, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
+        timeout: 10000, // 10 second timeout
       });
       console.log('API /me: Auth service response status:', response.status);
 
@@ -37,4 +40,4 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     res.setHeader('Allow', ['GET']);
     res.status(405).end(`Method ${req.method} Not Allowed`);
   }
-} 
+}

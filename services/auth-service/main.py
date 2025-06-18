@@ -7,28 +7,24 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.exc import IntegrityError
 from passlib.context import CryptContext
 from jose import JWTError, jwt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import os
 import logging
 from typing import Optional
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from contextlib import asynccontextmanager
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="WhisperNotes Auth Service", version="1.0.0")
-
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # In production, specify exact origins
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Database setup
+DATABASE_URL = os.getenv("DATABASE_URL")
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
 
 # Security
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -46,12 +42,6 @@ SMTP_USERNAME = os.getenv("SMTP_USERNAME", "")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@whispernotes.com")
 
-# Database setup
-DATABASE_URL = os.getenv("DATABASE_URL")
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
-
 # Helper functions
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
@@ -62,9 +52,9 @@ def get_password_hash(password):
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -75,20 +65,22 @@ def get_db():
     finally:
         db.close()
 
-# Admin User Creation on Startup
-@app.on_event("startup")
-def startup_event():
+# Admin User Creation Function
+def create_admin_user():
     with SessionLocal() as db:
         admin_email = os.getenv("ADMIN_EMAIL")
         admin_password = os.getenv("ADMIN_PASSWORD")
+        admin_username = os.getenv("ADMIN_USERNAME", "Admin")  # Default to "Admin" if not set
         
         if not admin_email or not admin_password:
             logger.warning("Admin credentials not set in environment variables.")
             return
 
         # Check if admin user exists
-        result = db.execute(text("SELECT email FROM users WHERE email = :email"), {"email": admin_email}).scalar()
-        if not result:
+        existing_user = db.execute(text("SELECT id, full_name FROM users WHERE email = :email"), {"email": admin_email}).first()
+        
+        if not existing_user:
+            # Create new admin user
             hashed_password = get_password_hash(admin_password)
             db.execute(
                 text("""
@@ -97,14 +89,43 @@ def startup_event():
                 """),
                 {
                     "email": admin_email,
-                    "full_name": "Admin",
+                    "full_name": admin_username,
                     "password_hash": hashed_password,
                     "is_admin": True,
                     "is_active": True,
                 }
             )
             db.commit()
-            logger.info(f"Admin user '{admin_email}' created.")
+            logger.info(f"Admin user '{admin_email}' created with display name '{admin_username}'.")
+        else:
+            # Update existing admin user's display name if it's different
+            if existing_user.full_name != admin_username:
+                db.execute(
+                    text("UPDATE users SET full_name = :full_name WHERE email = :email"),
+                    {"full_name": admin_username, "email": admin_email}
+                )
+                db.commit()
+                logger.info(f"Admin user '{admin_email}' display name updated from '{existing_user.full_name}' to '{admin_username}'.")
+            else:
+                logger.info(f"Admin user '{admin_email}' already exists with correct display name '{admin_username}'.")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    create_admin_user()
+    yield
+    # Shutdown (if needed)
+
+app = FastAPI(title="WhisperNotes Auth Service", version="1.0.0", lifespan=lifespan)
+
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, specify exact origins
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Pydantic models
 class UserBase(BaseModel):
@@ -120,7 +141,7 @@ class User(UserBase):
     is_active: bool
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class Token(BaseModel):
     access_token: str
@@ -171,18 +192,77 @@ async def get_current_admin_user(current_user: User = Depends(get_current_user))
 # API Routes
 @app.post("/api/v1/auth/login", response_model=Token)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db=Depends(get_db)):
+    logger.info(f"Login attempt for email: {form_data.username}")
+    
+    # First check if user exists in users table
     user = db.execute(text("SELECT * FROM users WHERE email = :email"), {"email": form_data.username}).first()
     
-    if not user or not verify_password(form_data.password, user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    
-    if not user.is_active:
-        raise HTTPException(status_code=400, detail="Inactive user")
+    if user:
+        logger.info(f"User found in users table: {form_data.username}")
+        # User exists, check password and active status
+        if not verify_password(form_data.password, user.password_hash):
+            logger.info(f"Invalid password for user: {form_data.username}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect email or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        if not user.is_active:
+            logger.info(f"User account deactivated: {form_data.username}")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, 
+                detail="Your account has been deactivated. Please contact an administrator."
+            )
+    else:
+        logger.info(f"User not found in users table, checking access_requests: {form_data.username}")
+        # User doesn't exist in users table, check if they have a pending access request
+        access_request = db.execute(
+            text("SELECT * FROM access_requests WHERE email = :email"), 
+            {"email": form_data.username}
+        ).first()
+        
+        if access_request:
+            logger.info(f"Access request found for {form_data.username}, status: {access_request.status}")
+            # User has an access request, check status and password
+            if not verify_password(form_data.password, access_request.password_hash):
+                logger.info(f"Invalid password for access request: {form_data.username}")
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Incorrect email or password",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+            
+            # Password is correct, but account not approved yet
+            if access_request.status == 'pending':
+                logger.info(f"Account pending approval: {form_data.username}")
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Your account is pending admin approval. Please wait for confirmation."
+                )
+            elif access_request.status == 'rejected':
+                logger.info(f"Account rejected: {form_data.username}")
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Your access request was rejected. Please contact an administrator."
+                )
+            else:
+                logger.warning(f"Unknown access request status for {form_data.username}: {access_request.status}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Account status error. Please contact support."
+                )
+        else:
+            logger.info(f"No user or access request found for: {form_data.username}")
+            # No user and no access request - invalid credentials
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect email or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
 
+    # If we get here, user exists and is valid
+    logger.info(f"Login successful for: {form_data.username}")
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": user.email, "is_admin": user.is_admin},
@@ -231,7 +311,18 @@ async def read_users_me(current_user: User = Depends(get_current_user)):
 @app.get("/api/v1/admin/access-requests")
 async def list_access_requests(db=Depends(get_db), admin_user: User = Depends(get_current_admin_user)):
     requests = db.execute(text("SELECT id, email, full_name, reason, status, requested_at FROM access_requests ORDER BY requested_at DESC")).fetchall()
-    return requests
+    # Convert SQLAlchemy Row objects to dictionaries
+    return [
+        {
+            "id": request.id,
+            "email": request.email,
+            "full_name": request.full_name,
+            "reason": request.reason,
+            "status": request.status,
+            "requested_at": request.requested_at.isoformat() if request.requested_at else None
+        }
+        for request in requests
+    ]
 
 @app.post("/api/v1/admin/access-requests/{request_id}/approve")
 async def approve_request(request_id: str, db=Depends(get_db), admin_user: User = Depends(get_current_admin_user)):
@@ -282,10 +373,64 @@ async def reject_request(request_id: str, db=Depends(get_db), admin_user: User =
     db.commit()
     return {"message": "Access request rejected."}
 
+@app.get("/api/v1/admin/users")
+async def list_all_users(db=Depends(get_db), admin_user: User = Depends(get_current_admin_user)):
+    users = db.execute(text("SELECT id, email, full_name, is_admin, is_active FROM users ORDER BY full_name")).fetchall()
+    # Convert SQLAlchemy Row objects to dictionaries
+    return [
+        {
+            "id": str(user.id),
+            "email": user.email,
+            "full_name": user.full_name,
+            "is_admin": user.is_admin,
+            "is_active": user.is_active
+        }
+        for user in users
+    ]
+
+@app.post("/api/v1/admin/users/{user_id}/toggle-admin")
+async def toggle_user_admin_status(user_id: str, db=Depends(get_db), admin_user: User = Depends(get_current_admin_user)):
+    # Check if user exists
+    user = db.execute(text("SELECT * FROM users WHERE id = :id"), {"id": user_id}).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+    
+    # Prevent admin from removing their own admin status
+    if user.id == admin_user.id:
+        raise HTTPException(status_code=400, detail="Cannot modify your own admin status.")
+    
+    # Toggle admin status
+    new_admin_status = not user.is_admin
+    db.execute(
+        text("UPDATE users SET is_admin = :is_admin WHERE id = :id"),
+        {"is_admin": new_admin_status, "id": user_id}
+    )
+    db.commit()
+    
+    action = "promoted to" if new_admin_status else "removed from"
+    return {"message": f"User {user.full_name} {action} admin."}
+
+@app.delete("/api/v1/admin/users/{user_id}")
+async def delete_user(user_id: str, db=Depends(get_db), admin_user: User = Depends(get_current_admin_user)):
+    # Check if user exists
+    user = db.execute(text("SELECT * FROM users WHERE id = :id"), {"id": user_id}).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+    
+    # Prevent admin from deleting themselves
+    if user.id == admin_user.id:
+        raise HTTPException(status_code=400, detail="Cannot delete your own account.")
+    
+    # Delete the user
+    db.execute(text("DELETE FROM users WHERE id = :id"), {"id": user_id})
+    db.commit()
+    
+    return {"message": f"User {user.full_name} has been deleted."}
+
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -58,7 +58,7 @@ try:
         secure=MINIO_USE_SECURE,
     )
     logger.info("Successfully connected to MinIO.")
-    except Exception as e:
+except Exception as e:
     logger.error(f"Failed to connect to MinIO: {e}")
     minio_client = None
 

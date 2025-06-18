@@ -21,14 +21,6 @@ export function Header() {
     router.push('/')
   }
 
-  const handleDashboardClick = () => {
-    if(user?.role === 'admin') {
-      router.push('/admin');
-    } else {
-      router.push('/dashboard');
-    }
-  }
-
   return (
     <header className="absolute top-0 left-0 right-0 z-50">
       <div className="container mx-auto px-6 py-4 flex justify-between items-center">
@@ -42,9 +34,15 @@ export function Header() {
         <nav className="flex items-center gap-4">
           {isAuthenticated ? (
             <div className="flex items-center gap-4">
-              <button onClick={handleDashboardClick} className="btn btn-secondary">
-                Dashboard
-              </button>
+              {user?.role === 'admin' ? (
+                <Link href="/admin" className="btn btn-secondary">
+                  Admin
+                </Link>
+              ) : (
+                <Link href="/dashboard" className="btn btn-secondary">
+                  Dashboard
+                </Link>
+              )}
               <button
                 onClick={handleLogout}
                 className="p-2 text-muted-foreground hover:text-foreground transition-colors"
@@ -67,4 +65,4 @@ export function Header() {
       </div>
     </header>
   )
-} 
+}
