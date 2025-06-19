@@ -1,7 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import axios from 'axios';
 
-const FILE_UPLOADER_URL = process.env.FILE_UPLOADER_URL || 'http://file-uploader:8001';
+const FILE_UPLOADER_URL = process.env.FILE_UPLOADER_URL || 'http://file-uploader:8002';
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://auth-service:8000';
 
 export default async function getPresignedUrl(req: NextApiRequest, res: NextApiResponse) {
@@ -30,11 +30,14 @@ export default async function getPresignedUrl(req: NextApiRequest, res: NextApiR
             return res.status(400).json({ message: 'Missing required fields: sessionId, partNumber' });
         }
 
+        console.log(`Getting presigned URL for session ${sessionId}, part ${partNumber}`);
+
         const uploaderResponse = await axios.post(
             `${FILE_UPLOADER_URL}/api/v1/uploads/${sessionId}/presigned-url`,
             { part_number: partNumber }
         );
         
+        console.log(`Presigned URL obtained successfully`);
         res.status(200).json(uploaderResponse.data);
 
     } catch (uploadError: any) {

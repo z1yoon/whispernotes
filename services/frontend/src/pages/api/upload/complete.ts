@@ -1,7 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import axios from 'axios';
 
-const FILE_UPLOADER_URL = process.env.FILE_UPLOADER_URL || 'http://file-uploader:8001';
+const FILE_UPLOADER_URL = process.env.FILE_UPLOADER_URL || 'http://file-uploader:8002';
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://auth-service:8000';
 
 export default async function completeUpload(req: NextApiRequest, res: NextApiResponse) {
