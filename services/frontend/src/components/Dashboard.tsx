@@ -561,13 +561,13 @@ const Dashboard = () => {
               <TranscriptionCard key={`transcription-${index}`}>
                 <TranscriptionHeader onClick={() => toggleExpandCard(`transcription-${index}`)}>
                   <TranscriptionTitle>
-                    {transcription.files[0]?.type === 'video' ? (
+                    {transcription.file?.type === 'video' || transcription.files?.[0]?.type === 'video' ? (
                       <FileVideo size={20} color="#8850F2" />
                     ) : (
                       <FileAudio size={20} color="#10B981" />
                     )}
-                    {transcription.files[0]?.name || `Transcription ${index + 1}`}
-                    {transcription.files.length > 1 && ` (+${transcription.files.length - 1} more)`}
+                    {transcription.file?.name || transcription.files?.[0]?.name || `Transcription ${index + 1}`}
+                    {transcription.files?.length > 1 && ` (+${transcription.files.length - 1} more)`}
                   </TranscriptionTitle>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                     <TranscriptionDate>
@@ -591,21 +591,38 @@ const Dashboard = () => {
                     >
                       <TranscriptionContent>
                         <FileList>
-                          {transcription.files.map((file: any, fileIndex: number) => (
-                            <FileItem key={`file-${fileIndex}`}>
-                              <FileIcon $type={file.type}>
-                                {file.type === 'video' ? (
+                          {/* Support both file and files array structures */}
+                          {transcription.file ? (
+                            <FileItem key="file-0">
+                              <FileIcon $type={transcription.file.type}>
+                                {transcription.file.type === 'video' ? (
                                   <FileVideo size={16} />
                                 ) : (
                                   <FileAudio size={16} />
                                 )}
                               </FileIcon>
                               <FileDetails>
-                                <FileName>{file.name}</FileName>
-                                <FileSize>{file.size} bytes</FileSize>
+                                <FileName>{transcription.file.name}</FileName>
+                                <FileSize>{formatFileSize(transcription.file.size)}</FileSize>
                               </FileDetails>
                             </FileItem>
-                          ))}
+                          ) : (
+                            transcription.files?.map((file: any, fileIndex: number) => (
+                              <FileItem key={`file-${fileIndex}`}>
+                                <FileIcon $type={file.type}>
+                                  {file.type === 'video' ? (
+                                    <FileVideo size={16} />
+                                  ) : (
+                                    <FileAudio size={16} />
+                                  )}
+                                </FileIcon>
+                                <FileDetails>
+                                  <FileName>{file.name}</FileName>
+                                  <FileSize>{formatFileSize(file.size)}</FileSize>
+                                </FileDetails>
+                              </FileItem>
+                            ))
+                          )}
                         </FileList>
                         
                         <TranscriptionOptions>
@@ -670,6 +687,15 @@ const Dashboard = () => {
       </MainContent>
     </DashboardContainer>
   );
+};
+
+// Helper function to format file size
+const formatFileSize = (bytes: number): string => {
+  if (!bytes) return '0 B';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
 };
 
 export default Dashboard;
