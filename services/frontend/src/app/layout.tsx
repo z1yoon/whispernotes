@@ -18,6 +18,11 @@ export const metadata: Metadata = {
     "video",
     "meeting notes",
   ],
+  icons: {
+    icon: '/favicon.svg',
+    shortcut: '/favicon.svg',
+    apple: '/favicon.svg',
+  },
 };
 
 export default function RootLayout({
@@ -30,6 +35,10 @@ export default function RootLayout({
       lang="en"
       className={`${inter.variable} ${plusJakarta.variable} ${roboto.variable} ${robotoCondensed.variable}`}
     >
+      <head>
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+        <link rel="alternate icon" href="/favicon.ico" type="image/png" sizes="32x32" />
+      </head>
       <body className="min-h-screen bg-background font-sans antialiased">
         <QueryProvider>
           <AuthProvider>

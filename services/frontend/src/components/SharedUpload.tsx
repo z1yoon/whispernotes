@@ -31,11 +31,9 @@ interface FileData {
 interface ProcessingOptions {
   speakerDiarization: boolean;
   numberOfSpeakers: number;
-  speakerNames: string[];
 }
 
 interface SharedUploadProps {
-  $variant?: 'landing' | 'page';
   isAuthenticated?: boolean;
   onStartProcessing?: (files: FileData[], options: ProcessingOptions) => void;
   onUploadClick?: (e: React.MouseEvent) => void;
@@ -43,9 +41,9 @@ interface SharedUploadProps {
 }
 
 // Styled Components
-const UploadContainer = styled(motion.div)<{ $variant: 'landing' | 'page' }>`
-  width: ${props => props.$variant === 'landing' ? '680px' : '100%'};
-  max-width: ${props => props.$variant === 'landing' ? '90%' : 'none'};
+const UploadContainer = styled(motion.div)`
+  width: 680px;
+  max-width: 90%;
   background: rgba(32, 32, 36, 0.65);
   border-radius: 24px;
   backdrop-filter: blur(14px);
@@ -53,6 +51,7 @@ const UploadContainer = styled(motion.div)<{ $variant: 'landing' | 'page' }>`
   padding: 2rem;
   position: relative;
   z-index: 2;
+  margin: 0 auto;
 
   &::after {
     content: '';
@@ -69,10 +68,10 @@ const UploadContainer = styled(motion.div)<{ $variant: 'landing' | 'page' }>`
   }
 `;
 
-const DropZone = styled.div<{ $isDragActive: boolean; $isAuthenticated?: boolean; $variant: 'landing' | 'page' }>`
+const DropZone = styled.div<{ $isDragActive: boolean; $isAuthenticated?: boolean }>`
   border: 2px dashed ${props => props.$isDragActive ? '#8850F2' : 'rgba(136, 80, 242, 0.4)'};
   border-radius: 16px;
-  padding: ${props => props.$variant === 'landing' ? '4rem 2rem' : '3rem 2rem'};
+  padding: 4rem 2rem;
   text-align: center;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -81,7 +80,7 @@ const DropZone = styled.div<{ $isDragActive: boolean; $isAuthenticated?: boolean
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: ${props => props.$variant === 'landing' ? '300px' : '200px'};
+  min-height: 300px;
   margin-bottom: ${props => props.$isAuthenticated ? '1.5rem' : '0'};
   
   &:hover {
@@ -90,8 +89,8 @@ const DropZone = styled.div<{ $isDragActive: boolean; $isAuthenticated?: boolean
   }
 
   .upload-badge {
-    width: ${props => props.$variant === 'landing' ? '96px' : '80px'};
-    height: ${props => props.$variant === 'landing' ? '96px' : '80px'};
+    width: 96px;
+    height: 96px;
     background: linear-gradient(135deg, #8850F2 0%, #A855F7 100%);
     border-radius: 50%;
     display: flex;
@@ -102,7 +101,7 @@ const DropZone = styled.div<{ $isDragActive: boolean; $isAuthenticated?: boolean
   }
 
   .upload-title {
-    font-size: ${props => props.$variant === 'landing' ? '1.5rem' : '1.25rem'};
+    font-size: 1.5rem;
     font-weight: 700;
     color: #FFFFFF;
     margin-bottom: 0.5rem;
@@ -260,6 +259,33 @@ const SpeakerButton = styled.button<{ disabled?: boolean }>`
   }
 `;
 
+const SpeakerNameList = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding: 0.5rem;
+`;
+
+const SpeakerNameInput = styled.input`
+  background: rgba(32, 32, 36, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #FFFFFF;
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  transition: all 0.2s ease;
+  
+  &:focus {
+    border-color: rgba(136, 80, 242, 0.5);
+    outline: none;
+  }
+  
+  &::placeholder {
+    color: #71717A;
+  }
+`;
+
 const ProcessButton = styled(motion.button)<{ disabled?: boolean }>`
   width: 100%;
   background: linear-gradient(135deg, #8850F2 0%, #A855F7 100%);
@@ -347,7 +373,6 @@ const StatusText = styled.div`
 `;
 
 export const SharedUpload: React.FC<SharedUploadProps> = ({
-  $variant = 'page',
   isAuthenticated = true,
   onStartProcessing,
   onUploadClick,
@@ -357,13 +382,13 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingProgress, setProcessingProgress] = useState(0);
   const [processingStatus, setProcessingStatus] = useState('');
+  const [uploadSessionId, setUploadSessionId] = useState<string | null>(null);
   const fileIdCounter = useRef(0);
   const notification = useNotification();
   
   const [options, setOptions] = useState<ProcessingOptions>({
     speakerDiarization: true,
-    numberOfSpeakers: 2,
-    speakerNames: ['Speaker 1', 'Speaker 2']
+    numberOfSpeakers: 2
   });
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
@@ -411,10 +436,7 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
     const newCount = Math.max(1, Math.min(10, count));
     setOptions(prev => ({
       ...prev,
-      numberOfSpeakers: newCount,
-      speakerNames: Array.from({ length: newCount }, (_, i) => 
-        prev.speakerNames[i] || `Speaker ${i + 1}`
-      )
+      numberOfSpeakers: newCount
     }));
   };
 
@@ -429,78 +451,230 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
     setProcessingStatus('Initializing upload...');
     
     try {
-      // Simulate multipart upload with progress
-      let overallProgress = 0;
-      
-      for (const file of files) {
-        // For each file, we'd handle a real upload in a production environment
-        setProcessingStatus(`Uploading ${file.name}...`);
+      // For each file, we'll handle the upload
+      for (const fileData of files) {
+        setProcessingStatus(`Uploading ${fileData.name}...`);
+        setProcessingProgress(5);
         
-        // Simulate chunked upload with progress
-        for (let i = 0; i < 100; i += 5) {
-          await new Promise(resolve => setTimeout(resolve, 50));
-          setProcessingProgress(i);
+        const file = fileData.file;
+        
+        // Step 1: Initialize upload
+        console.log('Initializing upload for file:', file.name);
+        const initResponse = await fetch('/api/upload/initialize', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            filename: file.name,
+            fileSize: file.size,
+            contentType: file.type,
+          }),
+        });
+        
+        if (!initResponse.ok) {
+          console.error('Initialize upload error:', await initResponse.text());
+          throw new Error('Failed to initialize upload');
         }
         
-        overallProgress += 1;
-        setProcessingProgress((overallProgress / files.length) * 100);
-      }
-      
-      // After all files are uploaded, process them
-      setProcessingStatus('Processing audio for transcription...');
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      setProcessingStatus('Analyzing speakers...');
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      setProcessingStatus('Generating diarized transcript...');
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      setProcessingProgress(100);
-      setProcessingStatus('Processing complete!');
-      
-      // Store in localStorage for demonstration (in production would use API)
-      const processedData = {
-        files: files.map(f => ({ name: f.name, type: f.type, size: f.size })),
-        options: options,
-        timestamp: new Date().toISOString(),
-        transcription: {
-          status: 'completed',
-          speakers: options.numberOfSpeakers,
-          speakerNames: options.speakerNames
+        const initData = await initResponse.json();
+        console.log('Upload initialized successfully:', initData);
+        const sessionId = initData.session_id;
+        const uploadId = initData.upload_id;
+        setUploadSessionId(sessionId);
+        
+        // Choose upload strategy based on file size
+        if (file.size > 10 * 1024 * 1024) { // If file is larger than 10MB, use multipart upload
+          await handleMultipartUpload(file, sessionId, uploadId);
+        } else {
+          await handleDirectUpload(file, sessionId);
         }
-      };
-      
-      const history = JSON.parse(localStorage.getItem('transcriptionHistory') || '[]');
-      history.push(processedData);
-      localStorage.setItem('transcriptionHistory', JSON.stringify(history));
-      
-      // Show success notification
-      notification.success(
-        'Processing Complete', 
-        `${files.length} file${files.length > 1 ? 's' : ''} processed with ${options.numberOfSpeakers} speaker diarization`
-      );
-      
-      // Call the onStartProcessing callback if provided
-      if (onStartProcessing) {
-        onStartProcessing(files, options);
+        
+        // Wait for transcription to complete
+        await waitForTranscription(sessionId);
       }
       
-      // Wait a moment before redirecting
-      setTimeout(() => {
-        setIsProcessing(false);
-      }, 1500);
-      
-    } catch (error) {
+    } catch (error: any) {
       console.error('Processing error:', error);
-      notification.error('Processing Failed', 'There was an error processing your files');
+      notification.error('Processing Failed', `There was an error processing your files: ${error.message}`);
       setIsProcessing(false);
+    }
+  };
+  
+  // Helper function to handle direct upload for smaller files
+  const handleDirectUpload = async (file: File, sessionId: string) => {
+    try {
+      setProcessingStatus(`Uploading ${file.name}...`);
+      setProcessingProgress(10);
+      
+      // Create FormData for the upload
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      // Upload directly to our API which forwards to file-uploader service
+      const uploadResponse = await fetch(`/api/upload/direct-upload?sessionId=${sessionId}`, {
+        method: 'POST',
+        body: formData,
+      });
+      
+      if (!uploadResponse.ok) {
+        console.error('Upload error:', uploadResponse.status, uploadResponse.statusText);
+        try {
+          const responseText = await uploadResponse.text();
+          console.error('Upload error response:', responseText);
+        } catch (textError) {
+          console.error('Could not read error response:', textError);
+        }
+        
+        throw new Error(`Failed to upload file: ${uploadResponse.status} ${uploadResponse.statusText}`);
+      }
+      
+      const uploadData = await uploadResponse.json();
+      console.log('Upload completed successfully:', uploadData);
+      
+      setProcessingProgress(50);
+      setProcessingStatus('Processing audio for transcription...');
+    } catch (error) {
+      console.error('Direct upload error:', error);
+      throw error;
+    }
+  };
+  
+  // Helper function to handle multipart upload for larger files
+  const handleMultipartUpload = async (file: File, sessionId: string, uploadId: string) => {
+    try {
+      // Determine optimal part size
+      // Chunk size: 5MB for files smaller than 1GB, 10MB for larger files
+      const chunkSize = file.size < 1024 * 1024 * 1024 ? 5 * 1024 * 1024 : 10 * 1024 * 1024;
+      const totalParts = Math.ceil(file.size / chunkSize);
+      
+      console.log(`Starting multipart upload with ${totalParts} parts of ${chunkSize / (1024 * 1024)}MB each`);
+      setProcessingStatus(`Preparing to upload file in ${totalParts} parts...`);
+      
+      const parts = [];
+      
+      for (let partNumber = 1; partNumber <= totalParts; partNumber++) {
+        const start = (partNumber - 1) * chunkSize;
+        const end = Math.min(start + chunkSize, file.size);
+        const partBlob = file.slice(start, end);
+        
+        // Update progress for each part
+        const progressPercent = Math.min(5 + (partNumber / totalParts) * 45, 50);
+        setProcessingProgress(progressPercent);
+        setProcessingStatus(`Uploading part ${partNumber} of ${totalParts}`);
+        
+        // Create FormData for this part
+        const formData = new FormData();
+        formData.append('file', partBlob, file.name + '.part' + partNumber);
+        
+        // Upload the part
+        const response = await fetch(`/api/upload/upload-part?sessionId=${sessionId}&partNumber=${partNumber}`, {
+          method: 'POST',
+          body: formData
+        });
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`Upload part ${partNumber} failed:`, errorText);
+          throw new Error(`Failed to upload part ${partNumber}: ${response.status} ${response.statusText}`);
+        }
+        
+        const partData = await response.json();
+        console.log(`Part ${partNumber} uploaded successfully`, partData);
+        
+        // Store part info for completion
+        parts.push({
+          PartNumber: partNumber,
+          ETag: partData.etag
+        });
+      }
+      
+      // Complete the multipart upload
+      setProcessingStatus('Finalizing upload...');
+      const completeResponse = await fetch(`/api/upload/complete-upload?sessionId=${sessionId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ parts })
+      });
+      
+      if (!completeResponse.ok) {
+        const errorText = await completeResponse.text();
+        console.error('Complete upload failed:', errorText);
+        throw new Error(`Failed to complete multipart upload: ${completeResponse.status} ${completeResponse.statusText}`);
+      }
+      
+      const completeData = await completeResponse.json();
+      console.log('Multipart upload completed successfully:', completeData);
+      
+      setProcessingProgress(50);
+      setProcessingStatus('Processing audio for transcription...');
+    } catch (error) {
+      console.error('Multipart upload error:', error);
+      throw error;
+    }
+  };
+  
+  // Helper function to wait for transcription to complete
+  const waitForTranscription = async (sessionId: string) => {
+    try {
+      let transcriptionComplete = false;
+      let retryCount = 0;
+      const maxRetries = 30; // Try for 30 * 2 seconds = 1 minute
+      
+      while (!transcriptionComplete && retryCount < maxRetries) {
+        console.log(`Checking transcription status, attempt ${retryCount + 1}`);
+        try {
+          const statusResponse = await fetch(`/api/transcription/${sessionId}`, {
+            method: 'GET',
+          });
+          
+          if (statusResponse.ok) {
+            const statusData = await statusResponse.json();
+            console.log('Transcription status:', statusData);
+            
+            if (statusData.status === 'completed') {
+              transcriptionComplete = true;
+              setProcessingProgress(100);
+              setProcessingStatus('Processing complete!');
+              console.log('Transcription completed successfully');
+              
+              // Show success notification
+              notification.success('Processing Complete!', 'Your file has been processed successfully');
+              
+              // Redirect to the transcript page after a short delay
+              setTimeout(() => {
+                window.location.href = `/transcript/${sessionId}`;
+              }, 1000);
+              return;
+            }
+          } else {
+            console.log('Transcription not ready yet, status:', statusResponse.status);
+          }
+        } catch (statusError) {
+          console.error('Error checking transcription status:', statusError);
+        }
+        
+        retryCount++;
+        setProcessingProgress(60 + Math.min(retryCount * 1.3, 35)); // Progress up to 95%
+        await new Promise(r => setTimeout(r, 2000)); // Wait 2 seconds between checks
+      }
+      
+      if (!transcriptionComplete) {
+        setProcessingProgress(95);
+        setProcessingStatus('Taking longer than expected, but processing continues...');
+        console.log('Transcription taking longer than expected');
+        notification.info('Processing in Progress', 'Your file is still being processed. You can check back later.');
+      }
+    } catch (transcriptionError) {
+      console.error('Error monitoring transcription:', transcriptionError);
+      notification.warning('Processing Started', 'Your file is being processed. Check back in a few minutes.');
     }
   };
 
   return (
     <UploadContainer
-      $variant={$variant}
       className={className}
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
@@ -527,39 +701,20 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
         {...(!isAuthenticated ? { onClick: onUploadClick } : getRootProps())}
         $isDragActive={isDragActive}
         $isAuthenticated={isAuthenticated}
-        $variant={$variant}
       >
         {isAuthenticated && <input {...getInputProps()} />}
         <div className="upload-badge">
-          <Upload size={$variant === 'landing' ? 40 : 32} color="white" />
+          <Upload size={40} color="white" />
         </div>
         <div className="upload-title">
-          {isAuthenticated && isDragActive ? 'Drop files here' : 
-           $variant === 'landing' ? 'Upload Your Video' : 'Drag & Drop Files'}
+          {isAuthenticated && isDragActive ? 'Drop files here' : 'Upload Your Video'}
         </div>
         <div className="upload-subtitle">
-          {$variant === 'landing' ? 
-            'Drag & drop or click to browse files' : 
-            'Upload your audio or video files for AI-powered transcription and speaker diarization'}
+          Drag & drop or click to browse files
         </div>
         
-        {$variant === 'page' && (
-          <FileFormats>
-            <FormatBadge>MP4</FormatBadge>
-            <FormatBadge>MOV</FormatBadge>
-            <FormatBadge>AVI</FormatBadge>
-            <FormatBadge>WebM</FormatBadge>
-            <FormatBadge>MP3</FormatBadge>
-            <FormatBadge>WAV</FormatBadge>
-            <FormatBadge>M4A</FormatBadge>
-            <FormatBadge>FLAC</FormatBadge>
-          </FileFormats>
-        )}
-        
         <div className="upload-info">
-          {$variant === 'landing' ? 
-            'MP4 · AVI · MOV · MP3 · WAV · No size limit' : 
-            'Maximum file size: 5GB per file'}
+          MP4 · AVI · MOV · MP3 · WAV · No size limit
         </div>
       </DropZone>
 

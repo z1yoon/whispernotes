@@ -2,14 +2,16 @@ import os
 import json
 import asyncio
 import subprocess
+import threading
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import logging
 import redis
 import httpx
+import pika
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -37,6 +39,19 @@ redis_client = redis.Redis(host=os.getenv("REDIS_HOST", "localhost"), port=6379,
 WHISPER_SERVICE_URL = os.getenv("WHISPER_SERVICE_URL", "http://whisper-transcriber:8005")
 FILE_UPLOADER_URL = os.getenv("FILE_UPLOADER_URL", "http://file-uploader:8002")
 
+# RabbitMQ configuration
+RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "rabbitmq")
+RABBITMQ_PORT = int(os.getenv("RABBITMQ_PORT", 5672))
+RABBITMQ_USER = os.getenv("RABBITMQ_DEFAULT_USER", "user")
+RABBITMQ_PASS = os.getenv("RABBITMQ_DEFAULT_PASS", "password")
+VIDEO_PROCESSING_QUEUE = "video_processing_queue"
+
+# MinIO configuration
+MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "minio:9000")
+MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
+MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin")
+MINIO_BUCKET = os.getenv("MINIO_BUCKET", "videos")
+
 # Ensure directories exist
 os.makedirs(TEMP_DIR, exist_ok=True)
 os.makedirs(PROCESSED_DIR, exist_ok=True)
@@ -46,6 +61,7 @@ class ProcessRequest(BaseModel):
     file_path: str
     session_id: str
     participant_count: int = 2
+    speaker_names: Optional[List[str]] = None
 
 class ProcessingStatus(BaseModel):
     session_id: str
@@ -73,115 +89,113 @@ async def send_progress_update(session_id: str, progress: float, message: str, s
         logger.error(f"Failed to send progress update: {e}")
 
 def get_video_info(file_path: str) -> dict:
-    """Get video information using ffprobe"""
+    """Extract metadata from video file using ffprobe"""
     try:
         cmd = [
-            'ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', '-show_streams', file_path
+            "ffprobe",
+            "-v", "quiet",
+            "-print_format", "json",
+            "-show_format",
+            "-show_streams",
+            file_path
         ]
+        
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
         info = json.loads(result.stdout)
         
         # Extract relevant information
+        duration = float(info["format"].get("duration", 0))
+        
+        video_stream = next((s for s in info["streams"] if s["codec_type"] == "video"), None)
+        audio_stream = next((s for s in info["streams"] if s["codec_type"] == "audio"), None)
+        
         video_info = {
-            "duration": float(info["format"]["duration"]),
-            "size": int(info["format"]["size"]),
-            "format": info["format"]["format_name"],
-            "streams": []
+            "duration": duration,
+            "format": info["format"].get("format_name", "unknown"),
+            "size": int(info["format"].get("size", 0)),
+            "has_video": video_stream is not None,
+            "has_audio": audio_stream is not None,
         }
         
-        for stream in info["streams"]:
-            if stream["codec_type"] == "video":
-                video_info["streams"].append({
-                    "type": "video",
-                    "codec": stream["codec_name"],
-                    "width": stream.get("width"),
-                    "height": stream.get("height"),
-                    "fps": eval(stream.get("r_frame_rate", "0/1"))
-                })
-            elif stream["codec_type"] == "audio":
-                video_info["streams"].append({
-                    "type": "audio",
-                    "codec": stream["codec_name"],
-                    "sample_rate": int(stream.get("sample_rate", 0)),
-                    "channels": int(stream.get("channels", 0))
-                })
-        
+        if video_stream:
+            video_info["video"] = {
+                "codec": video_stream.get("codec_name", "unknown"),
+                "width": int(video_stream.get("width", 0)),
+                "height": int(video_stream.get("height", 0)),
+                "fps": eval(video_stream.get("avg_frame_rate", "0/1"))
+            }
+            
+        if audio_stream:
+            video_info["audio"] = {
+                "codec": audio_stream.get("codec_name", "unknown"),
+                "sample_rate": int(audio_stream.get("sample_rate", 0)),
+                "channels": int(audio_stream.get("channels", 0))
+            }
+            
         return video_info
-    
-    except subprocess.CalledProcessError as e:
-        logger.error(f"ffprobe error: {e}")
-        raise Exception(f"Failed to analyze video: {e}")
+        
     except Exception as e:
-        logger.error(f"Error getting video info: {e}")
-        raise
+        logger.error(f"Failed to get video info: {e}")
+        # Return minimal info if extraction fails
+        return {"duration": 0, "has_video": False, "has_audio": False}
 
 def extract_audio(video_path: str, audio_path: str) -> bool:
-    """Extract audio from video using ffmpeg"""
+    """Extract audio from video file using ffmpeg"""
     try:
         cmd = [
-            'ffmpeg', '-i', video_path,
-            '-vn',  # No video
-            '-acodec', 'pcm_s16le',  # PCM 16-bit little-endian
-            '-ar', '16000',  # 16kHz sample rate (optimal for Whisper)
-            '-ac', '1',  # Mono
-            '-y',  # Overwrite output file
+            "ffmpeg",
+            "-i", video_path,
+            "-vn",  # Disable video
+            "-acodec", "pcm_s16le",  # High quality WAV
+            "-ar", "16000",  # 16kHz sample rate (good for speech)
+            "-ac", "1",  # Mono
+            "-y",  # Overwrite output
             audio_path
         ]
         
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        logger.info(f"Audio extracted successfully: {audio_path}")
+        subprocess.run(cmd, check=True, capture_output=True)
+        logger.info(f"Audio extracted to {audio_path}")
         return True
         
-    except subprocess.CalledProcessError as e:
-        logger.error(f"ffmpeg error: {e.stderr}")
-        raise Exception(f"Failed to extract audio: {e.stderr}")
     except Exception as e:
-        logger.error(f"Error extracting audio: {e}")
-        raise
+        logger.error(f"Audio extraction failed: {e}")
+        return False
 
-def normalize_audio(input_path: str, output_path: str) -> bool:
-    """Normalize audio levels for better transcription"""
+def enhance_audio_for_speech(input_audio: str, output_audio: str) -> bool:
+    """Enhance audio for better speech recognition with ffmpeg"""
     try:
         cmd = [
-            'ffmpeg', '-i', input_path,
-            '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11',  # EBU R128 loudness normalization
-            '-ar', '16000',
-            '-ac', '1',
-            '-y',
-            output_path
+            "ffmpeg",
+            "-i", input_audio,
+            # Audio filtering for speech enhancement
+            "-af", "highpass=f=200,lowpass=f=3000,areverse,highpass=f=200,areverse",
+            # Normalize audio
+            "-filter:a", "volume=2.0",  # Increase volume
+            # Output settings
+            "-ar", "16000",  # 16kHz (standard for speech recognition)
+            "-ac", "1",  # Mono
+            "-acodec", "pcm_s16le",  # High quality WAV
+            "-y",  # Overwrite output
+            output_audio
         ]
         
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        logger.info(f"Audio normalized successfully: {output_path}")
+        subprocess.run(cmd, check=True, capture_output=True)
+        logger.info(f"Audio enhanced and saved to {output_audio}")
         return True
         
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Audio normalization error: {e.stderr}")
-        raise Exception(f"Failed to normalize audio: {e.stderr}")
+    except Exception as e:
+        logger.error(f"Audio enhancement failed: {e}")
+        # If enhancement fails, we'll just copy the original
+        try:
+            import shutil
+            shutil.copy(input_audio, output_audio)
+            logger.warning(f"Using unenhanced audio due to filter error: {e}")
+            return True
+        except Exception as copy_err:
+            logger.error(f"Failed to copy audio file: {copy_err}")
+            return False
 
-def enhance_audio_for_speech(input_path: str, output_path: str) -> bool:
-    """Apply audio enhancement specifically for speech recognition"""
-    try:
-        # Apply noise reduction and speech enhancement
-        cmd = [
-            'ffmpeg', '-i', input_path,
-            '-af', 'highpass=f=80,lowpass=f=8000,loudnorm=I=-16:TP=-1.5:LRA=11',
-            '-ar', '16000',
-            '-ac', '1',
-            '-y',
-            output_path
-        ]
-        
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        logger.info(f"Audio enhanced for speech: {output_path}")
-        return True
-        
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Audio enhancement error: {e.stderr}")
-        # If enhancement fails, fallback to basic extraction
-        return extract_audio(input_path, output_path)
-
-async def send_to_whisper_service(audio_path: str, session_id: str, participant_count: int):
+async def send_to_whisper_service(audio_path: str, session_id: str, participant_count: int, speaker_names: Optional[List[str]] = None):
     """Send processed audio to Whisper transcription service"""
     try:
         async with httpx.AsyncClient(timeout=300.0) as client:  # 5 minute timeout
@@ -191,6 +205,10 @@ async def send_to_whisper_service(audio_path: str, session_id: str, participant_
                     'session_id': session_id,
                     'participant_count': participant_count
                 }
+                
+                # Add speaker names if provided
+                if speaker_names and len(speaker_names) > 0:
+                    data['speaker_names'] = json.dumps(speaker_names)
                 
                 response = await client.post(
                     f"{WHISPER_SERVICE_URL}/transcribe",
@@ -209,7 +227,7 @@ async def send_to_whisper_service(audio_path: str, session_id: str, participant_
         logger.error(f"Error sending to Whisper service: {e}")
         raise
 
-async def process_video_async(file_path: str, session_id: str, participant_count: int):
+async def process_video_async(file_path: str, session_id: str, participant_count: int, speaker_names: Optional[List[str]] = None):
     """Process video file asynchronously"""
     try:
         logger.info(f"Starting video processing for session: {session_id}")
@@ -230,6 +248,7 @@ async def process_video_async(file_path: str, session_id: str, participant_count
                 "duration": duration,
                 "video_info": video_info,
                 "participant_count": participant_count,
+                "speaker_names": speaker_names,
                 "processed_at": datetime.utcnow().isoformat()
             })
         )
@@ -258,21 +277,15 @@ async def process_video_async(file_path: str, session_id: str, participant_count
         transcription_result = await send_to_whisper_service(
             enhanced_audio_path, 
             session_id, 
-            participant_count
+            participant_count,
+            speaker_names
         )
         
-        await send_progress_update(session_id, 100, "Video processing completed!", "completed")
-        
         logger.info(f"Video processing completed for session: {session_id}")
-        
-        # Clean up processed audio file after some time (background task)
-        asyncio.create_task(cleanup_files(enhanced_audio_path, delay=3600))  # 1 hour delay
-        
         return {
             "session_id": session_id,
-            "status": "completed",
-            "duration": duration,
-            "transcription_result": transcription_result
+            "status": "processing",
+            "message": "Sent to transcription service"
         }
         
     except Exception as e:
@@ -298,24 +311,129 @@ async def process_video_async(file_path: str, session_id: str, participant_count
         
         raise
 
-async def cleanup_files(file_path: str, delay: int = 3600):
-    """Clean up processed files after delay"""
-    await asyncio.sleep(delay)
+def download_from_minio(object_name: str, destination_path: str) -> bool:
+    """Download file from MinIO"""
+    from minio import Minio
+    from minio.error import S3Error
+    
     try:
-        if os.path.exists(file_path):
-            os.remove(file_path)
-            logger.info(f"Cleaned up file: {file_path}")
+        # Initialize MinIO client
+        minio_client = Minio(
+            MINIO_ENDPOINT,
+            access_key=MINIO_ACCESS_KEY,
+            secret_key=MINIO_SECRET_KEY,
+            secure=False  # Change to True for HTTPS
+        )
+        
+        # Make sure the directory exists
+        os.makedirs(os.path.dirname(destination_path), exist_ok=True)
+        
+        # Download the object
+        minio_client.fget_object(MINIO_BUCKET, object_name, destination_path)
+        logger.info(f"Downloaded {object_name} to {destination_path}")
+        return True
+        
+    except S3Error as e:
+        logger.error(f"MinIO error downloading {object_name}: {e}")
+        return False
     except Exception as e:
-        logger.error(f"Error cleaning up file {file_path}: {e}")
+        logger.error(f"Error downloading from MinIO: {e}")
+        return False
+
+def process_upload_message(ch, method, properties, body):
+    """Process message from RabbitMQ"""
+    try:
+        message = json.loads(body)
+        logger.info(f"Received message: {message}")
+        
+        session_id = message.get("session_id")
+        object_name = message.get("object_name")
+        original_filename = message.get("original_filename")
+        
+        if not session_id or not object_name:
+            logger.error("Invalid message: missing session_id or object_name")
+            ch.basic_ack(delivery_tag=method.delivery_tag)
+            return
+            
+        # Create download path
+        download_path = os.path.join(TEMP_DIR, f"{session_id}_{original_filename}")
+        
+        # Download file from MinIO
+        success = download_from_minio(object_name, download_path)
+        if not success:
+            logger.error(f"Failed to download {object_name}")
+            ch.basic_ack(delivery_tag=method.delivery_tag)
+            return
+            
+        # Get participant count and speaker names from Redis if available
+        metadata = None
+        try:
+            metadata_raw = redis_client.get(f"upload_metadata:{session_id}")
+            if metadata_raw:
+                metadata = json.loads(metadata_raw)
+        except Exception as e:
+            logger.error(f"Error getting metadata from Redis: {e}")
+            
+        participant_count = 2  # Default
+        speaker_names = None
+        
+        if metadata:
+            participant_count = metadata.get("participant_count", 2)
+            speaker_names = metadata.get("speaker_names")
+        
+        # Start processing
+        asyncio.run(process_video_async(download_path, session_id, participant_count, speaker_names))
+        
+        # Acknowledge message
+        ch.basic_ack(delivery_tag=method.delivery_tag)
+        
+    except Exception as e:
+        logger.error(f"Error processing message: {e}")
+        # Acknowledge to avoid reprocessing (in production you might want to retry)
+        ch.basic_ack(delivery_tag=method.delivery_tag)
+
+def start_rabbitmq_consumer():
+    """Start RabbitMQ consumer in a separate thread"""
+    try:
+        credentials = pika.PlainCredentials(RABBITMQ_USER, RABBITMQ_PASS)
+        parameters = pika.ConnectionParameters(
+            host=RABBITMQ_HOST,
+            port=RABBITMQ_PORT,
+            credentials=credentials,
+            heartbeat=600,  # 10 minutes heartbeat to keep connection alive
+            blocked_connection_timeout=300  # 5 minutes timeout
+        )
+        
+        connection = pika.BlockingConnection(parameters)
+        channel = connection.channel()
+        
+        # Declare queue
+        channel.queue_declare(queue=VIDEO_PROCESSING_QUEUE, durable=True)
+        
+        # Set prefetch count to avoid overloading
+        channel.basic_qos(prefetch_count=1)
+        
+        # Set up consumer
+        channel.basic_consume(
+            queue=VIDEO_PROCESSING_QUEUE,
+            on_message_callback=process_upload_message
+        )
+        
+        logger.info(f"Started RabbitMQ consumer, listening for messages on {VIDEO_PROCESSING_QUEUE}")
+        
+        # Start consuming
+        channel.start_consuming()
+        
+    except Exception as e:
+        logger.error(f"Error starting RabbitMQ consumer: {e}")
+        # In production, add retry mechanism
 
 # API Routes
 @app.post("/process")
 async def process_video(request: ProcessRequest, background_tasks: BackgroundTasks):
-    """Process video file and extract audio for transcription"""
-    
-    # Validate file exists
+    """Process a video file"""
     if not os.path.exists(request.file_path):
-        raise HTTPException(status_code=404, detail="Video file not found")
+        raise HTTPException(status_code=404, detail="File not found")
     
     # Check if already processing
     processing_key = f"processing:{request.session_id}"
@@ -325,19 +443,26 @@ async def process_video(request: ProcessRequest, background_tasks: BackgroundTas
     # Mark as processing
     redis_client.setex(processing_key, 3600, "processing")  # 1 hour expiration
     
-    # Start background processing
-    background_tasks.add_task(
-        process_video_async,
-        request.file_path,
-        request.session_id,
-        request.participant_count
-    )
-    
-    return {
-        "message": "Video processing started",
-        "session_id": request.session_id,
-        "status": "processing"
-    }
+    try:
+        # Start background processing
+        background_tasks.add_task(
+            process_video_async,
+            request.file_path,
+            request.session_id,
+            request.participant_count,
+            request.speaker_names
+        )
+        
+        return {
+            "message": "Processing started",
+            "session_id": request.session_id,
+            "status": "processing"
+        }
+        
+    except Exception as e:
+        # Clean up on error
+        redis_client.delete(processing_key)
+        raise HTTPException(status_code=500, detail=f"Failed to start processing: {str(e)}")
 
 @app.get("/status/{session_id}")
 async def get_processing_status(session_id: str):
@@ -372,19 +497,15 @@ async def get_processing_status(session_id: str):
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
-    # Check if ffmpeg is available
-    try:
-        subprocess.run(['ffmpeg', '-version'], capture_output=True, check=True)
-        ffmpeg_available = True
-    except:
-        ffmpeg_available = False
-    
-    return {
-        "status": "healthy",
-        "service": "video-processor",
-        "ffmpeg_available": ffmpeg_available
-    }
+    """Health check endpoint."""
+    return {"status": "ok"}
+
+@app.on_event("startup")
+async def startup_event():
+    """Start background consumer thread on startup"""
+    # Start RabbitMQ consumer in a separate thread
+    consumer_thread = threading.Thread(target=start_rabbitmq_consumer, daemon=True)
+    consumer_thread.start()
 
 if __name__ == "__main__":
     import uvicorn

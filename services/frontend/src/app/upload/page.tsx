@@ -3,7 +3,7 @@
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/providers/auth-provider'
-import SharedUpload from '@/components/SharedUpload'
+import { SharedUpload } from '@/components/SharedUpload'
 
 export default function UploadPage() {
   const router = useRouter()
@@ -21,7 +21,7 @@ export default function UploadPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-      <SharedUpload />
+      <SharedUpload $variant="landing" isAuthenticated={isAuthenticated} />
     </div>
   )
 }

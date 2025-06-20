@@ -61,6 +61,7 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+      MINIO_BROWSER_REDIRECT_URL: http://localhost:9001
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -79,15 +80,9 @@ services:
     build: 
       context: ./services
       dockerfile: auth-service/Dockerfile
+    env_file: .env
     environment:
       - DATABASE_URL=${DATABASE_URL}
-      - REDIS_URL=${REDIS_URL}
-      - JWT_SECRET=${JWT_SECRET}
-      - JWT_ALGORITHM=${JWT_ALGORITHM}
-      - JWT_EXPIRE_MINUTES=${JWT_EXPIRE_MINUTES}
-      - ADMIN_EMAIL=${ADMIN_EMAIL}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
-      - ADMIN_USERNAME=${ADMIN_USERNAME}
     ports:
       - "8000:8000"
     depends_on:
@@ -108,17 +103,9 @@ services:
     build:
       context: ./services
       dockerfile: file-uploader/Dockerfile
-    environment:
-      - RABBITMQ_URL=${RABBITMQ_URL}
-      - MINIO_ENDPOINT=${MINIO_ENDPOINT}
-      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
-      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
-      - MINIO_BUCKET=${MINIO_BUCKET}
-      - REDIS_URL=${REDIS_URL}
-      - MAX_FILE_SIZE=${MAX_FILE_SIZE}
-      - CHUNK_SIZE=${CHUNK_SIZE}
+    env_file: .env
     ports:
-      - "8001:8000"
+      - "8002:8002"
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -129,8 +116,10 @@ services:
     restart: unless-stopped
     volumes:
       - upload_temp:/tmp/uploads
+    environment:
+      - EXTERNAL_MINIO_HOST=localhost:9000
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -141,13 +130,7 @@ services:
     build:
       context: ./services
       dockerfile: video-processor/Dockerfile
-    environment:
-      - RABBITMQ_URL=${RABBITMQ_URL}
-      - MINIO_ENDPOINT=${MINIO_ENDPOINT}
-      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
-      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
-      - MINIO_BUCKET=${MINIO_BUCKET}
-      - REDIS_URL=${REDIS_URL}
+    env_file: .env
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -171,16 +154,9 @@ services:
     build:
       context: ./services
       dockerfile: whisper-transcriber/Dockerfile
+    env_file: .env
     environment:
-      - RABBITMQ_URL=${RABBITMQ_URL}
-      - MINIO_ENDPOINT=${MINIO_ENDPOINT}
-      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
-      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
-      - MINIO_BUCKET=${MINIO_BUCKET}
-      - REDIS_URL=${REDIS_URL}
-      - HUGGINGFACE_TOKEN=${HUGGINGFACE_TOKEN}
-      - WHISPER_MODEL=${WHISPER_MODEL}
-      - DEVICE=${DEVICE}
+      - DEVICE=${DEVICE:-cpu}
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -206,6 +182,7 @@ services:
       context: ./services/frontend
       dockerfile: Dockerfile
       target: development
+    env_file: .env
     ports:
       - "3000:3000"
     volumes:
@@ -216,8 +193,8 @@ services:
       - NODE_ENV=development
       - WATCHPACK_POLLING=true
       - NEXT_TELEMETRY_DISABLED=1
+      - FILE_UPLOADER_URL=http://file-uploader:8002
       - AUTH_SERVICE_URL=http://auth-service:8000
-      - FILE_UPLOADER_URL=http://file-uploader:8000
     networks:
       - whisper-network
     depends_on:
