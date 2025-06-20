@@ -131,6 +131,8 @@ services:
       context: ./services
       dockerfile: video-processor/Dockerfile
     env_file: .env
+    environment:
+      - WHISPER_SERVICE_URL=http://whisper-transcriber:8003
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -157,6 +159,10 @@ services:
     env_file: .env
     environment:
       - DEVICE=${DEVICE:-cpu}
+      - BATCH_SIZE=${WHISPER_BATCH_SIZE:-4}
+      - COMPUTE_TYPE=${COMPUTE_TYPE:-float32}
+      - MIN_SPEAKERS=${MIN_SPEAKERS:-1}
+      - MAX_SPEAKERS=${MAX_SPEAKERS:-5}
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -164,16 +170,23 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    restart: unless-stopped
+    restart: on-failure
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 5
+        window: 120s
+    ports:
+      - "8003:8003"
     volumes:
       - transcription_temp:/tmp/transcription
       - whisper_models:/app/models
-    deploy:
-      resources:
-        limits:
-          memory: 4G
-        reservations:
-          memory: 2G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     networks:
       - whisper-network
 
@@ -195,6 +208,7 @@ services:
       - NEXT_TELEMETRY_DISABLED=1
       - FILE_UPLOADER_URL=http://file-uploader:8002
       - AUTH_SERVICE_URL=http://auth-service:8000
+      - WHISPER_TRANSCRIBER_URL=http://whisper-transcriber:8003
     networks:
       - whisper-network
     depends_on:

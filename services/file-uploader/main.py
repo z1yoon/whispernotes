@@ -6,6 +6,7 @@ from datetime import timedelta, datetime
 from urllib.parse import urlparse
 import io
 import time
+import tempfile
 
 from fastapi import FastAPI, HTTPException, Request, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
@@ -130,6 +131,11 @@ class MultipartInitResponse(BaseModel):
     upload_id: str
     object_name: str
 
+class ProgressUpdate(BaseModel):
+    progress: float = Field(..., ge=0, le=100, description="Progress percentage between 0 and 100")
+    message: str = Field(..., description="Status message about current progress")
+    status: str = Field(..., description="Status code (processing, completed, error, etc.)")
+
 # --- RabbitMQ Publisher ---
 def publish_to_video_processor(session_id: str, object_name: str, filename: str):
     """Publish a message to RabbitMQ to trigger video processing."""
@@ -201,12 +207,9 @@ async def initialize_upload(request: UploadInitializationRequest):
     object_name = f"{session_id}/{safe_filename}"
 
     try:
-        # For proper multipart uploads, we'll initialize a real multipart upload in MinIO
-        upload_id = minio_client.create_multipart_upload(
-            MINIO_BUCKET, 
-            object_name,
-            metadata={"original-filename": request.filename}
-        )
+        # Generate a unique upload_id for the multipart upload
+        # MinIO Python SDK doesn't have create_multipart_upload, we just need to generate an ID
+        upload_id = str(uuid.uuid4())
         
         logger.info(f"Initialized multipart upload for {object_name} with session ID: {session_id}, upload_id: {upload_id}")
 
@@ -250,12 +253,17 @@ async def get_presigned_upload_url(session_id: str, request: PresignedUrlRequest
     
     try:
         # Generate a presigned URL specifically for this part of the multipart upload
-        url = minio_client.presigned_upload_part(
+        # Using get_presigned_url with query parameters for multipart upload parts
+        extra_query_params = {
+            'uploadId': upload_id,
+            'partNumber': str(request.part_number)
+        }
+        url = minio_client.get_presigned_url(
+            "PUT",
             bucket_name=MINIO_BUCKET,
             object_name=object_name,
-            upload_id=upload_id,
-            part_number=request.part_number,
-            expires=timedelta(hours=1)
+            expires=timedelta(hours=1),
+            extra_query_params=extra_query_params
         )
         
         # Log the URL details
@@ -295,28 +303,35 @@ async def upload_part(session_id: str, part_number: int, file: UploadFile = File
         file_size = len(content)
         logger.info(f"Received part {part_number} for session {session_id}, size: {file_size} bytes")
         
-        # Upload the part to MinIO
-        etag = minio_client.put_object_part(
+        # Generate part key for storage
+        part_key = f"{object_name}.part{part_number}"
+        
+        # Ensure bucket exists
+        if not minio_client.bucket_exists(MINIO_BUCKET):
+            logger.info(f"Creating bucket {MINIO_BUCKET}")
+            minio_client.make_bucket(MINIO_BUCKET)
+        
+        # Upload part to MinIO
+        result = minio_client.put_object(
             bucket_name=MINIO_BUCKET,
-            object_name=object_name,
-            upload_id=upload_id,
-            part_number=part_number,
+            object_name=part_key,
             data=io.BytesIO(content),
-            length=file_size
+            length=file_size,
+            content_type="application/octet-stream"
         )
         
-        logger.info(f"Successfully uploaded part {part_number} for session {session_id}, etag: {etag}")
+        logger.info(f"Successfully uploaded part {part_number} for session {session_id}, etag: {result.etag}")
         
         # Update part information in Redis
         parts = session_data.get("parts", [])
-        parts.append({"part_number": part_number, "etag": etag})
+        parts.append({"part_number": part_number, "etag": result.etag})
         session_data["parts"] = parts
         redis_client.set(f"upload_session:{session_id}", json.dumps(session_data), ex=86400)
         
         return {
             "status": "success",
             "part_number": part_number,
-            "etag": etag,
+            "etag": result.etag,
             "size": file_size
         }
     except Exception as e:
@@ -336,40 +351,98 @@ async def complete_upload(session_id: str, request: CompletionRequest):
     session_data = json.loads(session_data_raw)
     object_name = session_data.get("object_name")
     upload_id = session_data.get("upload_id")
+    filename = session_data.get("filename", "")
+    content_type = session_data.get("content_type", "application/octet-stream")
     
     if not object_name or not upload_id:
          raise HTTPException(status_code=400, detail="Invalid session data.")
          
     try:
-        # Complete the multipart upload
-        result = minio_client.complete_multipart_upload(
-            bucket_name=MINIO_BUCKET,
-            object_name=object_name,
-            upload_id=upload_id,
-            parts=request.parts
-        )
+        # Get the parts data from Redis
+        all_parts = session_data.get("parts", [])
+        if not all_parts:
+            raise HTTPException(status_code=400, detail="No parts found for this upload")
+            
+        # Sort parts by part number to ensure correct order
+        all_parts.sort(key=lambda p: p["part_number"])
         
-        logger.info(f"Multipart upload completed for {object_name} with etag: {result.etag}")
-        
-        # Update session data
-        session_data["upload_complete"] = True
-        session_data["etag"] = result.etag
-        session_data["completion_time"] = time.time()
-        redis_client.set(f"upload_session:{session_id}", json.dumps(session_data), ex=86400)
-        
-        # Trigger video processing
-        publish_to_video_processor(
-            session_id=session_id,
-            object_name=object_name,
-            filename=session_data.get("filename", "")
-        )
-        
-        return {
-            "status": "success",
-            "message": "Upload completed successfully",
-            "object_name": object_name,
-            "etag": result.etag
-        }
+        # Check if parts are consecutively numbered
+        expected_parts = list(range(1, len(all_parts) + 1))
+        received_parts = [p["part_number"] for p in all_parts]
+        if expected_parts != received_parts:
+            logger.warning(f"Parts may not be consecutive: expected {expected_parts}, got {received_parts}")
+            
+        # Create a temporary file to combine all parts
+        with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+            temp_path = temp_file.name
+            
+        try:
+            # Download all parts and combine them
+            for part in all_parts:
+                part_key = f"{object_name}.part{part['part_number']}"
+                try:
+                    # Try to download each part from MinIO
+                    data = minio_client.get_object(MINIO_BUCKET, part_key)
+                    with open(temp_path, 'ab') as f:
+                        for d in data.stream(32*1024):
+                            f.write(d)
+                except Exception as e:
+                    logger.error(f"Error downloading part {part['part_number']}: {e}")
+                    raise HTTPException(
+                        status_code=500, 
+                        detail=f"Failed to download part {part['part_number']}"
+                    )
+                    
+            # Upload the combined file to MinIO
+            file_size = os.path.getsize(temp_path)
+            with open(temp_path, 'rb') as f:
+                result = minio_client.put_object(
+                    bucket_name=MINIO_BUCKET,
+                    object_name=object_name,
+                    data=f,
+                    length=file_size,
+                    content_type=content_type
+                )
+                
+            logger.info(f"Multipart upload completed for {object_name} with etag: {result.etag}")
+            
+            # Delete the temporary file
+            os.unlink(temp_path)
+            
+            # Clean up the parts
+            for part in all_parts:
+                try:
+                    part_key = f"{object_name}.part{part['part_number']}"
+                    minio_client.remove_object(MINIO_BUCKET, part_key)
+                except Exception as e:
+                    logger.warning(f"Failed to remove part {part_key}: {e}")
+            
+            # Update session data
+            session_data["upload_complete"] = True
+            session_data["etag"] = result.etag
+            session_data["completion_time"] = time.time()
+            redis_client.set(f"upload_session:{session_id}", json.dumps(session_data), ex=86400)
+            
+            # Trigger video processing
+            publish_to_video_processor(
+                session_id=session_id,
+                object_name=object_name,
+                filename=filename
+            )
+            
+            return {
+                "status": "success",
+                "message": "Upload completed successfully",
+                "object_name": object_name,
+                "etag": result.etag
+            }
+        finally:
+            # Make sure we clean up the temporary file if it still exists
+            if os.path.exists(temp_path):
+                try:
+                    os.unlink(temp_path)
+                except Exception as e:
+                    logger.warning(f"Failed to delete temporary file {temp_path}: {e}")
     except Exception as e:
         logger.error(f"Error completing multipart upload: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to complete upload: {str(e)}")
@@ -452,29 +525,152 @@ async def direct_upload_file(session_id: str, file: UploadFile = File(...)):
 @app.get("/api/v1/uploads/{session_id}/status")
 async def get_upload_status(session_id: str):
     """
-    Check the status of an upload session.
+    Get the status of an upload by session ID.
     """
-    session_data_raw = redis_client.get(f"upload_session:{session_id}")
-    if not session_data_raw:
+    # Key for storing upload initialization data
+    init_key = f"upload_init:{session_id}"
+    
+    # Get initialization data
+    init_data = redis_client.get(init_key)
+    if not init_data:
+        # If no init data, check if this is a direct upload with just a status
+        status_key = f"upload_progress:{session_id}"
+        status_data = redis_client.get(status_key)
+        if status_data:
+            return JSONResponse(content=json.loads(status_data))
         raise HTTPException(status_code=404, detail="Upload session not found.")
+        
+    init_data = json.loads(init_data)
+    object_name = init_data.get("object_name")
     
-    session_data = json.loads(session_data_raw)
+    # Check for completion status
+    status_key = f"upload_complete:{session_id}"
+    status_data = redis_client.get(status_key)
     
-    # Calculate upload progress based on parts
-    total_parts = len(session_data.get("parts", []))
-    is_complete = session_data.get("upload_complete", False)
+    if status_data:
+        status_data = json.loads(status_data)
+        return JSONResponse(content={
+            "session_id": session_id,
+            "object_name": object_name,
+            "status": "completed",
+            "url": f"/api/v1/files/{object_name}",  # This would be the URL to access the file
+        })
     
-    status = "completed" if is_complete else "in_progress" if total_parts > 0 else "initialized"
+    # If not complete, check for progress status
+    progress_key = f"upload_progress:{session_id}"
+    progress_data = redis_client.get(progress_key)
     
-    return {
+    if progress_data:
+        progress_info = json.loads(progress_data)
+        return JSONResponse(content={
+            "session_id": session_id,
+            "object_name": object_name,
+            "status": progress_info.get("status", "processing"),
+            "progress": progress_info.get("progress", 0),
+            "message": progress_info.get("message", "Processing..."),
+        })
+    
+    # If neither complete nor in progress, assume it's still in the upload phase
+    return JSONResponse(content={
         "session_id": session_id,
-        "status": status,
-        "object_name": session_data.get("object_name"),
-        "total_parts": total_parts,
-        "is_complete": is_complete,
-        "etag": session_data.get("etag") if is_complete else None
-    }
+        "object_name": object_name,
+        "status": "uploading",
+        "progress": 0,
+        "message": "Uploading file...",
+    })
 
+
+@app.post("/upload/progress/{session_id}")
+async def update_progress(session_id: str, update: ProgressUpdate):
+    """
+    Update progress status for a session, used by other services to report status
+    """
+    try:
+        redis_key = f"upload_progress:{session_id}"
+        progress_data = {
+            "progress": update.progress,
+            "message": update.message,
+            "status": update.status,
+            "updated_at": datetime.now().isoformat()
+        }
+        
+        # Store in Redis with 24 hour expiry
+        redis_client.setex(
+            redis_key,
+            3600 * 24,  # 24 hour TTL
+            json.dumps(progress_data)
+        )
+        
+        logger.info(f"Updated progress for session {session_id}: {update.progress}% - {update.message}")
+        return {"success": True}
+    except Exception as e:
+        logger.error(f"Failed to update progress for session {session_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update progress: {str(e)}")
+
+# Alternate route for compatibility
+@app.post("/upload/complete-upload")
+async def update_progress_alt(request: Request):
+    """
+    Alternative progress update endpoint for backward compatibility
+    """
+    try:
+        data = await request.json()
+        session_id = data.get("session_id")
+        if not session_id:
+            raise HTTPException(status_code=400, detail="Missing session_id parameter")
+            
+        redis_key = f"upload_progress:{session_id}"
+        progress_data = {
+            "progress": data.get("progress", 0),
+            "message": data.get("message", "Processing..."),
+            "status": data.get("status", "processing"),
+            "updated_at": datetime.now().isoformat()
+        }
+        
+        # Store in Redis with 24 hour expiry
+        redis_client.setex(
+            redis_key,
+            3600 * 24,  # 24 hour TTL
+            json.dumps(progress_data)
+        )
+        
+        logger.info(f"Updated progress via alt route for session {session_id}: {data.get('progress', 0)}% - {data.get('message', 'Processing...')}")
+        return {"success": True}
+    except Exception as e:
+        logger.error(f"Failed to update progress via alt route: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update progress: {str(e)}")
+
+@app.post("/upload/complete")
+async def handle_completion(request: Request):
+    """
+    Handle completion notification compatibility endpoint
+    """
+    try:
+        data = await request.json()
+        session_id = data.get("session_id")
+        if not session_id:
+            raise HTTPException(status_code=400, detail="Missing session_id parameter")
+            
+        redis_key = f"upload_progress:{session_id}"
+        progress_data = {
+            "progress": 100,
+            "message": data.get("message", "Processing complete"),
+            "status": data.get("status", "completed"),
+            "updated_at": datetime.now().isoformat()
+        }
+        
+        # Store in Redis with 24 hour expiry
+        redis_client.setex(
+            redis_key,
+            3600 * 24,  # 24 hour TTL
+            json.dumps(progress_data)
+        )
+        
+        logger.info(f"Marked session {session_id} as complete")
+        return {"success": True}
+    except Exception as e:
+        logger.error(f"Failed to handle completion: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to handle completion: {str(e)}")
 
 @app.get("/health")
 async def health_check():

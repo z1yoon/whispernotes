@@ -1,25 +1,82 @@
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException, BackgroundTasks
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 import os
-import whisperx
-import torch
-import logging
+import gc
 import json
+import time
+import torch
+import asyncio
+import whisperx
+import tempfile
+import threading
 import redis
 import httpx
-from datetime import datetime
-from typing import Optional, List, Dict, Union
-import tempfile
-import asyncio
-import gc
-import platform
+import logging
+from datetime import datetime, timedelta
+from typing import List, Dict, Optional, Union
+from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Form, Depends
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+
+# Monkey patch for numpy NaN issue with pyannote (NumPy 2.0 removed np.NaN)
+import numpy as np
+if not hasattr(np, 'NaN'):
+    np.NaN = np.nan
+
+# Monkey patch for PyTorch 2.6+ weights_only issue with PyAnnote models
+import torch.serialization
+try:
+    # Add omegaconf.listconfig.ListConfig to safe globals for PyTorch 2.6+
+    import omegaconf
+    from omegaconf import listconfig
+    
+    # Add specific classes to the safe globals list
+    safe_classes = [
+        omegaconf.listconfig.ListConfig,
+        omegaconf.dictconfig.DictConfig,
+    ]
+    
+    # Check if add_safe_globals exists (PyTorch 2.6+)
+    if hasattr(torch.serialization, 'add_safe_globals'):
+        torch.serialization.add_safe_globals(safe_classes)
+except (ImportError, AttributeError) as e:
+    # Either omegaconf is not installed or PyTorch version doesn't have add_safe_globals
+    logger.warning(f"Could not set up PyTorch safe globals for omegaconf: {e}")
+    pass
+
+# Original torch.load function
+_original_torch_load = torch.load
+
+# Patched torch.load function that always sets weights_only=False for PyAnnote models
+def patched_torch_load(f, map_location=None, pickle_module=None, **kwargs):
+    # Force weights_only=False for PyAnnote models
+    if 'weights_only' not in kwargs:
+        kwargs['weights_only'] = False
+    return _original_torch_load(f, map_location=map_location, pickle_module=pickle_module, **kwargs)
+
+# Replace torch.load with our patched version
+torch.load = patched_torch_load
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger("main")
 
-app = FastAPI(title="WhisperNotes Transcription Service", version="1.0.0")
+# Initialize FastAPI app
+app = FastAPI()
+
+# Configuration
+DEVICE = os.environ.get("DEVICE", "cpu")
+DEFAULT_LANGUAGE = os.getenv("DEFAULT_LANGUAGE", "en")
+LLM_SERVICE_URL = os.getenv("LLM_SERVICE_URL", "http://llm-service:8004")
+UI_SERVICE_URL = os.getenv("UI_SERVICE_URL", "http://frontend:3000")
+
+# Redis for caching and progress tracking
+redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
+redis_client = redis.from_url(redis_url, decode_responses=True)
+
+# Model caching
+models = {}
 
 # CORS middleware
 app.add_middleware(
@@ -31,20 +88,15 @@ app.add_middleware(
 )
 
 # Configuration
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-COMPUTE_TYPE = "float16" if DEVICE == "cuda" else "int8"
-BATCH_SIZE = 16
-HF_TOKEN = os.getenv("HF_TOKEN")  # Hugging Face token for speaker diarization
+COMPUTE_TYPE = os.environ.get("COMPUTE_TYPE", "float16" if DEVICE == "cuda" else "float32")
+BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "8"))  # Default batch size of 8
+HF_TOKEN = os.environ.get("HF_TOKEN", None)
+MIN_SPEAKERS = int(os.environ.get("MIN_SPEAKERS", "1"))
+MAX_SPEAKERS = int(os.environ.get("MAX_SPEAKERS", "5"))
+SAMPLE_RATE = 16000  # Default sample rate for audio processing
 
 # Check if device is CPU for mock diarization decision
-SHOULD_MOCK = DEVICE == "cpu"
-
-# Redis for caching and progress tracking
-redis_client = redis.Redis(host=os.getenv("REDIS_HOST", "localhost"), port=6379, decode_responses=True)
-
-# Service URLs
-LLM_SERVICE_URL = os.getenv("LLM_SERVICE_URL", "http://llm-service:8004")
-FILE_UPLOADER_URL = os.getenv("FILE_UPLOADER_URL", "http://file-uploader:8002")
+SHOULD_MOCK = os.environ.get("SHOULD_MOCK_DIARIZATION", "").lower() == "true" or DEVICE != "cuda"
 
 # RabbitMQ configuration
 RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "rabbitmq")
@@ -54,8 +106,8 @@ RABBITMQ_PASS = os.getenv("RABBITMQ_DEFAULT_PASS", "password")
 TRANSCRIPTION_QUEUE = "transcription_queue"
 TRANSCRIPTION_RESULTS_QUEUE = "transcription_results_queue"
 
-# Global model storage
-models = {}
+# Service URLs
+FILE_UPLOADER_URL = os.getenv("FILE_UPLOADER_URL", "http://file-uploader:8002")
 
 # Pydantic models
 class TranscriptionRequest(BaseModel):
@@ -84,40 +136,164 @@ class SpeakerUpdateRequest(BaseModel):
 async def send_progress_update(session_id: str, progress: float, message: str, status: str):
     """Send progress update to file uploader service"""
     try:
+        # First try the new endpoint path
         async with httpx.AsyncClient(timeout=10.0) as client:
-            await client.post(
-                f"{FILE_UPLOADER_URL}/upload/progress/{session_id}",
-                json={
-                    "progress": progress,
-                    "message": message,
-                    "status": status
-                }
-            )
+            try:
+                response = await client.post(
+                    f"{FILE_UPLOADER_URL}/upload/progress/{session_id}",
+                    json={
+                        "progress": progress,
+                        "message": message,
+                        "status": status
+                    }
+                )
+                
+                # If 404, try the alternative endpoint
+                if response.status_code == 404:
+                    logger.info(f"Progress endpoint returned 404, trying alternative endpoint")
+                    response = await client.post(
+                        f"{FILE_UPLOADER_URL}/upload/complete-upload",
+                        json={
+                            "session_id": session_id,
+                            "progress": progress,
+                            "message": message,
+                            "status": status
+                        }
+                    )
+                
+                # Check if any of our attempts succeeded
+                if response.status_code >= 400:
+                    logger.warning(f"Failed to update progress: {response.status_code} - {response.text}")
+            except Exception as req_err:
+                logger.warning(f"Request error sending progress update: {req_err}")
+                
+                # Try one more fallback endpoint
+                await client.post(
+                    f"{FILE_UPLOADER_URL}/upload/complete",
+                    json={
+                        "session_id": session_id,
+                        "status": status,
+                        "message": message
+                    }
+                )
     except Exception as e:
         logger.error(f"Failed to send progress update: {e}")
+        
+        # Store progress in Redis as fallback
+        try:
+            redis_client.setex(
+                f"transcription_progress:{session_id}",
+                3600,  # 1 hour expiry
+                json.dumps({
+                    "progress": progress,
+                    "message": message,
+                    "status": status,
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+            )
+        except Exception as redis_err:
+            logger.error(f"Failed to store progress in Redis: {redis_err}")
+
+
 
 def load_whisper_model(model_name="large-v3"):
     """Load WhisperX model, with caching"""
     if "whisper" not in models:
-        logger.info(f"Loading WhisperX model: {model_name}")
-        models["whisper"] = whisperx.load_model(
-            model_name, 
-            device=DEVICE, 
-            compute_type=COMPUTE_TYPE
-        )
+        try:
+            logger.info(f"Loading WhisperX model: {model_name}")
+            # Use compute_type based on device
+            compute_type = COMPUTE_TYPE if DEVICE == "cuda" else "int8"
+            models["whisper"] = whisperx.load_model(
+                model_name, 
+                device=DEVICE, 
+                compute_type=compute_type,
+                language=DEFAULT_LANGUAGE if DEFAULT_LANGUAGE else None,
+                local_files_only=False  # Set to True if you want to use only local files
+            )
+            logger.info(f"Successfully loaded {model_name} model on {DEVICE} with {compute_type} precision")
+        except Exception as e:
+            logger.error(f"Failed to load model {model_name}: {e}")
+            # Try with a smaller model as fallback
+            if model_name not in ["tiny", "base"]:
+                logger.info("Trying to load a smaller model instead...")
+                try:
+                    if model_name in ["large-v3", "large-v2", "large"]:
+                        fallback = "medium"
+                    else:
+                        fallback = "base"
+                    models["whisper"] = whisperx.load_model(
+                        fallback,
+                        device=DEVICE,
+                        compute_type="int8",  # Always use int8 for fallback
+                        language=DEFAULT_LANGUAGE if DEFAULT_LANGUAGE else None
+                    )
+                    logger.info(f"Successfully loaded fallback model {fallback}")
+                except Exception as fallback_error:
+                    logger.error(f"Failed to load fallback model: {fallback_error}")
+                    raise RuntimeError("Could not load any whisper model, even fallback models failed")
     return models["whisper"]
 
 def detect_language(audio_path: str, model) -> str:
     """Detect audio language using WhisperX"""
     try:
+        logger.info(f"Detecting language for: {audio_path}")
         # Load audio
         audio = whisperx.load_audio(audio_path)
         
-        # Detect language
-        result = model.detect_language(audio)
-        language_code = result[0]
+        # Use the model to detect language
+        # WhisperX includes language detection in model.transcribe with initial_prompt=None
+        try:
+            logger.info("Using whisperx model.transcribe for language detection")
+            # Only process first 30 seconds to speed up language detection
+            audio_30s = audio[:int(SAMPLE_RATE * 30)] if len(audio) > SAMPLE_RATE * 30 else audio
+            
+            result = model.transcribe(
+                audio_30s, 
+                batch_size=8,  # Small batch size for quick processing
+                language=None,  # Don't provide language to trigger detection
+                task="transcribe"
+            )
+            
+            # Extract detected language
+            if isinstance(result, dict) and "language" in result:
+                language_code = result["language"]
+            else:
+                # Fallback to direct detection if transcribe didn't return language
+                language_detection_result = model.detect_language(audio_30s)
+                
+                # Check what kind of result we got
+                if isinstance(language_detection_result, dict) and "language" in language_detection_result:
+                    language_code = language_detection_result["language"]
+                elif isinstance(language_detection_result, tuple) and len(language_detection_result) > 0:
+                    language_code = language_detection_result[0]
+                elif isinstance(language_detection_result, str):
+                    language_code = language_detection_result
+                else:
+                    logger.warning(f"Unknown language detection result format: {type(language_detection_result)}, using 'en' as default")
+                    language_code = "en"
+        except Exception as transcribe_err:
+            # Fallback to direct detection if transcribe method fails
+            logger.warning(f"Failed to detect language through transcribe: {transcribe_err}")
+            language_detection_result = model.detect_language(audio)
+            
+            # Extract language from result
+            if isinstance(language_detection_result, dict) and "language" in language_detection_result:
+                language_code = language_detection_result["language"]
+            elif isinstance(language_detection_result, tuple) and len(language_detection_result) > 0:
+                language_code = language_detection_result[0]
+            elif isinstance(language_detection_result, str):
+                language_code = language_detection_result
+            else:
+                logger.warning(f"Unknown language detection result format: {type(language_detection_result)}, using 'en' as default")
+                language_code = "en"
         
+        # Validate the language code is recognized
+        if not language_code or len(language_code) < 2:
+            logger.warning(f"Invalid language code detected: '{language_code}', using 'en' as default")
+            language_code = "en"
+            
         logger.info(f"Detected language: {language_code}")
+        print(f"Detected language: {language_code} in first 30s of audio...")
         return language_code
         
     except Exception as e:
@@ -173,16 +349,79 @@ def transcribe_audio(audio_path: str, model, language: str = None):
     try:
         logger.info(f"Starting transcription for: {audio_path}")
         
-        result = whisperx.transcribe(
-            audio_path, 
-            model, 
-            batch_size=BATCH_SIZE,
-            language=language
-        )
+        # Load audio using whisperx
+        audio = whisperx.load_audio(audio_path)
         
-        logger.info("Transcription completed")
-        return result
+        # Free up memory before intensive operations
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            gc.collect()
         
+        # Transcribe using WhisperX approach with additional memory safeguards
+        try:
+            # Use a smaller batch size if on CPU
+            batch_size = BATCH_SIZE if DEVICE == "cuda" else max(1, BATCH_SIZE // 4)
+            logger.info(f"Using batch size: {batch_size}")
+            
+            result = model.transcribe(
+                audio, 
+                batch_size=batch_size,
+                language=language,
+                task="transcribe"  # Force transcribe task
+            )
+            
+            # If alignment is available and on CUDA, try to align for better word-level timestamps
+            if DEVICE == "cuda" and language:
+                try:
+                    logger.info(f"Loading alignment model for language: {language}")
+                    align_model, align_metadata = whisperx.load_align_model(
+                        language_code=language,
+                        device=DEVICE
+                    )
+                    logger.info("Performing word-level alignment")
+                    result = whisperx.align(
+                        result["segments"],
+                        align_model,
+                        align_metadata,
+                        audio,
+                        DEVICE,
+                        return_char_alignments=False
+                    )
+                    logger.info("Word-level alignment completed")
+                except Exception as align_error:
+                    logger.warning(f"Could not perform word-level alignment: {align_error}")
+                    # Continue without alignment
+            
+            # Ensure we don't run out of memory after processing
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                gc.collect()
+                
+            logger.info("Transcription completed")
+            return result
+        except (RuntimeError, MemoryError) as mem_error:
+            # Handle out of memory errors specifically
+            logger.error(f"Memory error during transcription: {mem_error}")
+            
+            # Try with smaller batch size as fallback
+            try:
+                logger.info("Retrying transcription with reduced batch size")
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    gc.collect()
+                
+                smaller_batch = max(1, BATCH_SIZE // 4)
+                result = model.transcribe(
+                    audio, 
+                    batch_size=smaller_batch,
+                    language=language
+                )
+                
+                logger.info("Transcription completed with reduced batch size")
+                return result
+            except Exception as fallback_error:
+                logger.error(f"Fallback transcription also failed: {fallback_error}")
+                raise
     except Exception as e:
         logger.error(f"Transcription failed: {e}")
         raise
@@ -412,9 +651,26 @@ async def transcribe_async(audio_path: str, session_id: str, participant_count: 
     try:
         logger.info(f"Starting transcription pipeline for session: {session_id}")
         
+        # Ensure memory is cleared at start
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            gc.collect()
+        
         # Load models
         await send_progress_update(session_id, 65, "Loading transcription models...", "processing")
-        whisper_model = load_whisper_model("large-v3")
+        
+        # Try loading with graceful degradation
+        try:
+            whisper_model = load_whisper_model("large-v3")
+        except Exception as model_error:
+            logger.warning(f"Failed to load large-v3 model: {model_error}")
+            logger.info("Trying medium model instead...")
+            try:
+                whisper_model = load_whisper_model("medium")
+            except Exception as medium_error:
+                logger.warning(f"Failed to load medium model: {medium_error}")
+                logger.info("Trying base model as last resort...")
+                whisper_model = load_whisper_model("base")
         
         # Detect language if not specified
         if not language:
@@ -438,7 +694,12 @@ async def transcribe_async(audio_path: str, session_id: str, participant_count: 
             diarization_model = load_diarization_model()
             
             if diarization_model:
-                diarize_segments = diarize_speakers(audio_path, diarization_model, participant_count)
+                # Adjust speaker count to be within bounds
+                adjusted_count = max(MIN_SPEAKERS, min(participant_count, MAX_SPEAKERS))
+                if adjusted_count != participant_count:
+                    logger.info(f"Adjusted speaker count from {participant_count} to {adjusted_count}")
+                
+                diarize_segments = diarize_speakers(audio_path, diarization_model, adjusted_count)
                 if diarize_segments:
                     result = assign_speakers_to_segments(result, diarize_segments)
                     
@@ -448,8 +709,16 @@ async def transcribe_async(audio_path: str, session_id: str, participant_count: 
         
         # Get audio duration
         import librosa
-        y, sr = librosa.load(audio_path)
-        duration = librosa.get_duration(y=y, sr=sr)
+        try:
+            y, sr = librosa.load(audio_path, sr=None)
+            duration = librosa.get_duration(y=y, sr=sr)
+        except Exception as e:
+            logger.warning(f"Failed to get audio duration: {e}, using fallback duration")
+            # Fallback duration calculation
+            if "segments" in result and len(result["segments"]) > 0:
+                duration = max([segment.get("end", 0) for segment in result["segments"]])
+            else:
+                duration = 0
         
         # Format result
         await send_progress_update(session_id, 90, "Formatting transcription...", "processing")
@@ -464,10 +733,13 @@ async def transcribe_async(audio_path: str, session_id: str, participant_count: 
         
         # Send to LLM service for further processing
         await send_progress_update(session_id, 95, "Sending for analysis...", "processing")
-        await send_to_llm_service(formatted_result)
+        try:
+            await send_to_llm_service(formatted_result)
+        except Exception as e:
+            logger.error(f"Failed to send to LLM service: {e}")
         
         # Clean up GPU memory
-        if DEVICE == "cuda":
+        if torch.cuda.is_available():
             torch.cuda.empty_cache()
             gc.collect()
         
@@ -480,10 +752,17 @@ async def transcribe_async(audio_path: str, session_id: str, participant_count: 
     except Exception as e:
         logger.error(f"Error in transcription pipeline for session {session_id}: {e}")
         
+        # Try to give more information to the user
+        error_message = str(e)
+        if "CUDA out of memory" in error_message:
+            error_message = "Transcription failed due to insufficient GPU memory. Try with a smaller audio file."
+        elif "CUDA" in error_message or "GPU" in error_message:
+            error_message = "GPU error occurred during transcription. The service will use CPU fallback if available."
+        
         await send_progress_update(
             session_id, 
             0, 
-            f"Transcription failed: {str(e)}", 
+            f"Transcription failed: {error_message}", 
             "error"
         )
         
@@ -493,10 +772,18 @@ async def transcribe_async(audio_path: str, session_id: str, participant_count: 
             24 * 3600,
             json.dumps({
                 "session_id": session_id,
-                "error": str(e),
+                "error": error_message,
                 "timestamp": datetime.utcnow().isoformat()
             })
         )
+        
+        # Clean up memory in case of error
+        if torch.cuda.is_available():
+            try:
+                torch.cuda.empty_cache()
+                gc.collect()
+            except:
+                pass
         
         raise
 
@@ -642,15 +929,47 @@ async def update_speaker_names(session_id: str, request: SpeakerUpdateRequest):
         raise HTTPException(status_code=500, detail=f"Failed to update speaker names: {str(e)}")
 
 @app.get("/health")
-async def health_check():
-    """Health check endpoint"""
+async def health():
+    """Check the health of the service"""
+    # Get memory usage
+    memory_info = {}
+    if torch.cuda.is_available():
+        try:
+            memory_info["total_gpu_memory"] = torch.cuda.get_device_properties(0).total_memory
+            memory_info["allocated_gpu_memory"] = torch.cuda.memory_allocated(0)
+            memory_info["reserved_gpu_memory"] = torch.cuda.memory_reserved(0)
+            memory_info["gpu_utilization"] = memory_info["allocated_gpu_memory"] / memory_info["total_gpu_memory"]
+        except Exception as e:
+            memory_info["gpu_error"] = str(e)
+    
+    import psutil
+    memory_info["total_ram"] = psutil.virtual_memory().total
+    memory_info["available_ram"] = psutil.virtual_memory().available
+    memory_info["ram_percent"] = psutil.virtual_memory().percent
+    
+    # Check Redis connection
+    redis_status = "ok"
+    try:
+        redis_client.ping()
+    except Exception as e:
+        redis_status = f"error: {str(e)}"
+    
     return {
         "status": "ok",
+        "service": "whisper-transcriber",
+        "version": "1.0.0",
+        "timestamp": datetime.utcnow().isoformat(),
+        "memory": memory_info,
         "device": DEVICE,
-        "mock_diarization": SHOULD_MOCK,
-        "timestamp": datetime.now().isoformat()
+        "compute_type": COMPUTE_TYPE,
+        "batch_size": BATCH_SIZE,
+        "dependencies": {
+            "redis": redis_status,
+        }
     }
+
+
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8005)
+    uvicorn.run(app, host="0.0.0.0", port=8003)

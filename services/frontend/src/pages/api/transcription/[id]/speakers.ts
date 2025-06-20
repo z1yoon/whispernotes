@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { withAuth } from '@/lib/middleware';
 
 // Environment variables
-const WHISPER_TRANSCRIBER_URL = process.env.WHISPER_TRANSCRIBER_URL || 'http://whisper-transcriber:8005';
+const WHISPER_TRANSCRIBER_URL = process.env.WHISPER_TRANSCRIBER_URL || 'http://whisper-transcriber:8003';
 
 /**
  * Updates speaker names for a transcription
