@@ -14,7 +14,12 @@ import {
   AlertTriangle,
   Copy,
   Check,
-  User
+  User,
+  Edit,
+  Save,
+  X,
+  Settings,
+  UserPlus
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -56,6 +61,10 @@ interface ActionItem {
   priority: string;
   source_time: string;
   completed: boolean;
+}
+
+interface SpeakerMap {
+  [key: string]: string;
 }
 
 // Styled components with proper typing
@@ -408,6 +417,168 @@ const CopyButton = styled.button`
   }
 `;
 
+const FloatingButton = styled(motion.button)`
+  position: fixed;
+  bottom: 2rem;
+  right: 2rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  z-index: 100;
+  transition: all 0.2s ease;
+  
+  &:hover {
+    transform: scale(1.1);
+  }
+`;
+
+const DialogOverlay = styled(motion.div)`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+`;
+
+const DialogContent = styled(motion.div)`
+  background: white;
+  border-radius: 12px;
+  padding: 2rem;
+  width: 100%;
+  max-width: 500px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+`;
+
+const DialogHeader = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+  
+  h2 {
+    color: #1e293b;
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+`;
+
+const DialogActions = styled.div`
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 2rem;
+`;
+
+const SpeakerList = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+`;
+
+const SpeakerItem = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem;
+  border-radius: 8px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+`;
+
+const SpeakerLabel = styled.div`
+  width: 100px;
+  font-size: 0.875rem;
+  color: #64748b;
+  font-weight: 500;
+`;
+
+const SpeakerInput = styled.input`
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  color: #1e293b;
+  
+  &:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+  }
+`;
+
+const StyledActionButton = styled.button<{ variant?: 'primary' | 'secondary' }>`
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  
+  ${props => props.variant === 'primary' ? `
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    
+    &:hover {
+      opacity: 0.9;
+    }
+  ` : `
+    background: white;
+    color: #64748b;
+    border: 1px solid #e2e8f0;
+    
+    &:hover {
+      background: #f8fafc;
+      color: #1e293b;
+    }
+  `}
+`;
+
+const TooltipText = styled.div`
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  background: rgba(0, 0, 0, 0.75);
+  color: white;
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  margin-bottom: 0.5rem;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+`;
+
+const TooltipWrapper = styled.div`
+  position: relative;
+  
+  &:hover ${TooltipText} {
+    opacity: 1;
+  }
+`;
+
 const TranscriptPage = () => {
   const router = useRouter();
   const params = useParams();
@@ -417,6 +588,9 @@ const TranscriptPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copiedSegment, setCopiedSegment] = useState<number | null>(null);
+  const [showSpeakerEditor, setShowSpeakerEditor] = useState(false);
+  const [speakerMap, setSpeakerMap] = useState<SpeakerMap>({});
+  const [originalSpeakerMap, setOriginalSpeakerMap] = useState<SpeakerMap>({});
 
   useEffect(() => {
     if (fileId) {
@@ -424,115 +598,97 @@ const TranscriptPage = () => {
     }
   }, [fileId]);
 
+  // Generate speaker map from transcript segments
+  useEffect(() => {
+    if (transcriptData?.segments) {
+      const uniqueSpeakers = new Set<string>();
+      const tempSpeakerMap: SpeakerMap = {};
+      
+      // Collect unique speakers
+      transcriptData.segments.forEach(segment => {
+        uniqueSpeakers.add(segment.speaker);
+      });
+      
+      // Create initial speaker map
+      uniqueSpeakers.forEach(speaker => {
+        // Find the first segment with this speaker to get the speaker_name
+        const segment = transcriptData.segments.find(seg => seg.speaker === speaker);
+        tempSpeakerMap[speaker] = segment?.speaker_name || speaker;
+      });
+      
+      setSpeakerMap(tempSpeakerMap);
+      setOriginalSpeakerMap({...tempSpeakerMap});
+    }
+  }, [transcriptData]);
+
   const fetchTranscriptData = async () => {
     try {
       setLoading(true);
       
-      // Mock data - replace with actual API call
-      setTimeout(() => {
-        setTranscriptData({
-          filename: 'Team Meeting - Q2 Planning.mp4',
-          duration: 2730, // 45:30 minutes
-          participant_count: 5,
-          language: 'en',
-          segments: [
-            {
-              id: 1,
-              speaker: 'SPEAKER_00',
-              speaker_name: 'John (Manager)',
-              start: 0,
-              end: 15,
-              text: "Good morning everyone. Let's start today's Q2 planning meeting. We have several important items to discuss regarding our product roadmap and resource allocation."
-            },
-            {
-              id: 2,
-              speaker: 'SPEAKER_01', 
-              speaker_name: 'Sarah (Product)',
-              start: 16,
-              end: 35,
-              text: "Thanks John. I've prepared the updated feature specifications for the user authentication system. We need to prioritize this for our enterprise clients by end of Q2."
-            },
-            {
-              id: 3,
-              speaker: 'SPEAKER_02',
-              speaker_name: 'Mike (Engineering)',
-              start: 36,
-              end: 55,
-              text: "I agree with Sarah. The authentication system is critical. However, we need to consider the mobile app redesign as well. Both projects will require significant engineering resources."
-            },
-            {
-              id: 4,
-              speaker: 'SPEAKER_00',
-              speaker_name: 'John (Manager)',
-              start: 56,
-              end: 75,
-              text: "Good points. Let's assign Sarah to lead the authentication project and Mike to coordinate the mobile redesign. We'll need to set clear deadlines for both."
-            },
-            {
-              id: 5,
-              speaker: 'SPEAKER_03',
-              speaker_name: 'Lisa (Design)',
-              start: 76,
-              end: 90,
-              text: "I can support both projects from the design perspective. I'll need the requirements finalized by next Tuesday to start the mockups."
-            }
-          ]
-        });
-
-        setActionItems([
-          {
-            id: 1,
-            task: "Finalize user authentication system specifications",
-            assignee: "Sarah (Product)",
-            deadline: "End of Q2",
-            priority: "High",
-            source_time: "16-35s",
-            completed: false
-          },
-          {
-            id: 2,
-            task: "Coordinate mobile app redesign project",
-            assignee: "Mike (Engineering)",
-            deadline: "Q2",
-            priority: "High",
-            source_time: "36-55s",
-            completed: false
-          },
-          {
-            id: 3,
-            task: "Set clear deadlines for authentication and mobile projects",
-            assignee: "John (Manager)",
-            deadline: "This week",
-            priority: "Medium",
-            source_time: "56-75s",
-            completed: false
-          },
-          {
-            id: 4,
-            task: "Finalize requirements for design mockups",
-            assignee: "Sarah & Mike",
-            deadline: "Next Tuesday",
-            priority: "Medium",
-            source_time: "76-90s",
-            completed: false
-          },
-          {
-            id: 5,
-            task: "Start design mockups for both projects",
-            assignee: "Lisa (Design)",
-            deadline: "After requirements finalized",
-            priority: "Medium",
-            source_time: "76-90s",
-            completed: false
-          }
-        ]);
-
+      // Fetch transcription data from API
+      const response = await fetch(`/api/transcription/${fileId}`);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to load transcript');
+      }
+      
+      const data = await response.json();
+      
+      // Check if we have proper segment data
+      if (!data.segments || !Array.isArray(data.segments) || data.segments.length === 0) {
+        setError('No transcript segments found');
         setLoading(false);
-      }, 1000);
+        return;
+      }
+      
+      // Format data for our UI if needed
+      const formattedData = {
+        filename: data.filename || `Transcription ${fileId}`,
+        duration: data.duration || 0,
+        participant_count: data.participant_count || 
+          (data.speaker_names ? data.speaker_names.length : 2),
+        language: data.language || 'en',
+        // Map segments to our expected format if needed
+        segments: data.segments.map((segment: any, index: number) => ({
+          id: segment.id || index + 1,
+          speaker: segment.speaker || `SPEAKER_${index % 2}`,
+          speaker_name: segment.speaker_name || segment.speaker || `Speaker ${index % 2 + 1}`,
+          start: segment.start || 0,
+          end: segment.end || 0,
+          text: segment.text || ''
+        }))
+      };
+      
+      setTranscriptData(formattedData);
+      
+      // For now, we'll still use mock action items
+      // In a real app, you might fetch these from another endpoint
+      setActionItems([
+        {
+          id: 1,
+          task: "Review transcript for accuracy",
+          assignee: "Current User",
+          deadline: "Today",
+          priority: "Medium",
+          source_time: "0-10s",
+          completed: false
+        },
+        {
+          id: 2,
+          task: "Update speaker names if necessary",
+          assignee: "Current User",
+          deadline: "Today",
+          priority: "Low",
+          source_time: "entire transcript",
+          completed: false
+        }
+      ]);
 
+      setLoading(false);
     } catch (error) {
       console.error('Error fetching transcript:', error);
-      setError('Failed to load transcript data');
+      setError(error instanceof Error ? error.message : 'Failed to load transcript data');
       setLoading(false);
       toast.error('Failed to load transcript');
     }
@@ -586,6 +742,126 @@ const TranscriptPage = () => {
     }
     return speakerName?.split(' ').map((n: string) => n[0]).join('') || 'S';
   };
+
+  const handleUpdateSpeakerNames = async () => {
+    try {
+      // Check if there are any changes
+      const hasChanges = Object.keys(speakerMap).some(
+        key => speakerMap[key] !== originalSpeakerMap[key]
+      );
+      
+      if (!hasChanges) {
+        setShowSpeakerEditor(false);
+        return;
+      }
+      
+      // In a real implementation, send the update to the backend
+      if (!fileId) {
+        throw new Error('Missing transcript ID');
+      }
+      
+      // Send updates to the API
+      const response = await fetch(`/api/transcription/${fileId}/speakers`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          speaker_map: speakerMap
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to update speaker names');
+      }
+      
+      // Update the local state
+      if (transcriptData) {
+        const updatedSegments = transcriptData.segments.map(segment => ({
+          ...segment,
+          speaker_name: speakerMap[segment.speaker] || segment.speaker_name
+        }));
+        
+        setTranscriptData({
+          ...transcriptData,
+          segments: updatedSegments
+        });
+        
+        setOriginalSpeakerMap({...speakerMap});
+        setShowSpeakerEditor(false);
+        toast.success('Speaker names updated successfully');
+      }
+    } catch (error) {
+      console.error('Error updating speaker names:', error);
+      toast.error('Failed to update speaker names');
+    }
+  };
+
+  const handleCancelSpeakerEdit = () => {
+    setSpeakerMap({...originalSpeakerMap});
+    setShowSpeakerEditor(false);
+  };
+
+  const handleSpeakerNameChange = (speaker: string, name: string) => {
+    setSpeakerMap(prev => ({
+      ...prev,
+      [speaker]: name
+    }));
+  };
+
+  const SpeakerNameEditor = () => (
+    <DialogOverlay
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+    >
+      <DialogContent
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.9, opacity: 0 }}
+      >
+        <DialogHeader>
+          <h2>
+            <UserPlus size={18} />
+            Edit Speaker Names
+          </h2>
+          <StyledActionButton variant="secondary" onClick={handleCancelSpeakerEdit}>
+            <X size={16} />
+          </StyledActionButton>
+        </DialogHeader>
+        
+        <p style={{ color: '#64748b', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
+          Edit speaker names to make the transcript more readable. These changes will be applied to all transcript segments.
+        </p>
+        
+        <SpeakerList>
+          {Object.keys(speakerMap).map(speaker => (
+            <SpeakerItem key={speaker}>
+              <SpeakerAvatar speaker={speaker}>
+                {getSpeakerInitials(speakerMap[speaker])}
+              </SpeakerAvatar>
+              <SpeakerLabel>{speaker}</SpeakerLabel>
+              <SpeakerInput
+                value={speakerMap[speaker]}
+                onChange={(e) => handleSpeakerNameChange(speaker, e.target.value)}
+                placeholder="Enter speaker name"
+              />
+            </SpeakerItem>
+          ))}
+        </SpeakerList>
+        
+        <DialogActions>
+          <StyledActionButton variant="secondary" onClick={handleCancelSpeakerEdit}>
+            Cancel
+          </StyledActionButton>
+          <StyledActionButton variant="primary" onClick={handleUpdateSpeakerNames}>
+            <Save size={16} />
+            Save Changes
+          </StyledActionButton>
+        </DialogActions>
+      </DialogContent>
+    </DialogOverlay>
+  );
 
   if (loading) {
     return (
@@ -708,6 +984,13 @@ const TranscriptPage = () => {
                   <User size={20} />
                   Transcript with Speaker Identification
                 </h3>
+                <TooltipWrapper>
+                  <StyledActionButton variant="secondary" onClick={() => setShowSpeakerEditor(true)}>
+                    <Edit size={16} />
+                    Edit Speakers
+                  </StyledActionButton>
+                  <TooltipText>Update speaker names to identify participants</TooltipText>
+                </TooltipWrapper>
               </CardHeader>
               
               <TranscriptContent>
@@ -773,6 +1056,16 @@ const TranscriptPage = () => {
           </Sidebar>
         </ContentGrid>
       </MainContent>
+
+      <FloatingButton
+        onClick={() => setShowSpeakerEditor(true)}
+        whileHover={{ scale: 1.1 }}
+        whileTap={{ scale: 0.9 }}
+      >
+        <Settings size={20} />
+      </FloatingButton>
+
+      {showSpeakerEditor && <SpeakerNameEditor />}
     </TranscriptContainer>
   );
 };

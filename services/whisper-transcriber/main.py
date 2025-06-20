@@ -9,10 +9,11 @@ import json
 import redis
 import httpx
 from datetime import datetime
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Union
 import tempfile
 import asyncio
 import gc
+import platform
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -35,12 +36,23 @@ COMPUTE_TYPE = "float16" if DEVICE == "cuda" else "int8"
 BATCH_SIZE = 16
 HF_TOKEN = os.getenv("HF_TOKEN")  # Hugging Face token for speaker diarization
 
+# Check if device is CPU for mock diarization decision
+SHOULD_MOCK = DEVICE == "cpu"
+
 # Redis for caching and progress tracking
 redis_client = redis.Redis(host=os.getenv("REDIS_HOST", "localhost"), port=6379, decode_responses=True)
 
 # Service URLs
 LLM_SERVICE_URL = os.getenv("LLM_SERVICE_URL", "http://llm-service:8004")
 FILE_UPLOADER_URL = os.getenv("FILE_UPLOADER_URL", "http://file-uploader:8002")
+
+# RabbitMQ configuration
+RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "rabbitmq")
+RABBITMQ_PORT = int(os.getenv("RABBITMQ_PORT", 5672))
+RABBITMQ_USER = os.getenv("RABBITMQ_DEFAULT_USER", "user")
+RABBITMQ_PASS = os.getenv("RABBITMQ_DEFAULT_PASS", "password")
+TRANSCRIPTION_QUEUE = "transcription_queue"
+TRANSCRIPTION_RESULTS_QUEUE = "transcription_results_queue"
 
 # Global model storage
 models = {}
@@ -50,22 +62,23 @@ class TranscriptionRequest(BaseModel):
     session_id: str
     participant_count: int = 2
     language: Optional[str] = None
+    speaker_names: Optional[List[str]] = None
+
+class SpeakerSegment(BaseModel):
+    speaker: str
+    start: float
+    end: float
+    text: str
 
 class TranscriptionResult(BaseModel):
     session_id: str
-    transcript: str
-    segments: List[Dict]
-    speakers: Optional[Dict] = None
-    duration: float
     language: str
-    confidence_score: float
+    duration: float
+    segments: List[Dict[str, Union[str, float]]]
+    diarized_segments: Optional[List[SpeakerSegment]] = None
 
-class SpeakerSegment(BaseModel):
-    start: float
-    end: float
-    speaker: str
-    text: str
-    confidence: float
+class SpeakerUpdateRequest(BaseModel):
+    speaker_map: Dict[str, str]
 
 # Helper functions
 async def send_progress_update(session_id: str, progress: float, message: str, status: str):
@@ -83,76 +96,77 @@ async def send_progress_update(session_id: str, progress: float, message: str, s
     except Exception as e:
         logger.error(f"Failed to send progress update: {e}")
 
-def load_whisper_model(model_size: str = "large-v3"):
-    """Load WhisperX model with optimizations"""
-    try:
-        if model_size not in models:
-            logger.info(f"Loading Whisper model: {model_size}")
-            models[model_size] = whisperx.load_model(
-                model_size, 
-                device=DEVICE, 
-                compute_type=COMPUTE_TYPE,
-                language="en"  # Can be changed based on detection
-            )
-            logger.info(f"Model {model_size} loaded successfully")
-        
-        return models[model_size]
-    except Exception as e:
-        logger.error(f"Failed to load Whisper model: {e}")
-        raise
-
-def load_alignment_model(language_code: str):
-    """Load alignment model for better timestamp accuracy"""
-    try:
-        alignment_key = f"align_{language_code}"
-        if alignment_key not in models:
-            logger.info(f"Loading alignment model for language: {language_code}")
-            model_a, metadata = whisperx.load_align_model(
-                language_code=language_code, 
-                device=DEVICE
-            )
-            models[alignment_key] = (model_a, metadata)
-            logger.info(f"Alignment model for {language_code} loaded successfully")
-        
-        return models[alignment_key]
-    except Exception as e:
-        logger.error(f"Failed to load alignment model: {e}")
-        return None, None
-
-def load_diarization_model():
-    """Load speaker diarization model"""
-    try:
-        if "diarization" not in models and HF_TOKEN:
-            logger.info("Loading diarization model")
-            models["diarization"] = whisperx.DiarizationPipeline(
-                use_auth_token=HF_TOKEN, 
-                device=DEVICE
-            )
-            logger.info("Diarization model loaded successfully")
-        
-        return models.get("diarization")
-    except Exception as e:
-        logger.error(f"Failed to load diarization model: {e}")
-        return None
+def load_whisper_model(model_name="large-v3"):
+    """Load WhisperX model, with caching"""
+    if "whisper" not in models:
+        logger.info(f"Loading WhisperX model: {model_name}")
+        models["whisper"] = whisperx.load_model(
+            model_name, 
+            device=DEVICE, 
+            compute_type=COMPUTE_TYPE
+        )
+    return models["whisper"]
 
 def detect_language(audio_path: str, model) -> str:
-    """Detect language from audio"""
+    """Detect audio language using WhisperX"""
     try:
-        # Load a small portion of audio for language detection
-        result = whisperx.transcribe(
-            audio_path, 
-            model, 
-            batch_size=BATCH_SIZE,
-            language=None  # Auto-detect
-        )
+        # Load audio
+        audio = whisperx.load_audio(audio_path)
         
-        detected_language = result.get("language", "en")
-        logger.info(f"Detected language: {detected_language}")
-        return detected_language
+        # Detect language
+        result = model.detect_language(audio)
+        language_code = result[0]
+        
+        logger.info(f"Detected language: {language_code}")
+        return language_code
         
     except Exception as e:
         logger.error(f"Language detection failed: {e}")
-        return "en"  # Default to English
+        # Default to English if detection fails
+        return "en"
+
+def load_alignment_model(language_code):
+    """Load alignment model for improved timestamps"""
+    alignment_key = f"alignment_{language_code}"
+    
+    if alignment_key not in models:
+        try:
+            logger.info(f"Loading alignment model for {language_code}")
+            model_a, metadata = whisperx.load_align_model(
+                language_code=language_code,
+                device=DEVICE
+            )
+            models[alignment_key] = {"model": model_a, "metadata": metadata}
+            return model_a, metadata
+        except Exception as e:
+            logger.error(f"Failed to load alignment model: {e}")
+            return None, None
+    else:
+        stored = models[alignment_key]
+        return stored["model"], stored["metadata"]
+
+def load_diarization_model():
+    """Load speaker diarization model"""
+    if SHOULD_MOCK:
+        logger.info("Using mock diarization (development mode on CPU)")
+        return "mock_model"
+        
+    if not HF_TOKEN:
+        logger.warning("No Hugging Face token provided, skipping diarization model loading")
+        return None
+        
+    if "diarization" not in models:
+        try:
+            logger.info("Loading diarization model")
+            models["diarization"] = whisperx.DiarizationPipeline(
+                use_auth_token=HF_TOKEN,
+                device=DEVICE
+            )
+        except Exception as e:
+            logger.error(f"Failed to load diarization model: {e}")
+            return None
+            
+    return models["diarization"]
 
 def transcribe_audio(audio_path: str, model, language: str = None):
     """Transcribe audio using WhisperX"""
@@ -176,15 +190,18 @@ def transcribe_audio(audio_path: str, model, language: str = None):
 def align_transcription(segments, model_a, metadata, audio_path):
     """Align transcription for better timestamps"""
     try:
-        logger.info("Aligning transcription...")
+        logger.info("Aligning transcription")
         
+        # Load audio
+        audio = whisperx.load_audio(audio_path)
+        
+        # Align
         result = whisperx.align(
-            segments, 
-            model_a, 
-            metadata, 
-            audio_path, 
-            DEVICE, 
-            return_char_alignments=False
+            segments,
+            model_a,
+            metadata,
+            audio,
+            device=DEVICE
         )
         
         logger.info("Alignment completed")
@@ -192,116 +209,205 @@ def align_transcription(segments, model_a, metadata, audio_path):
         
     except Exception as e:
         logger.error(f"Alignment failed: {e}")
-        return segments  # Return original if alignment fails
+        # Return unaligned segments if alignment fails
+        return {"segments": segments}
 
-def diarize_speakers(audio_path: str, diarization_model, participant_count: int):
+def mock_diarize_speakers(audio_path: str, number_of_speakers: int):
+    """Mock speaker diarization for development on CPU"""
+    logger.info(f"Running mock diarization with {number_of_speakers} speakers")
+    
+    try:
+        import librosa
+        audio, sr = librosa.load(audio_path, sr=16000)
+        duration = librosa.get_duration(y=audio, sr=sr)
+        
+        # Create mock speaker segments
+        segment_length = 5.0  # Each segment is 5 seconds
+        num_segments = int(duration / segment_length) + 1
+        
+        mock_segments = []
+        current_speaker = 0
+        
+        for i in range(num_segments):
+            start_time = i * segment_length
+            end_time = min((i + 1) * segment_length, duration)
+            
+            mock_segments.append({
+                "start": start_time,
+                "end": end_time,
+                "speaker": f"SPEAKER_{current_speaker}"
+            })
+            
+            # Rotate speakers
+            current_speaker = (current_speaker + 1) % number_of_speakers
+        
+        return {
+            "segments": mock_segments,
+            "is_mocked": True
+        }
+    except Exception as e:
+        logger.error(f"Mock diarization failed: {e}")
+        return None
+
+def diarize_speakers(audio_path: str, diarization_model, number_of_speakers: int):
     """Perform speaker diarization"""
     try:
-        logger.info(f"Starting speaker diarization for {participant_count} participants...")
+        if diarization_model == "mock_model":
+            return mock_diarize_speakers(audio_path, number_of_speakers)
         
+        logger.info(f"Diarizing speakers with min_speakers=1, max_speakers={number_of_speakers}")
+        
+        # Run diarization
         diarize_segments = diarization_model(
             audio_path,
-            num_speakers=participant_count
+            min_speakers=1,
+            max_speakers=number_of_speakers
         )
         
-        logger.info("Speaker diarization completed")
+        logger.info("Diarization completed")
         return diarize_segments
         
     except Exception as e:
-        logger.error(f"Speaker diarization failed: {e}")
-        return None
+        logger.error(f"Diarization failed: {e}")
+        # Return mock results if diarization fails
+        return mock_diarize_speakers(audio_path, number_of_speakers)
 
-def assign_speakers_to_segments(segments, diarize_segments):
-    """Assign speakers to transcription segments"""
+def assign_speakers_to_segments(transcript_result, diarize_segments):
+    """Assign speaker labels to transcript segments"""
     try:
-        logger.info("Assigning speakers to segments...")
+        if not diarize_segments:
+            return transcript_result
+            
+        logger.info("Assigning speakers to segments")
         
-        result = whisperx.assign_word_speakers(segments, diarize_segments)
+        # Check if using mock diarization
+        is_mocked = diarize_segments.get("is_mocked", False)
+        
+        if is_mocked:
+            # Manual assignment for mock diarization
+            segments = transcript_result["segments"]
+            diarize_data = diarize_segments["segments"]
+            
+            for segment in segments:
+                # Find the diarization segment that overlaps the most
+                segment_center = (segment["start"] + segment["end"]) / 2
+                
+                for diar_segment in diarize_data:
+                    if diar_segment["start"] <= segment_center <= diar_segment["end"]:
+                        segment["speaker"] = diar_segment["speaker"]
+                        break
+                        
+                if "speaker" not in segment:
+                    segment["speaker"] = "SPEAKER_0"
+        else:
+            # Use WhisperX's built-in speaker assignment
+            transcript_result = whisperx.assign_word_speakers(
+                diarize_segments, 
+                transcript_result
+            )
         
         logger.info("Speaker assignment completed")
-        return result
+        return transcript_result
         
     except Exception as e:
         logger.error(f"Speaker assignment failed: {e}")
-        return segments
+        return transcript_result
 
-def format_transcription_result(result, session_id: str, duration: float) -> dict:
-    """Format transcription result for output"""
+def map_speaker_names(transcript_result, speaker_names: List[str]):
+    """Map numeric speaker labels to provided names"""
+    if not speaker_names or len(speaker_names) == 0:
+        return transcript_result
+        
+    logger.info(f"Mapping speaker names: {speaker_names}")
+    
+    # Create a mapping from SPEAKER_X to user-provided names
+    speaker_map = {}
+    for i, name in enumerate(speaker_names):
+        if name and name.strip():  # Only map non-empty names
+            speaker_map[f"SPEAKER_{i}"] = name
+    
+    # Apply mapping to segments
+    for segment in transcript_result["segments"]:
+        if "speaker" in segment:
+            speaker_label = segment["speaker"]
+            if speaker_label in speaker_map:
+                segment["speaker_name"] = speaker_map[speaker_label]
+            else:
+                segment["speaker_name"] = speaker_label
+    
+    return transcript_result
+
+def format_transcription_result(result, session_id: str, duration: float, speaker_names: List[str] = None):
+    """Format the final transcription result"""
     try:
-        segments = result.get("segments", [])
+        language = result.get("language", "en")
         
-        # Create full transcript
-        full_transcript = " ".join([seg.get("text", "").strip() for seg in segments])
+        # Create diarized segments list for easy consumption
+        diarized_segments = []
+        if "segments" in result:
+            for segment in result["segments"]:
+                speaker = segment.get("speaker", "SPEAKER_0")
+                speaker_name = segment.get("speaker_name", speaker)
+                
+                diarized_segments.append({
+                    "speaker": speaker_name,
+                    "start": segment["start"],
+                    "end": segment["end"],
+                    "text": segment["text"]
+                })
         
-        # Extract speaker information
-        speakers = {}
-        speaker_segments = []
-        
-        for i, segment in enumerate(segments):
-            speaker = segment.get("speaker", f"Speaker_{i % 2 + 1}")
-            
-            if speaker not in speakers:
-                speakers[speaker] = {
-                    "name": speaker,
-                    "total_duration": 0,
-                    "word_count": 0
-                }
-            
-            segment_duration = segment.get("end", 0) - segment.get("start", 0)
-            word_count = len(segment.get("text", "").split())
-            
-            speakers[speaker]["total_duration"] += segment_duration
-            speakers[speaker]["word_count"] += word_count
-            
-            speaker_segments.append({
-                "start": segment.get("start", 0),
-                "end": segment.get("end", 0),
-                "speaker": speaker,
-                "text": segment.get("text", "").strip(),
-                "confidence": segment.get("avg_logprob", 0)
-            })
-        
-        # Calculate overall confidence
-        confidences = [seg.get("avg_logprob", 0) for seg in segments if seg.get("avg_logprob")]
-        avg_confidence = sum(confidences) / len(confidences) if confidences else 0
-        
-        return {
+        # Create final result dictionary
+        formatted_result = {
             "session_id": session_id,
-            "transcript": full_transcript,
-            "segments": speaker_segments,
-            "speakers": speakers,
+            "language": language,
             "duration": duration,
-            "language": result.get("language", "en"),
-            "confidence_score": avg_confidence,
-            "word_count": len(full_transcript.split()),
-            "segment_count": len(segments)
+            "segments": result.get("segments", []),
+            "diarized_segments": diarized_segments,
+            "word_segments": result.get("word_segments", []),
+            "speaker_names": speaker_names,
+            "timestamp": datetime.utcnow().isoformat()
         }
+        
+        return formatted_result
         
     except Exception as e:
         logger.error(f"Error formatting transcription result: {e}")
         raise
 
-async def send_to_llm_service(transcription_result: dict):
-    """Send transcription to LLM service for processing"""
+async def send_to_llm_service(transcription_result):
+    """Send transcription result to LLM service for processing"""
     try:
-        async with httpx.AsyncClient(timeout=300.0) as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
-                f"{LLM_SERVICE_URL}/process",
+                f"{LLM_SERVICE_URL}/process-transcript",
                 json=transcription_result
             )
             
             if response.status_code == 200:
-                logger.info(f"Transcription sent to LLM service: {transcription_result['session_id']}")
+                logger.info(f"Successfully sent transcript to LLM service")
                 return response.json()
             else:
-                logger.error(f"Failed to send to LLM service: {response.text}")
-                raise Exception(f"LLM service error: {response.text}")
+                logger.error(f"Failed to send transcript to LLM service: {response.text}")
+                return None
                 
     except Exception as e:
         logger.error(f"Error sending to LLM service: {e}")
-        raise
+        return None
 
-async def transcribe_async(audio_path: str, session_id: str, participant_count: int, language: str = None):
+def cleanup_temp_file(file_path, delay=0):
+    """Clean up temporary file after specified delay"""
+    try:
+        if delay > 0:
+            import time
+            time.sleep(delay)
+        
+        if os.path.exists(file_path):
+            os.unlink(file_path)
+            logger.info(f"Deleted temporary file: {file_path}")
+    except Exception as e:
+        logger.error(f"Failed to delete temporary file {file_path}: {e}")
+
+async def transcribe_async(audio_path: str, session_id: str, participant_count: int, language: str = None, speaker_names: List[str] = None):
     """Perform full transcription pipeline asynchronously"""
     try:
         logger.info(f"Starting transcription pipeline for session: {session_id}")
@@ -327,7 +433,7 @@ async def transcribe_async(audio_path: str, session_id: str, participant_count: 
             result = align_transcription(result["segments"], model_a, metadata, audio_path)
         
         # Perform speaker diarization if requested
-        if participant_count > 1 and HF_TOKEN:
+        if participant_count > 1:
             await send_progress_update(session_id, 85, "Identifying speakers...", "processing")
             diarization_model = load_diarization_model()
             
@@ -335,6 +441,10 @@ async def transcribe_async(audio_path: str, session_id: str, participant_count: 
                 diarize_segments = diarize_speakers(audio_path, diarization_model, participant_count)
                 if diarize_segments:
                     result = assign_speakers_to_segments(result, diarize_segments)
+                    
+                    # Map speaker names if provided
+                    if speaker_names and len(speaker_names) > 0:
+                        result = map_speaker_names(result, speaker_names)
         
         # Get audio duration
         import librosa
@@ -343,7 +453,7 @@ async def transcribe_async(audio_path: str, session_id: str, participant_count: 
         
         # Format result
         await send_progress_update(session_id, 90, "Formatting transcription...", "processing")
-        formatted_result = format_transcription_result(result, session_id, duration)
+        formatted_result = format_transcription_result(result, session_id, duration, speaker_names)
         
         # Store result in Redis
         redis_client.setex(
@@ -360,6 +470,9 @@ async def transcribe_async(audio_path: str, session_id: str, participant_count: 
         if DEVICE == "cuda":
             torch.cuda.empty_cache()
             gc.collect()
+        
+        # Send success update
+        await send_progress_update(session_id, 100, "Transcription complete!", "completed")
         
         logger.info(f"Transcription completed for session: {session_id}")
         return formatted_result
@@ -394,13 +507,14 @@ async def transcribe_audio_endpoint(
     audio: UploadFile = File(...),
     session_id: str = Form(...),
     participant_count: int = Form(2),
-    language: Optional[str] = Form(None)
+    language: Optional[str] = Form(None),
+    speaker_names: Optional[str] = Form(None)
 ):
     """Transcribe uploaded audio file"""
     
     # Validate file type
-    if not audio.content_type or not audio.content_type.startswith('audio/'):
-        raise HTTPException(status_code=400, detail="Invalid audio file type")
+    if not audio.content_type or not (audio.content_type.startswith('audio/') or audio.content_type.startswith('video/')):
+        raise HTTPException(status_code=400, detail="Invalid audio or video file type")
     
     # Check if already processing
     processing_key = f"transcribing:{session_id}"
@@ -411,6 +525,14 @@ async def transcribe_audio_endpoint(
     redis_client.setex(processing_key, 3600, "transcribing")  # 1 hour expiration
     
     try:
+        # Parse speaker names if provided
+        parsed_speaker_names = None
+        if speaker_names:
+            try:
+                parsed_speaker_names = json.loads(speaker_names)
+            except:
+                logger.warning(f"Failed to parse speaker names: {speaker_names}")
+        
         # Save uploaded file
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_file:
             content = await audio.read()
@@ -423,7 +545,8 @@ async def transcribe_audio_endpoint(
             temp_audio_path,
             session_id,
             participant_count,
-            language
+            language,
+            parsed_speaker_names
         )
         
         # Schedule cleanup
@@ -440,70 +563,93 @@ async def transcribe_audio_endpoint(
         redis_client.delete(processing_key)
         raise HTTPException(status_code=500, detail=f"Failed to start transcription: {str(e)}")
 
-async def cleanup_temp_file(file_path: str, delay: int = 3600):
-    """Clean up temporary files after delay"""
-    await asyncio.sleep(delay)
+@app.get("/transcription/{session_id}")
+async def get_transcription(session_id: str):
+    """Get transcription result"""
     try:
-        if os.path.exists(file_path):
-            os.remove(file_path)
-            logger.info(f"Cleaned up temp file: {file_path}")
+        # Check for error first
+        error_data = redis_client.get(f"transcription_error:{session_id}")
+        if error_data:
+            error = json.loads(error_data)
+            return {
+                "status": "error",
+                "error": error.get("error", "Unknown error"),
+                "timestamp": error.get("timestamp")
+            }
+        
+        # Check for result
+        data = redis_client.get(f"transcription:{session_id}")
+        if not data:
+            # Check if still processing
+            if redis_client.get(f"transcribing:{session_id}"):
+                return {
+                    "status": "processing",
+                    "message": "Transcription is still in progress"
+                }
+            else:
+                raise HTTPException(status_code=404, detail="Transcription not found")
+        
+        result = json.loads(data)
+        return result
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error cleaning up temp file {file_path}: {e}")
+        logger.error(f"Error retrieving transcription: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve transcription")
 
-@app.get("/result/{session_id}")
-async def get_transcription_result(session_id: str):
-    """Get transcription result for a session"""
-    
-    # Check if currently processing
-    processing_key = f"transcribing:{session_id}"
-    if redis_client.get(processing_key):
-        return {"session_id": session_id, "status": "transcribing"}
-    
-    # Check for completed transcription
-    result_key = f"transcription:{session_id}"
-    result_data = redis_client.get(result_key)
-    if result_data:
-        return {
-            "session_id": session_id,
-            "status": "completed",
-            "result": json.loads(result_data)
-        }
-    
-    # Check for errors
-    error_key = f"transcription_error:{session_id}"
-    error_data = redis_client.get(error_key)
-    if error_data:
-        return {
-            "session_id": session_id,
-            "status": "error",
-            "error": json.loads(error_data)
-        }
-    
-    raise HTTPException(status_code=404, detail="Transcription session not found")
+@app.post("/transcription/{session_id}/speakers")
+async def update_speaker_names(session_id: str, request: SpeakerUpdateRequest):
+    """Update speaker names in an existing transcription"""
+    try:
+        # Check if transcription exists
+        data = redis_client.get(f"transcription:{session_id}")
+        if not data:
+            raise HTTPException(status_code=404, detail="Transcription not found")
+            
+        transcription = json.loads(data)
+        
+        # Update speaker names in segments
+        if "segments" in transcription:
+            for segment in transcription["segments"]:
+                speaker = segment.get("speaker")
+                if speaker and speaker in request.speaker_map:
+                    segment["speaker_name"] = request.speaker_map[speaker]
+        
+        # Update speaker names in diarized_segments if present
+        if "diarized_segments" in transcription:
+            for segment in transcription["diarized_segments"]:
+                speaker = segment.get("speaker")
+                if speaker and speaker in request.speaker_map:
+                    segment["speaker"] = request.speaker_map[speaker]  # Update the display name
+        
+        # Store updated transcription back in Redis
+        redis_client.setex(
+            f"transcription:{session_id}",
+            24 * 3600,  # 24 hours
+            json.dumps(transcription)
+        )
+        
+        # Log the update
+        logger.info(f"Updated speaker names for session {session_id}: {request.speaker_map}")
+        
+        return {"status": "success", "message": "Speaker names updated successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating speaker names: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update speaker names: {str(e)}")
 
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    try:
-        # Check if models can be loaded
-        whisper_available = True
-        try:
-            load_whisper_model("base")  # Load smaller model for health check
-        except:
-            whisper_available = False
-        
-        return {
-            "status": "healthy",
-            "service": "whisper-transcriber",
-            "device": DEVICE,
-            "whisper_available": whisper_available,
-            "hf_token_configured": bool(HF_TOKEN)
-        }
-    except Exception as e:
-        return {
-            "status": "unhealthy",
-            "error": str(e)
-        }
+    return {
+        "status": "ok",
+        "device": DEVICE,
+        "mock_diarization": SHOULD_MOCK,
+        "timestamp": datetime.now().isoformat()
+    }
 
 if __name__ == "__main__":
     import uvicorn

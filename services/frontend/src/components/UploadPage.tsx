@@ -96,7 +96,7 @@ const UploadPage = () => {
 
       <MainContent>
         <SharedUpload 
-          $variant="page"
+          $variant="landing"
           isAuthenticated={true}
           onStartProcessing={handleStartProcessing}
         />

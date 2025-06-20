@@ -340,19 +340,12 @@ const LandingPage = () => {
           </LeftSection>
 
           <RightSection>
-            <SharedUploadCard
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.5 }}
-              $isAuthenticated={isAuthenticated}
-            >
-              <SharedUpload 
-                $variant="landing"
-                isAuthenticated={isAuthenticated}
-                onStartProcessing={handleStartProcessing}
-                onUploadClick={handleUploadClick}
-              />
-            </SharedUploadCard>
+            <SharedUpload 
+              $variant="landing"
+              isAuthenticated={isAuthenticated}
+              onStartProcessing={handleStartProcessing}
+              onUploadClick={handleUploadClick}
+            />
           </RightSection>
         </MainContent>
       </MainContentWrapper>
