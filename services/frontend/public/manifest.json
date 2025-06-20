@@ -1,0 +1,21 @@
+{
+  "name": "Whisper Notes",
+  "short_name": "WhisperNotes",
+  "description": "AI-powered audio and video transcription with speaker identification",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0B0A0A",
+  "theme_color": "#8850F2",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

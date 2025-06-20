@@ -33,10 +33,11 @@ TEMP_DIR = "/app/temp"
 PROCESSED_DIR = "/app/processed"
 
 # Redis for caching and progress tracking
-redis_client = redis.Redis(host=os.getenv("REDIS_HOST", "localhost"), port=6379, decode_responses=True)
+redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
+redis_client = redis.from_url(redis_url, decode_responses=True)
 
 # Service URLs
-WHISPER_SERVICE_URL = os.getenv("WHISPER_SERVICE_URL", "http://whisper-transcriber:8005")
+WHISPER_SERVICE_URL = os.getenv("WHISPER_SERVICE_URL", "http://whisper-transcriber:8003")
 FILE_UPLOADER_URL = os.getenv("FILE_UPLOADER_URL", "http://file-uploader:8002")
 
 # RabbitMQ configuration
@@ -49,8 +50,8 @@ VIDEO_PROCESSING_QUEUE = "video_processing_queue"
 # MinIO configuration
 MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "minio:9000")
 MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
-MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin")
-MINIO_BUCKET = os.getenv("MINIO_BUCKET", "videos")
+MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin123")
+MINIO_BUCKET = os.getenv("MINIO_BUCKET", "whisper-files")
 
 # Ensure directories exist
 os.makedirs(TEMP_DIR, exist_ok=True)

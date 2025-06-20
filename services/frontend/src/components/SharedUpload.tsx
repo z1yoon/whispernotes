@@ -81,7 +81,7 @@ const DropZone = styled.div<{ $isDragActive: boolean; $isAuthenticated?: boolean
   align-items: center;
   justify-content: center;
   min-height: 300px;
-  margin-bottom: ${props => props.$isAuthenticated ? '1.5rem' : '0'};
+  margin-bottom: 1.5rem;
   
   &:hover {
     border-color: rgba(136, 80, 242, 0.6);
@@ -392,6 +392,11 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
   });
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
+    // Only allow file dropping if authenticated
+    if (!isAuthenticated) {
+      return;
+    }
+    
     const newFiles = acceptedFiles.map(file => {
       const isVideo = file.type.includes('video');
       const isAudio = file.type.includes('audio');
@@ -410,7 +415,7 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
     
     setFiles(prev => [...prev, ...newFiles]);
     notification.success(`Files Added`, `${acceptedFiles.length} file(s) added successfully`);
-  }, [notification]);
+  }, [notification, isAuthenticated]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({ 
     onDrop,
@@ -419,6 +424,8 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
       'audio/*': ['.mp3', '.wav', '.m4a', '.flac']
     },
     maxSize: 5 * 1024 * 1024 * 1024, // 5GB
+    noClick: !isAuthenticated, // Disable click when not authenticated
+    noDrag: !isAuthenticated,  // Disable drag when not authenticated
   });
 
   const removeFile = (fileId: number) => {
@@ -698,10 +705,11 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
       </AnimatePresence>
       
       <DropZone
-        {...(!isAuthenticated ? { onClick: onUploadClick } : getRootProps())}
-        $isDragActive={isDragActive}
+        {...(isAuthenticated ? getRootProps() : { onClick: onUploadClick })}
+        $isDragActive={isDragActive && isAuthenticated}
         $isAuthenticated={isAuthenticated}
       >
+        {/* Only render the input if authenticated */}
         {isAuthenticated && <input {...getInputProps()} />}
         <div className="upload-badge">
           <Upload size={40} color="white" />
@@ -710,7 +718,7 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
           {isAuthenticated && isDragActive ? 'Drop files here' : 'Upload Your Video'}
         </div>
         <div className="upload-subtitle">
-          Drag & drop or click to browse files
+          {isAuthenticated ? 'Drag & drop or click to browse files' : 'Drag & drop or click to browse files'}
         </div>
         
         <div className="upload-info">
@@ -718,6 +726,7 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
         </div>
       </DropZone>
 
+      {/* Always render the file processing section but only show when authenticated and files exist */}
       <AnimatePresence>
         {isAuthenticated && files.length > 0 && (
           <motion.div
