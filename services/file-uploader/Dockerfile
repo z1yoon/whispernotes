@@ -21,7 +21,7 @@ COPY file-uploader/ .
 RUN mkdir -p /app/uploads
 
 # Expose port
-EXPOSE 8000
+EXPOSE 8002
 
 # Command to run the application
 CMD ["python", "main.py"]

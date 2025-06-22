@@ -17,13 +17,18 @@ export default async function initializeUpload(req: NextApiRequest, res: NextApi
         return res.status(401).json({ message: 'Unauthorized: No token provided' });
     }
 
+    let userId: string; // Declare userId in the main function scope
+
     try {
-        // 1. Verify user authentication by calling the auth service
-        await axios.get(`${AUTH_SERVICE_URL}/api/v1/auth/me`, {
+        // 1. Verify user authentication and get user info
+        const authResponse = await axios.get(`${AUTH_SERVICE_URL}/api/v1/auth/me`, {
             headers: {
                 'Authorization': `Bearer ${token}`
             }
         });
+
+        const user = authResponse.data;
+        userId = user.id; // Assign to the properly scoped variable
 
     } catch (authError: any) {
         console.error('Auth service verification failed:', authError.response?.data || authError.message);
@@ -31,19 +36,20 @@ export default async function initializeUpload(req: NextApiRequest, res: NextApi
     }
 
     try {
-        // 2. If auth is successful, proceed to initialize the upload
+        // 2. If auth is successful, proceed to initialize the upload with user_id
         const { filename, fileSize, contentType } = req.body;
 
         if (!filename || !fileSize || !contentType) {
             return res.status(400).json({ message: 'Missing required fields: filename, fileSize, contentType' });
         }
 
-        console.log(`Initializing upload to ${FILE_UPLOADER_URL} for file: ${filename}`);
+        console.log(`Initializing upload to ${FILE_UPLOADER_URL} for file: ${filename} by user: ${userId}`);
 
         const uploaderResponse = await axios.post(`${FILE_UPLOADER_URL}/api/v1/uploads/initialize`, {
             filename: filename,
             file_size: fileSize,
             content_type: contentType,
+            user_id: userId  // Pass the user_id to the file-uploader service
         });
         
         console.log(`Upload initialized successfully: ${JSON.stringify(uploaderResponse.data)}`);
@@ -55,4 +61,4 @@ export default async function initializeUpload(req: NextApiRequest, res: NextApi
         const message = uploadError.response?.data?.detail || 'Internal Server Error';
         res.status(status).json({ message });
     }
-} 
+}

@@ -22,10 +22,16 @@ import {
   UserCheck,
   UserX,
   Settings,
-  Trash2
+  Trash2,
+  FileVideo,
+  FileAudio,
+  HardDrive,
+  Calendar,
+  Eye
 } from 'lucide-react'
 import { useAuth } from '@/providers/auth-provider'
 import { useNotification } from '@/components/NotificationProvider'
+import Link from 'next/link'
 
 // Styled components matching landing page design
 const AdminContainer = styled.div`
@@ -599,16 +605,55 @@ interface PendingUser {
   requested_at: string
 }
 
+interface Transcript {
+  id: string;
+  sessionId: string;
+  userId: string;
+  username: string;
+  filename: string;
+  fileSize: number;
+  mimeType: string;
+  status: string;
+  duration?: number;
+  progress: number;
+  hasTranscript: boolean;
+  createdAt: string;
+  completedAt?: string;
+}
+
+interface TranscriptStats {
+  total: number;
+  completed: number;
+  processing: number;
+  failed: number;
+  totalDuration: number;
+  totalSize: number;
+  userCount: number;
+}
+
 export default function AdminPage() {
-  const [activeTab, setActiveTab] = useState<'requests' | 'users'>('requests')
+  const [activeTab, setActiveTab] = useState<'requests' | 'users' | 'transcripts'>('requests')
   const [pendingUsers, setPendingUsers] = useState<PendingUser[]>([])
   const [existingUsers, setExistingUsers] = useState<ExistingUser[]>([])
   const [filter, setFilter] = useState<string>('pending')
   const [userFilter, setUserFilter] = useState<string>('all')
+  const [transcriptFilter, setTranscriptFilter] = useState<string>('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [userSearchTerm, setUserSearchTerm] = useState('')
+  const [transcriptSearchTerm, setTranscriptSearchTerm] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [isLoadingUsers, setIsLoadingUsers] = useState(false)
+  const [isLoadingTranscripts, setIsLoadingTranscripts] = useState(false)
+  const [transcripts, setTranscripts] = useState<Transcript[]>([])
+  const [transcriptStats, setTranscriptStats] = useState<TranscriptStats>({
+    total: 0,
+    completed: 0,
+    processing: 0,
+    failed: 0,
+    totalDuration: 0,
+    totalSize: 0,
+    userCount: 0
+  })
   const { user, logout } = useAuth()
   const notification = useNotification()
   const router = useRouter()
@@ -734,102 +779,26 @@ export default function AdminPage() {
     router.push('/')
   }
 
-  const handleDeleteUser = async (userId: string) => {
-    // Confirmation before deletion
-    if (!confirm("Are you sure you want to delete this user? This action cannot be undone.")) {
-      return;
-    }
-    
-    try {
-      const userToDelete = existingUsers.find(u => u.id === userId);
-      if (!userToDelete) {
-        notification.error('Error', 'User not found');
-        return;
-      }
-
-      console.log('Deleting user:', userToDelete.email);
-      const response = await fetch(`/api/admin/delete-user?id=${userId}`, {
-        method: 'DELETE'
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Delete user error response:', errorData);
-        
-        // Handle specific error cases
-        if (response.status === 401) {
-          notification.error('Authentication Error', 'Your session has expired. Please log in again.');
-          logout();
-          router.push('/login');
-          return;
-        } else if (response.status === 403) {
-          notification.error('Permission Denied', 'You do not have permission to delete users.');
-          return;
-        } else if (response.status === 404) {
-          notification.error('User Not Found', 'The user you are trying to delete no longer exists.');
-          loadExistingUsers(); // Refresh the list
-          return;
-        }
-        
-        throw new Error(errorData.error || 'Failed to delete user');
-      }
-      
-      notification.success('User Deleted', `${userToDelete.full_name} has been deleted successfully.`);
-      loadExistingUsers(); // Reload the list
-    } catch (error: any) {
-      console.error('Delete user error:', error);
-      notification.error('Delete Failed', error.message || 'Failed to delete user');
-    }
+  const handleViewTranscripts = () => {
+    router.push('/transcripts')
   }
 
-  const filteredUsers = pendingUsers.filter(user => {
-    const matchesFilter = filter === 'all' || user.status === filter
-    const matchesSearch = user.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         user.email.toLowerCase().includes(searchTerm.toLowerCase())
-    return matchesFilter && matchesSearch
-  })
-
-  const filteredExistingUsers = existingUsers.filter(user => {
-    const matchesFilter = userFilter === 'all' || 
-                         (userFilter === 'admin' && user.is_admin) ||
-                         (userFilter === 'user' && !user.is_admin)
-    const matchesSearch = user.full_name.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
-                         user.email.toLowerCase().includes(userSearchTerm.toLowerCase())
-    return matchesFilter && matchesSearch
-  })
-
-  const stats = {
-    total: pendingUsers.length,
-    pending: pendingUsers.filter(u => u.status === 'pending').length,
-    approved: pendingUsers.filter(u => u.status === 'approved').length,
-    rejected: pendingUsers.filter(u => u.status === 'rejected').length,
-    totalUsers: existingUsers.length,
-    admins: existingUsers.filter(u => u.is_admin).length,
-    regularUsers: existingUsers.filter(u => !u.is_admin).length
-  }
-
-  // Get display username from user data (removed environment variable fallback)
-  const displayUsername = user?.full_name || user?.username || 'Admin';
-
-  if (!user || !user.is_admin) {
-    return null
-  }
+  const displayUsername = user ? `${user.full_name} (${user.email})` : ''
 
   return (
     <AdminContainer>
       <Header>
         <HeaderLeft>
           <BackButton onClick={handleBack}>
-            <ArrowLeft size={18} />
+            <ArrowLeft size={16} />
           </BackButton>
           <HeaderTitle>
-            <div className="title">Admin Panel</div>
-            <div className="subtitle">Manage Users & Access Requests</div>
+            <div className="title">Admin Dashboard</div>
+            <div className="subtitle">Manage users and transcripts</div>
           </HeaderTitle>
         </HeaderLeft>
-
         <HeaderActions>
-          <UsernameButton>
+          <UsernameButton onClick={handleViewTranscripts}>
             <Shield size={12} />
             {displayUsername}
           </UsernameButton>
@@ -840,257 +809,257 @@ export default function AdminPage() {
           </AuthButton>
         </HeaderActions>
       </Header>
-
+      
       <MainContent>
-        <StatsGrid>
-          {(activeTab === 'requests' ? [
-            { label: 'Total Requests', value: stats.total },
-            { label: 'Pending', value: stats.pending },
-            { label: 'Approved', value: stats.approved },
-            { label: 'Rejected', value: stats.rejected }
-          ] : [
-            { label: 'Total Users', value: stats.totalUsers },
-            { label: 'Administrators', value: stats.admins },
-            { label: 'Regular Users', value: stats.regularUsers },
-            { label: 'Active Users', value: stats.totalUsers }
-          ]).map((stat, index) => (
-            <StatCard
-              key={stat.label}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: index * 0.1 }}
-            >
-              <div className="stat-label">{stat.label}</div>
-              <div className="stat-value">{stat.value}</div>
-            </StatCard>
-          ))}
-        </StatsGrid>
-
         <TabButtons>
-          <TabButton 
-            active={activeTab === 'requests'} 
-            onClick={() => setActiveTab('requests')}
-          >
-            <Users size={20} />
-            Access Requests
+          <TabButton active={activeTab === 'requests'} onClick={() => setActiveTab('requests')}>
+            <Users size={16} />
+            User Requests
           </TabButton>
-          <TabButton 
-            active={activeTab === 'users'} 
-            onClick={() => setActiveTab('users')}
-          >
-            <Settings size={20} />
-            User Management
+          <TabButton active={activeTab === 'users'} onClick={() => setActiveTab('users')}>
+            <UserCheck size={16} />
+            Existing Users
+          </TabButton>
+          <TabButton active={activeTab === 'transcripts'} onClick={() => setActiveTab('transcripts')}>
+            <FileText size={16} />
+            Transcripts
           </TabButton>
         </TabButtons>
-
-        <AdminPanel
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.4 }}
-        >
-          <PanelHeader>
-            <div className="panel-title">
-              {activeTab === 'requests' ? (
-                <>
-                  <Users size={24} />
-                  User Requests ({filteredUsers.length})
-                </>
-              ) : (
-                <>
-                  <Settings size={24} />
-                  Existing Users ({filteredExistingUsers.length})
-                </>
-              )}
-            </div>
-
+        
+        {activeTab === 'requests' && (
+          <>
             <SearchFilter>
               <div className="search-input">
-                <Search className="search-icon" size={16} />
                 <input
                   type="text"
-                  value={activeTab === 'requests' ? searchTerm : userSearchTerm}
-                  onChange={(e) => activeTab === 'requests' ? 
-                    setSearchTerm(e.target.value) : 
-                    setUserSearchTerm(e.target.value)}
-                  placeholder="Search by name or email..."
+                  placeholder="Search requests..."
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
                 />
+                <Search className="search-icon" size={16} />
               </div>
-
               <div className="filter-buttons">
-                {activeTab === 'requests' ? 
-                  ['pending', 'approved', 'rejected', 'all'].map((status) => (
-                    <FilterButton
-                      key={status}
-                      active={filter === status}
-                      onClick={() => setFilter(status)}
-                    >
-                      {status.charAt(0).toUpperCase() + status.slice(1)}
-                    </FilterButton>
-                  )) :
-                  ['all', 'admin', 'user'].map((status) => (
-                    <FilterButton
-                      key={status}
-                      active={userFilter === status}
-                      onClick={() => setUserFilter(status)}
-                    >
-                      {status === 'admin' ? 'Admins' : 
-                       status === 'user' ? 'Users' : 'All'}
-                    </FilterButton>
-                  ))
-                }
+                <FilterButton active={filter === 'pending'} onClick={() => setFilter('pending')}>
+                  Pending
+                </FilterButton>
+                <FilterButton active={filter === 'approved'} onClick={() => setFilter('approved')}>
+                  Approved
+                </FilterButton>
+                <FilterButton active={filter === 'rejected'} onClick={() => setFilter('rejected')}>
+                  Rejected
+                </FilterButton>
               </div>
             </SearchFilter>
-          </PanelHeader>
-
-          <UsersList>
-            {(activeTab === 'requests' ? isLoading : isLoadingUsers) ? (
+            
+            {isLoading ? (
               <LoadingState>
-                <div className="loading-spinner" />
-                <div className="loading-text">
-                  Loading {activeTab === 'requests' ? 'user requests' : 'users'}...
-                </div>
+                <div className="loading-spinner"></div>
+                <div className="loading-text">Loading requests...</div>
               </LoadingState>
-            ) : (activeTab === 'requests' ? filteredUsers : filteredExistingUsers).length === 0 ? (
-              <EmptyState>
-                <Users className="empty-icon" />
-                <div className="empty-text">
-                  No {activeTab === 'requests' ? 'user requests' : 'users'} found
-                </div>
-              </EmptyState>
-            ) : activeTab === 'requests' ? (
-              // Existing access requests rendering
-              filteredUsers.map((user, index) => (
-                <UserCard
-                  key={user.id}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.4, delay: index * 0.1 }}
-                >
-                  <UserHeader>
-                    <div className="user-avatar">
-                      <User size={20} />
-                    </div>
-                    <div className="user-info">
-                      <div className="user-name">{user.full_name}</div>
-                      <div className="user-username">{user.email}</div>
-                    </div>
-                    <StatusBadge status={user.status}>
-                      {user.status}
-                    </StatusBadge>
-                  </UserHeader>
-
-                  <UserDetails>
-                    <div className="detail-item">
-                      <Mail className="icon" size={16} />
-                      {user.email}
-                    </div>
-                    <div className="detail-item">
-                      <Clock className="icon" size={16} />
-                      {new Date(user.requested_at).toLocaleDateString()}
-                    </div>
-                  </UserDetails>
-
-                  {user.reason && (
-                    <PurposeSection>
-                      <div className="purpose-label">
-                        <FileText size={16} />
-                        Purpose:
-                      </div>
-                      <div className="purpose-text">{user.reason}</div>
-                    </PurposeSection>
-                  )}
-
-                  {user.status === 'pending' && (
-                    <ActionButtons>
-                      <button
-                        className="approve"
-                        onClick={() => handleApprove(user.id)}
-                      >
-                        <Check size={16} />
-                        Approve
-                      </button>
-                      <button
-                        className="reject"
-                        onClick={() => handleReject(user.id)}
-                      >
-                        <X size={16} />
-                        Reject
-                      </button>
-                    </ActionButtons>
-                  )}
-                </UserCard>
-              ))
             ) : (
-              // New existing users rendering
-              filteredExistingUsers.map((existingUser, index) => (
-                <UserCard
-                  key={existingUser.id}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.4, delay: index * 0.1 }}
-                >
-                  <UserHeader>
-                    <div className="user-avatar">
-                      {existingUser.is_admin ? <Shield size={20} /> : <User size={20} />}
+              <>
+                {pendingUsers.length === 0 ? (
+                  <EmptyState>
+                    <div className="empty-icon">
+                      <Users size={48} />
                     </div>
-                    <div className="user-info">
-                      <div className="user-name">{existingUser.full_name}</div>
-                      <div className="user-username">{existingUser.email}</div>
+                    <div className="empty-text">
+                      No pending user requests found.
                     </div>
-                    <AdminBadge isAdmin={existingUser.is_admin}>
-                      {existingUser.is_admin ? 'Admin' : 'User'}
-                    </AdminBadge>
-                  </UserHeader>
-
-                  <UserDetails>
-                    <div className="detail-item">
-                      <Mail className="icon" size={16} />
-                      {existingUser.email}
-                    </div>
-                    <div className="detail-item">
-                      <div className="icon">
-                        {existingUser.is_active ? 
-                          <UserCheck size={16} style={{ color: '#10B981' }} /> : 
-                          <UserX size={16} style={{ color: '#EF4444' }} />
-                        }
-                      </div>
-                      {existingUser.is_active ? 'Active' : 'Inactive'}
-                    </div>
-                  </UserDetails>
-
-                  {existingUser.id !== user?.id && (
-                    <ActionButtons>
-                      <button
-                        className={existingUser.is_admin ? "reject" : "approve"}
-                        onClick={() => handleToggleAdmin(existingUser.id, existingUser.is_admin)}
-                      >
-                        {existingUser.is_admin ? (
-                          <>
-                            <UserX size={16} />
-                            Remove Admin
-                          </>
-                        ) : (
-                          <>
-                            <UserCheck size={16} />
-                            Make Admin
-                          </>
-                        )}
-                      </button>
-
-                      <button
-                        className="delete"
-                        onClick={() => handleDeleteUser(existingUser.id)}
-                      >
-                        <Trash2 size={16} />
-                        Delete
-                      </button>
-                    </ActionButtons>
-                  )}
-                </UserCard>
-              ))
+                  </EmptyState>
+                ) : (
+                  <UsersList>
+                    {pendingUsers.filter(user => {
+                      const matchesStatus = filter === 'all' || user.status === filter
+                      const matchesSearch = user.email.toLowerCase().includes(searchTerm.toLowerCase()) || user.full_name.toLowerCase().includes(searchTerm.toLowerCase())
+                      return matchesStatus && matchesSearch
+                    }).map(user => (
+                      <UserCard key={user.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                        <UserHeader>
+                          <div className="user-avatar">
+                            {user.full_name.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="user-info">
+                            <div className="user-name">{user.full_name}</div>
+                            <div className="user-username">{user.email}</div>
+                          </div>
+                          <StatusBadge status={user.status}>
+                            {user.status.charAt(0).toUpperCase() + user.status.slice(1)}
+                          </StatusBadge>
+                        </UserHeader>
+                        <ActionButtons>
+                          <button className="approve" onClick={() => handleApprove(user.id)}>
+                            <Check size={16} />
+                            Approve
+                          </button>
+                          <button className="reject" onClick={() => handleReject(user.id)}>
+                            <X size={16} />
+                            Reject
+                          </button>
+                        </ActionButtons>
+                      </UserCard>
+                    ))}
+                  </UsersList>
+                )}
+              </>
             )}
-          </UsersList>
-        </AdminPanel>
+          </>
+        )}
+        
+        {activeTab === 'users' && (
+          <>
+            <SearchFilter>
+              <div className="search-input">
+                <input
+                  type="text"
+                  placeholder="Search users..."
+                  value={userSearchTerm}
+                  onChange={e => setUserSearchTerm(e.target.value)}
+                />
+                <Search className="search-icon" size={16} />
+              </div>
+              <div className="filter-buttons">
+                <FilterButton active={userFilter === 'all'} onClick={() => setUserFilter('all')}>
+                  All Users
+                </FilterButton>
+                <FilterButton active={userFilter === 'active'} onClick={() => setUserFilter('active')}>
+                  Active
+                </FilterButton>
+                <FilterButton active={userFilter === 'inactive'} onClick={() => setUserFilter('inactive')}>
+                  Inactive
+                </FilterButton>
+              </div>
+            </SearchFilter>
+            
+            {isLoadingUsers ? (
+              <LoadingState>
+                <div className="loading-spinner"></div>
+                <div className="loading-text">Loading users...</div>
+              </LoadingState>
+            ) : (
+              <>
+                {existingUsers.length === 0 ? (
+                  <EmptyState>
+                    <div className="empty-icon">
+                      <Users size={48} />
+                    </div>
+                    <div className="empty-text">
+                      No users found.
+                    </div>
+                  </EmptyState>
+                ) : (
+                  <UsersList>
+                    {existingUsers.filter(user => {
+                      const matchesStatus = userFilter === 'all' || (userFilter === 'active' && user.is_active) || (userFilter === 'inactive' && !user.is_active)
+                      const matchesSearch = user.email.toLowerCase().includes(userSearchTerm.toLowerCase()) || user.full_name.toLowerCase().includes(userSearchTerm.toLowerCase())
+                      return matchesStatus && matchesSearch
+                    }).map(user => (
+                      <UserCard key={user.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                        <UserHeader>
+                          <div className="user-avatar">
+                            {user.full_name.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="user-info">
+                            <div className="user-name">{user.full_name}</div>
+                            <div className="user-username">{user.email}</div>
+                          </div>
+                          <AdminBadge isAdmin={user.is_admin}>
+                            {user.is_admin ? 'Admin' : 'User'}
+                          </AdminBadge>
+                        </UserHeader>
+                        <ActionButtons>
+                          <button className="approve" onClick={() => handleToggleAdmin(user.id, user.is_admin)}>
+                            {user.is_admin ? <UserX size={16} /> : <UserCheck size={16} />}
+                            {user.is_admin ? 'Remove Admin' : 'Promote to Admin'}
+                          </button>
+                        </ActionButtons>
+                      </UserCard>
+                    ))}
+                  </UsersList>
+                )}
+              </>
+            )}
+          </>
+        )}
+        
+        {activeTab === 'transcripts' && (
+          <>
+            <SearchFilter>
+              <div className="search-input">
+                <input
+                  type="text"
+                  placeholder="Search transcripts..."
+                  value={transcriptSearchTerm}
+                  onChange={e => setTranscriptSearchTerm(e.target.value)}
+                />
+                <Search className="search-icon" size={16} />
+              </div>
+              <div className="filter-buttons">
+                <FilterButton active={transcriptFilter === 'all'} onClick={() => setTranscriptFilter('all')}>
+                  All Transcripts
+                </FilterButton>
+                <FilterButton active={transcriptFilter === 'completed'} onClick={() => setTranscriptFilter('completed')}>
+                  Completed
+                </FilterButton>
+                <FilterButton active={transcriptFilter === 'processing'} onClick={() => setTranscriptFilter('processing')}>
+                  Processing
+                </FilterButton>
+                <FilterButton active={transcriptFilter === 'failed'} onClick={() => setTranscriptFilter('failed')}>
+                  Failed
+                </FilterButton>
+              </div>
+            </SearchFilter>
+            
+            {isLoadingTranscripts ? (
+              <LoadingState>
+                <div className="loading-spinner"></div>
+                <div className="loading-text">Loading transcripts...</div>
+              </LoadingState>
+            ) : (
+              <>
+                {transcripts.length === 0 ? (
+                  <EmptyState>
+                    <div className="empty-icon">
+                      <FileText size={48} />
+                    </div>
+                    <div className="empty-text">
+                      No transcripts found.
+                    </div>
+                  </EmptyState>
+                ) : (
+                  <UsersList>
+                    {transcripts.filter(transcript => {
+                      const matchesStatus = transcriptFilter === 'all' || transcript.status === transcriptFilter
+                      const matchesSearch = transcript.filename.toLowerCase().includes(transcriptSearchTerm.toLowerCase())
+                      return matchesStatus && matchesSearch
+                    }).map(transcript => (
+                      <UserCard key={transcript.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                        <UserHeader>
+                          <div className="user-avatar">
+                            <FileText size={24} />
+                          </div>
+                          <div className="user-info">
+                            <div className="user-name">{transcript.filename}</div>
+                            <div className="user-username">{transcript.userId}</div>
+                          </div>
+                          <StatusBadge status={transcript.status}>
+                            {transcript.status.charAt(0).toUpperCase() + transcript.status.slice(1)}
+                          </StatusBadge>
+                        </UserHeader>
+                        <ActionButtons>
+                          <button className="approve" onClick={() => {}}>
+                            <Eye size={16} />
+                            View
+                          </button>
+                        </ActionButtons>
+                      </UserCard>
+                    ))}
+                  </UsersList>
+                )}
+              </>
+            )}
+          </>
+        )}
       </MainContent>
     </AdminContainer>
   )

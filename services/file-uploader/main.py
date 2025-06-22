@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 import io
 import time
 import tempfile
+from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Request, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
@@ -47,6 +48,9 @@ MINIO_USE_SECURE = os.getenv("MINIO_USE_SECURE", "false").lower() == "true"
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "")
+
+# Add this for consistency with other services:
+REDIS_URL = f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/0" if REDIS_PASSWORD else f"redis://{REDIS_HOST}:{REDIS_PORT}/0"
 
 RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "rabbitmq")
 RABBITMQ_PORT = int(os.getenv("RABBITMQ_PORT", "5672"))
@@ -107,6 +111,7 @@ class UploadInitializationRequest(BaseModel):
     filename: str = Field(..., description="The name of the file to be uploaded.")
     file_size: int = Field(..., gt=0, description="The total size of the file in bytes.")
     content_type: str = Field(..., description="The MIME type of the file.")
+    user_id: Optional[str] = Field(None, description="The ID of the user uploading the file.")
     
 class UploadInitializationResponse(BaseModel):
     session_id: str = Field(..., description="A unique session ID for this upload.")
@@ -220,6 +225,7 @@ async def initialize_upload(request: UploadInitializationRequest):
             "filename": request.filename,
             "file_size": request.file_size,
             "content_type": request.content_type,
+            "user_id": request.user_id,  # Store the user_id
             "parts": [],
             "creation_time": time.time()
         }
@@ -818,6 +824,96 @@ async def test_minio_access():
             "message": str(e),
             "error_type": type(e).__name__
         }
+
+@app.get("/api/v1/transcripts/admin/all")
+async def get_all_transcripts():
+    """
+    Get all transcripts from all users (admin only)
+    """
+    try:
+        # Get all transcription data from Redis
+        keys = redis_client.keys("transcription:*")
+        transcriptions = []
+
+        for key in keys:
+            data = redis_client.get(key)
+            if data:
+                transcription = json.loads(data)
+                session_id = key.split(":")[-1]
+                
+                # Get user information
+                user_id = transcription.get("user_id")
+                username = "Unknown User"
+                
+                if user_id:
+                    user_data = redis_client.get(f"user:{user_id}")
+                    if user_data:
+                        user_info = json.loads(user_data)
+                        username = user_info.get("full_name") or user_info.get("username") or "Unknown User"
+                
+                # Add session ID and additional information
+                transcription.update({
+                    "sessionId": session_id,
+                    "username": username
+                })
+                
+                transcriptions.append(transcription)
+        
+        return {"transcriptions": transcriptions}
+    except Exception as e:
+        logger.error(f"Error retrieving all transcripts: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve transcripts: {str(e)}")
+
+@app.get("/api/v1/transcripts/user/{user_id}")
+async def get_user_transcripts(user_id: str):
+    """
+    Get all transcripts for a specific user
+    """
+    try:
+        # Get all transcription data from Redis
+        keys = redis_client.keys("transcription:*")
+        transcriptions = []
+
+        for key in keys:
+            data = redis_client.get(key)
+            if data:
+                transcription = json.loads(data)
+                
+                # Only include transcripts for this user
+                if transcription.get("user_id") == user_id:
+                    session_id = key.split(":")[-1]
+                    
+                    # Add session ID and format the data
+                    transcription.update({
+                        "id": session_id,
+                        "sessionId": session_id,
+                        "filename": transcription.get("filename", "Unknown"),
+                        "fileSize": transcription.get("file_size", 0),
+                        "mimeType": transcription.get("content_type", "unknown"),
+                        "participantCount": transcription.get("speaker_count", 1),
+                        "status": transcription.get("status", "processing"),
+                        "sessionStatus": transcription.get("status", "processing"),
+                        "progress": transcription.get("progress", 0),
+                        "hasTranscript": transcription.get("status") == "completed",
+                        "transcriptData": transcription.get("transcript", None),
+                        "createdAt": transcription.get("created_at", datetime.now().isoformat()),
+                        "completedAt": transcription.get("completed_at", None),
+                        "duration": transcription.get("duration", 0),
+                        "segmentCount": len(transcription.get("diarized_segments", [])),
+                        "language": transcription.get("language", "en"),
+                        "speakers": transcription.get("speakers", []),
+                        "diarizedSegments": transcription.get("diarized_segments", [])
+                    })
+                    
+                    transcriptions.append(transcription)
+        
+        # Sort by creation date (newest first)
+        transcriptions.sort(key=lambda x: x.get("createdAt", ""), reverse=True)
+        
+        return {"transcriptions": transcriptions}
+    except Exception as e:
+        logger.error(f"Error retrieving transcripts for user {user_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve user transcripts: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

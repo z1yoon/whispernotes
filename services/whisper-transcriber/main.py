@@ -10,6 +10,7 @@ import threading
 import redis
 import httpx
 import logging
+import pika
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Union
 from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Form, Depends
@@ -103,11 +104,17 @@ RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "rabbitmq")
 RABBITMQ_PORT = int(os.getenv("RABBITMQ_PORT", 5672))
 RABBITMQ_USER = os.getenv("RABBITMQ_DEFAULT_USER", "user")
 RABBITMQ_PASS = os.getenv("RABBITMQ_DEFAULT_PASS", "password")
-TRANSCRIPTION_QUEUE = "transcription_queue"
+TRANSCRIPTION_QUEUE = "video_processing_queue"  # Listen to the same queue as video-processor
 TRANSCRIPTION_RESULTS_QUEUE = "transcription_results_queue"
 
 # Service URLs
 FILE_UPLOADER_URL = os.getenv("FILE_UPLOADER_URL", "http://file-uploader:8002")
+
+# MinIO configuration for downloading files
+MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "minio:9000")
+MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
+MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin123")
+MINIO_BUCKET = os.getenv("MINIO_BUCKET", "whisper-files")
 
 # Pydantic models
 class TranscriptionRequest(BaseModel):
@@ -646,6 +653,153 @@ def cleanup_temp_file(file_path, delay=0):
     except Exception as e:
         logger.error(f"Failed to delete temporary file {file_path}: {e}")
 
+def download_from_minio(object_name: str, destination_path: str) -> bool:
+    """Download file from MinIO"""
+    from minio import Minio
+    from minio.error import S3Error
+    
+    try:
+        # Initialize MinIO client
+        minio_client = Minio(
+            MINIO_ENDPOINT,
+            access_key=MINIO_ACCESS_KEY,
+            secret_key=MINIO_SECRET_KEY,
+            secure=False  # Change to True for HTTPS
+        )
+        
+        # Make sure the directory exists
+        os.makedirs(os.path.dirname(destination_path), exist_ok=True)
+        
+        # Download the object
+        minio_client.fget_object(MINIO_BUCKET, object_name, destination_path)
+        logger.info(f"Downloaded {object_name} to {destination_path}")
+        return True
+        
+    except S3Error as e:
+        logger.error(f"MinIO error downloading {object_name}: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Error downloading from MinIO: {e}")
+        return False
+
+def process_upload_message(ch, method, properties, body):
+    """Process message from RabbitMQ"""
+    try:
+        message = json.loads(body)
+        logger.info(f"Received transcription message: {message}")
+        
+        session_id = message.get("session_id")
+        object_name = message.get("object_name")
+        original_filename = message.get("original_filename")
+        
+        if not session_id or not object_name:
+            logger.error("Invalid message: missing session_id or object_name")
+            ch.basic_ack(delivery_tag=method.delivery_tag)
+            return
+            
+        # Check if this is an audio file that can be directly transcribed
+        if original_filename and any(ext in original_filename.lower() for ext in ['.mp3', '.wav', '.m4a', '.flac', '.aac']):
+            logger.info(f"Processing audio file directly: {original_filename}")
+            
+            # Create download path
+            temp_dir = "/tmp/whisper_temp"
+            os.makedirs(temp_dir, exist_ok=True)
+            download_path = os.path.join(temp_dir, f"{session_id}_{original_filename}")
+            
+            # Download file from MinIO
+            success = download_from_minio(object_name, download_path)
+            if not success:
+                logger.error(f"Failed to download {object_name}")
+                ch.basic_ack(delivery_tag=method.delivery_tag)
+                return
+                
+            # Get participant count and speaker names from Redis if available
+            metadata = None
+            try:
+                # Try multiple possible metadata keys
+                metadata_keys = [
+                    f"upload_metadata:{session_id}",
+                    f"processing_metadata:{session_id}",
+                    f"session_metadata:{session_id}"
+                ]
+                
+                for key in metadata_keys:
+                    metadata_raw = redis_client.get(key)
+                    if metadata_raw:
+                        metadata = json.loads(metadata_raw)
+                        break
+            except Exception as e:
+                logger.error(f"Error getting metadata from Redis: {e}")
+                
+            participant_count = 2  # Default
+            speaker_names = None
+            
+            if metadata:
+                participant_count = metadata.get("participant_count", 2)
+                speaker_names = metadata.get("speaker_names")
+            
+            # Start transcription directly
+            try:
+                asyncio.run(transcribe_async(download_path, session_id, participant_count, None, speaker_names))
+                logger.info(f"Transcription completed for audio file: {session_id}")
+                
+                # Clean up downloaded file
+                try:
+                    os.unlink(download_path)
+                except:
+                    pass
+                    
+            except Exception as e:
+                logger.error(f"Error transcribing audio file {session_id}: {e}")
+                asyncio.run(send_progress_update(session_id, 0, f"Transcription failed: {str(e)}", "error"))
+        else:
+            # This is a video file - let video-processor handle it
+            logger.info(f"Video file detected, letting video-processor handle: {original_filename}")
+        
+        # Acknowledge message
+        ch.basic_ack(delivery_tag=method.delivery_tag)
+        
+    except Exception as e:
+        logger.error(f"Error processing RabbitMQ message: {e}")
+        # Acknowledge to avoid reprocessing (in production you might want to retry)
+        ch.basic_ack(delivery_tag=method.delivery_tag)
+
+def start_rabbitmq_consumer():
+    """Start RabbitMQ consumer in a separate thread"""
+    try:
+        credentials = pika.PlainCredentials(RABBITMQ_USER, RABBITMQ_PASS)
+        parameters = pika.ConnectionParameters(
+            host=RABBITMQ_HOST,
+            port=RABBITMQ_PORT,
+            credentials=credentials,
+            heartbeat=600,  # 10 minutes heartbeat to keep connection alive
+            blocked_connection_timeout=300  # 5 minutes timeout
+        )
+        
+        connection = pika.BlockingConnection(parameters)
+        channel = connection.channel()
+        
+        # Declare queue
+        channel.queue_declare(queue=TRANSCRIPTION_QUEUE, durable=True)
+        
+        # Set prefetch count to avoid overloading
+        channel.basic_qos(prefetch_count=1)
+        
+        # Set up consumer
+        channel.basic_consume(
+            queue=TRANSCRIPTION_QUEUE,
+            on_message_callback=process_upload_message
+        )
+        
+        logger.info(f"Started RabbitMQ consumer, listening for messages on {TRANSCRIPTION_QUEUE}")
+        
+        # Start consuming
+        channel.start_consuming()
+        
+    except Exception as e:
+        logger.error(f"Error starting RabbitMQ consumer: {e}")
+        # In production, add retry mechanism
+
 async def transcribe_async(audio_path: str, session_id: str, participant_count: int, language: str = None, speaker_names: List[str] = None):
     """Perform full transcription pipeline asynchronously"""
     try:
@@ -724,11 +878,72 @@ async def transcribe_async(audio_path: str, session_id: str, participant_count: 
         await send_progress_update(session_id, 90, "Formatting transcription...", "processing")
         formatted_result = format_transcription_result(result, session_id, duration, speaker_names)
         
-        # Store result in Redis
+        # Store result in Redis with all required frontend fields
+        transcription_data = {
+            "session_id": session_id,
+            "id": session_id,
+            "sessionId": session_id,
+            "filename": speaker_names[0] if speaker_names else "audio_file.wav",  # We'll get this from upload metadata
+            "fileSize": 0,  # We'll get this from upload metadata
+            "mimeType": "audio/wav",  # We'll get this from upload metadata
+            "participantCount": participant_count,
+            "status": "completed",
+            "sessionStatus": "completed",
+            "progress": 100,
+            "hasTranscript": True,
+            "transcriptData": formatted_result,
+            "createdAt": datetime.utcnow().isoformat(),
+            "completedAt": datetime.utcnow().isoformat(),
+            "duration": duration,
+            "segmentCount": len(formatted_result.get("diarized_segments", [])),
+            "language": language,
+            "speakers": list(set([seg.get("speaker", "SPEAKER_0") for seg in formatted_result.get("diarized_segments", [])])),
+            "diarizedSegments": formatted_result.get("diarized_segments", []),
+            "user_id": None,  # We'll get this from upload metadata
+            "content_type": "audio/wav",  # We'll get this from upload metadata
+            "file_size": 0,  # We'll get this from upload metadata
+            "speaker_count": participant_count,
+            "transcript": formatted_result.get("segments", []),
+            "created_at": datetime.utcnow().isoformat(),
+            "completed_at": datetime.utcnow().isoformat()
+        }
+        
+        # Try to get upload metadata to fill in missing fields
+        try:
+            upload_session_data = redis_client.get(f"upload_session:{session_id}")
+            if upload_session_data:
+                upload_data = json.loads(upload_session_data)
+                transcription_data.update({
+                    "filename": upload_data.get("filename", "audio_file.wav"),
+                    "fileSize": upload_data.get("file_size", 0),
+                    "file_size": upload_data.get("file_size", 0),
+                    "mimeType": upload_data.get("content_type", "audio/wav"),
+                    "content_type": upload_data.get("content_type", "audio/wav"),
+                    "user_id": upload_data.get("user_id")
+                })
+                
+            # Try to get user_id and processing metadata
+            metadata_keys = [
+                f"upload_metadata:{session_id}",
+                f"processing_metadata:{session_id}",
+                f"session_metadata:{session_id}",
+                f"user_session:{session_id}"
+            ]
+            
+            for key in metadata_keys:
+                metadata_raw = redis_client.get(key)
+                if metadata_raw:
+                    metadata = json.loads(metadata_raw)
+                    if metadata.get("user_id"):
+                        transcription_data["user_id"] = metadata["user_id"]
+                        break
+        except Exception as e:
+            logger.warning(f"Could not retrieve upload metadata: {e}")
+        
         redis_client.setex(
             f"transcription:{session_id}",
             24 * 3600,  # 24 hours
-            json.dumps(formatted_result)
+            json.dumps(transcription_data)
         )
         
         # Send to LLM service for further processing
@@ -968,6 +1183,13 @@ async def health():
         }
     }
 
+@app.on_event("startup")
+async def startup_event():
+    """Start background RabbitMQ consumer thread on startup"""
+    # Start RabbitMQ consumer in a separate thread
+    consumer_thread = threading.Thread(target=start_rabbitmq_consumer, daemon=True)
+    consumer_thread.start()
+    logger.info("Started RabbitMQ consumer thread")
 
 
 if __name__ == "__main__":

@@ -196,6 +196,12 @@ const UsernameButton = styled.div`
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  cursor: pointer;
+  transition: background 0.2s;
+  
+  &:hover {
+    background: rgba(255, 255, 255, 0.15);
+  }
 `;
 
 const AdminSection = styled.div`
@@ -228,9 +234,12 @@ const LandingPage = () => {
   };
 
   const handleStartProcessing = (files: any[], options: any) => {
-    toast.success(`Processing ${files.length} file(s) with ${options.numberOfSpeakers} speakers`);
-    // Add your processing logic here
-    console.log('Processing files:', files, 'with options:', options);
+    toast.success(`Files uploaded successfully! Redirecting to transcripts page...`);
+    
+    // Wait a short time before redirecting to transcripts page
+    setTimeout(() => {
+      router.push('/transcripts');
+    }, 1500);
   };
 
   const handleLogout = () => {
@@ -240,6 +249,10 @@ const LandingPage = () => {
 
   const handleAdminPanel = () => {
     router.push('/admin');
+  };
+
+  const handleViewTranscripts = () => {
+    router.push('/transcripts');
   };
 
   const isAdmin = user?.role === 'admin' || user?.is_admin;
@@ -255,34 +268,22 @@ const LandingPage = () => {
 
       {isAuthenticated ? (
         <AuthenticatedNav>
-          <UsernameButton>
-            {isAdmin ? <Shield size={12} /> : <User size={12} />}
+          <UsernameButton onClick={handleViewTranscripts}>
+            {isAdmin ? <Shield size={16} /> : <User size={16} />}
             {displayUsername}
           </UsernameButton>
-
-          <AuthButton 
-            as="button" 
-            $variant="primary"
-            onClick={handleLogout}
-            $isButton={true}
-          >
+          
+          {isAdmin && (
+            <AuthButton as="button" $variant="secondary" $isButton onClick={handleAdminPanel}>
+              <Shield size={16} />
+              Admin
+            </AuthButton>
+          )}
+          
+          <AuthButton as="button" $variant="secondary" $isButton onClick={handleLogout}>
             <LogOut size={16} />
             Logout
           </AuthButton>
-
-          {isAdmin && (
-            <AdminSection>
-              <AuthButton 
-                as="button" 
-                $variant="secondary"
-                onClick={handleAdminPanel}
-                $isButton={true}
-              >
-                <Shield size={16} />
-                Admin
-              </AuthButton>
-            </AdminSection>
-          )}
         </AuthenticatedNav>
       ) : (
         <TopNav>
@@ -341,10 +342,10 @@ const LandingPage = () => {
 
           <RightSection>
             <SharedUpload 
-              $variant="landing"
               isAuthenticated={isAuthenticated}
               onStartProcessing={handleStartProcessing}
               onUploadClick={handleUploadClick}
+              showProcessingOverlay={false}
             />
           </RightSection>
         </MainContent>

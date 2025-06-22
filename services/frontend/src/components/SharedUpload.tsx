@@ -38,6 +38,7 @@ interface SharedUploadProps {
   onStartProcessing?: (files: FileData[], options: ProcessingOptions) => void;
   onUploadClick?: (e: React.MouseEvent) => void;
   className?: string;
+  showProcessingOverlay?: boolean; // Add this prop to control overlay
 }
 
 // Styled Components
@@ -372,11 +373,35 @@ const StatusText = styled.div`
   text-align: center;
 `;
 
+// Add a new component for adding additional files
+const AddMoreFilesButton = styled(motion.button)`
+  width: 100%;
+  padding: 1rem;
+  background: rgba(136, 80, 242, 0.1);
+  border: 2px dashed rgba(136, 80, 242, 0.4);
+  border-radius: 12px;
+  color: #A855F7;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  transition: all 0.2s ease;
+  
+  &:hover {
+    background: rgba(136, 80, 242, 0.15);
+    border-color: rgba(136, 80, 242, 0.6);
+  }
+`;
+
 export const SharedUpload: React.FC<SharedUploadProps> = ({
   isAuthenticated = true,
   onStartProcessing,
   onUploadClick,
-  className
+  className,
+  showProcessingOverlay = true, // Default to true
 }) => {
   const [files, setFiles] = useState<FileData[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -455,57 +480,85 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
     
     setIsProcessing(true);
     setProcessingProgress(0);
-    setProcessingStatus('Initializing upload...');
+    setProcessingStatus('Initializing uploads...');
     
     try {
-      // For each file, we'll handle the upload
-      for (const fileData of files) {
-        setProcessingStatus(`Uploading ${fileData.name}...`);
-        setProcessingProgress(5);
-        
-        const file = fileData.file;
-        
-        // Step 1: Initialize upload
-        console.log('Initializing upload for file:', file.name);
-        const initResponse = await fetch('/api/upload/initialize', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            filename: file.name,
-            fileSize: file.size,
-            contentType: file.type,
-          }),
-        });
-        
-        if (!initResponse.ok) {
-          console.error('Initialize upload error:', await initResponse.text());
-          throw new Error('Failed to initialize upload');
-        }
-        
-        const initData = await initResponse.json();
-        console.log('Upload initialized successfully:', initData);
-        const sessionId = initData.session_id;
-        const uploadId = initData.upload_id;
-        setUploadSessionId(sessionId);
-        
-        // Choose upload strategy based on file size
-        if (file.size > 10 * 1024 * 1024) { // If file is larger than 10MB, use multipart upload
-          await handleMultipartUpload(file, sessionId, uploadId);
-        } else {
-          await handleDirectUpload(file, sessionId);
-        }
-        
-        // Wait for transcription to complete
-        await waitForTranscription(sessionId);
-      }
+      // Process all files in parallel with Promise.all
+      const uploadTasks = files.map(fileData => processFile(fileData));
+      await Promise.all(uploadTasks);
+      
+      // After all files are uploaded successfully, show success message and redirect
+      setProcessingProgress(100);
+      setProcessingStatus('Upload successful!');
+      
+      notification.success(
+        'Upload Complete', 
+        'Your files have been uploaded successfully and are being processed!'
+      );
+      
+      // Immediate redirect to transcripts page without delay
+      window.location.href = '/transcripts';
       
     } catch (error: any) {
       console.error('Processing error:', error);
-      notification.error('Processing Failed', `There was an error processing your files: ${error.message}`);
+      notification.error('Upload Failed', `There was an error uploading your files: ${error.message}`);
       setIsProcessing(false);
     }
+  };
+  
+  // Separate the file processing logic into its own function for parallel processing
+  const processFile = async (fileData: FileData) => {
+    const file = fileData.file;
+    
+    // Step 1: Initialize upload
+    console.log('Initializing upload for file:', file.name);
+    const initResponse = await fetch('/api/upload/initialize', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        filename: file.name,
+        fileSize: file.size,
+        contentType: file.type,
+      }),
+    });
+    
+    if (!initResponse.ok) {
+      console.error('Initialize upload error:', await initResponse.text());
+      throw new Error(`Failed to initialize upload for ${file.name}`);
+    }
+    
+    const initData = await initResponse.json();
+    console.log('Upload initialized successfully:', initData);
+    const sessionId = initData.session_id;
+    const uploadId = initData.upload_id;
+    
+    // Choose upload strategy based on file size
+    if (file.size > 10 * 1024 * 1024) { // If file is larger than 10MB, use multipart upload
+      await handleMultipartUpload(file, sessionId, uploadId);
+    } else {
+      await handleDirectUpload(file, sessionId);
+    }
+    
+    // Complete the upload processing
+    await fetch('/api/upload/complete', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        sessionId,
+        processingOptions: {
+          speakerDiarization: options.speakerDiarization,
+          numberOfSpeakers: options.numberOfSpeakers
+        }
+      }),
+    });
+    
+    // We don't wait for transcription to complete anymore
+    // Just return when the upload is done to allow parallel processing
+    return sessionId;
   };
   
   // Helper function to handle direct upload for smaller files
@@ -622,63 +675,6 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
       throw error;
     }
   };
-  
-  // Helper function to wait for transcription to complete
-  const waitForTranscription = async (sessionId: string) => {
-    try {
-      let transcriptionComplete = false;
-      let retryCount = 0;
-      const maxRetries = 30; // Try for 30 * 2 seconds = 1 minute
-      
-      while (!transcriptionComplete && retryCount < maxRetries) {
-        console.log(`Checking transcription status, attempt ${retryCount + 1}`);
-        try {
-          const statusResponse = await fetch(`/api/transcription/${sessionId}`, {
-            method: 'GET',
-          });
-          
-          if (statusResponse.ok) {
-            const statusData = await statusResponse.json();
-            console.log('Transcription status:', statusData);
-            
-            if (statusData.status === 'completed') {
-              transcriptionComplete = true;
-              setProcessingProgress(100);
-              setProcessingStatus('Processing complete!');
-              console.log('Transcription completed successfully');
-              
-              // Show success notification
-              notification.success('Processing Complete!', 'Your file has been processed successfully');
-              
-              // Redirect to the transcript page after a short delay
-              setTimeout(() => {
-                window.location.href = `/transcript/${sessionId}`;
-              }, 1000);
-              return;
-            }
-          } else {
-            console.log('Transcription not ready yet, status:', statusResponse.status);
-          }
-        } catch (statusError) {
-          console.error('Error checking transcription status:', statusError);
-        }
-        
-        retryCount++;
-        setProcessingProgress(60 + Math.min(retryCount * 1.3, 35)); // Progress up to 95%
-        await new Promise(r => setTimeout(r, 2000)); // Wait 2 seconds between checks
-      }
-      
-      if (!transcriptionComplete) {
-        setProcessingProgress(95);
-        setProcessingStatus('Taking longer than expected, but processing continues...');
-        console.log('Transcription taking longer than expected');
-        notification.info('Processing in Progress', 'Your file is still being processed. You can check back later.');
-      }
-    } catch (transcriptionError) {
-      console.error('Error monitoring transcription:', transcriptionError);
-      notification.warning('Processing Started', 'Your file is being processed. Check back in a few minutes.');
-    }
-  };
 
   return (
     <UploadContainer
@@ -689,7 +685,7 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
     >
       {/* Processing overlay */}
       <AnimatePresence>
-        {isProcessing && (
+        {isProcessing && showProcessingOverlay && (
           <ProgressOverlay
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -765,6 +761,22 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
                 </FileItem>
               ))}
             </FilesList>
+
+            {!isProcessing && (
+              <AddMoreFilesButton 
+                onClick={() => {
+                  const fileInput = document.querySelector('input[type="file"]');
+                  if (fileInput) {
+                    (fileInput as HTMLInputElement).click();
+                  }
+                }}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+              >
+                <Plus size={16} />
+                Add More Files
+              </AddMoreFilesButton>
+            )}
 
             <ProcessingOptions>
               <OptionsTitle>

@@ -34,6 +34,10 @@ export function Header() {
         <nav className="flex items-center gap-4">
           {isAuthenticated ? (
             <div className="flex items-center gap-4">
+              <Link href="/transcripts" className="btn btn-secondary">
+                My Transcripts
+              </Link>
+
               {user?.role === 'admin' ? (
                 <Link href="/admin" className="btn btn-secondary">
                   Admin

@@ -24,7 +24,11 @@ app.add_middleware(
 )
 
 # Configuration
-RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://whisper:notes2024@localhost:5672/")
+RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "rabbitmq")
+RABBITMQ_PORT = int(os.getenv("RABBITMQ_PORT", "5672"))
+RABBITMQ_USER = os.getenv("RABBITMQ_DEFAULT_USER", "whisper") 
+RABBITMQ_PASS = os.getenv("RABBITMQ_DEFAULT_PASS", "notes2024")
+RABBITMQ_URL = f"amqp://{RABBITMQ_USER}:{RABBITMQ_PASS}@{RABBITMQ_HOST}:{RABBITMQ_PORT}/"
 MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "localhost:9000")
 MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
 MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin123")

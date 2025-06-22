@@ -20,13 +20,17 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
   }
 
   try {
+    // Extract speaker_map or speakerMap from request body to support both formats
+    const { speaker_map, speakerMap } = req.body;
+    const mappingData = speaker_map || speakerMap || {};
+    
     // Forward the request to the whisper-transcriber service
     const response = await fetch(`${WHISPER_TRANSCRIBER_URL}/transcription/${id}/speakers`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(req.body),
+      body: JSON.stringify({ speaker_map: mappingData }),
     });
 
     if (!response.ok) {
