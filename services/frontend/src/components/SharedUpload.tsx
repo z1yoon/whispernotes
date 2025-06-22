@@ -487,7 +487,7 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
       const uploadTasks = files.map(fileData => processFile(fileData));
       await Promise.all(uploadTasks);
       
-      // After all files are uploaded successfully, show success message and redirect
+      // After all files are uploaded successfully, show success message
       setProcessingProgress(100);
       setProcessingStatus('Upload successful!');
       
@@ -496,8 +496,14 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
         'Your files have been uploaded successfully and are being processed!'
       );
       
-      // Immediate redirect to transcripts page without delay
-      window.location.href = '/transcripts';
+      // Clear files to allow more uploads
+      setFiles([]);
+      setIsProcessing(false);
+      
+      // Call parent callback for navigation
+      if (onStartProcessing) {
+        onStartProcessing(files, options);
+      }
       
     } catch (error: any) {
       console.error('Processing error:', error);

@@ -883,12 +883,12 @@ async def transcribe_async(audio_path: str, session_id: str, participant_count: 
             "session_id": session_id,
             "id": session_id,
             "sessionId": session_id,
-            "filename": speaker_names[0] if speaker_names else "audio_file.wav",  # We'll get this from upload metadata
+            "filename": "audio_file.wav",  # We'll get this from upload metadata
             "fileSize": 0,  # We'll get this from upload metadata
             "mimeType": "audio/wav",  # We'll get this from upload metadata
             "participantCount": participant_count,
             "status": "completed",
-            "sessionStatus": "completed",
+            "sessionStatus": "completed", 
             "progress": 100,
             "hasTranscript": True,
             "transcriptData": formatted_result,

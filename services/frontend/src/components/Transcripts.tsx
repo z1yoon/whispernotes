@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/providers/auth-provider';
 import { useNotification } from './NotificationProvider';
+import UserButton from './UserButton';
 
 // TypeScript interfaces
 interface Transcription {
@@ -804,10 +805,7 @@ const Transcripts = () => {
           </HeaderTitle>
         </HeaderLeft>
         <HeaderActions>
-          <UsernameDisplay>
-            {isAdmin ? <Shield size={12} /> : <User size={12} />}
-            {displayUsername}
-          </UsernameDisplay>
+          <UserButton />
           
           {isAdmin && (
             <AuthButton $variant="secondary" onClick={handleAdminPage}>

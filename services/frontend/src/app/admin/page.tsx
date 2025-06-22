@@ -31,6 +31,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/providers/auth-provider'
 import { useNotification } from '@/components/NotificationProvider'
+import UserButton from '@/components/UserButton'
 import Link from 'next/link'
 
 // Styled components matching landing page design
@@ -798,10 +799,7 @@ export default function AdminPage() {
           </HeaderTitle>
         </HeaderLeft>
         <HeaderActions>
-          <UsernameButton onClick={handleViewTranscripts}>
-            <Shield size={12} />
-            {displayUsername}
-          </UsernameButton>
+          <UserButton />
           
           <AuthButton $variant="primary" onClick={handleLogout}>
             <LogOut size={16} />
