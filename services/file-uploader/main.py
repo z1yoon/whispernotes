@@ -4,10 +4,11 @@ import json
 import logging
 from datetime import timedelta, datetime
 from urllib.parse import urlparse
+from typing import Optional
+from contextlib import asynccontextmanager
 import io
 import time
 import tempfile
-from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Request, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,22 +22,6 @@ from starlette.responses import JSONResponse
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# --- FastAPI App Initialization ---
-app = FastAPI(
-    title="WhisperNotes File Uploader",
-    version="1.0.1",
-    description="Handles large file uploads using MinIO multipart uploads and notifies processing services via RabbitMQ.",
-)
-
-# --- CORS Middleware ---
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # In production, restrict this to the frontend URL
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # --- Configuration ---
 MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "minio:9000")
@@ -58,53 +43,98 @@ RABBITMQ_USER = os.getenv("RABBITMQ_DEFAULT_USER", "user")
 RABBITMQ_PASS = os.getenv("RABBITMQ_DEFAULT_PASS", "password")
 VIDEO_PROCESSING_QUEUE = "video_processing_queue"
 
-# --- Service Clients ---
-try:
-    # Adding debug information about MinIO connection
-    logger.info("=== MinIO Connection Information ===")
-    logger.info(f"Attempting to connect to MinIO at: {MINIO_ENDPOINT}")
-    logger.info(f"Using access key: {MINIO_ACCESS_KEY[:3]}...{MINIO_ACCESS_KEY[-3:] if len(MINIO_ACCESS_KEY) > 6 else ''}")
-    logger.info(f"Secret key length: {len(MINIO_SECRET_KEY)}")
-    logger.info(f"Using secure connection: {MINIO_USE_SECURE}")
-    
-    minio_client = Minio(
-        MINIO_ENDPOINT,
-        access_key=MINIO_ACCESS_KEY,
-        secret_key=MINIO_SECRET_KEY,
-        secure=MINIO_USE_SECURE,
-    )
-    
-    # Test MinIO connection
-    buckets = list(minio_client.list_buckets())
-    logger.info(f"Successfully connected to MinIO. Found {len(buckets)} buckets: {', '.join([b.name for b in buckets])}")
-    
-    # Verify specifically that we can access the target bucket
-    if minio_client.bucket_exists(MINIO_BUCKET):
-        logger.info(f"Confirmed bucket '{MINIO_BUCKET}' exists")
-        # Try to list objects to verify permissions
-        objects = list(minio_client.list_objects(MINIO_BUCKET, prefix="", recursive=False))
-        logger.info(f"Successfully listed objects in bucket '{MINIO_BUCKET}'")
-    else:
-        logger.warning(f"Bucket '{MINIO_BUCKET}' does not exist. Will attempt to create it on startup.")
-        
-except Exception as e:
-    logger.error(f"Failed to connect to MinIO: {e}")
-    logger.error(f"Error type: {type(e).__name__}")
-    logger.error(f"Stack trace:", exc_info=True)
-    minio_client = None
+# Global variables for clients
+minio_client = None
+redis_client = None
 
-try:
-    redis_client = redis.Redis(
-        host=REDIS_HOST,
-        port=REDIS_PORT,
-        password=REDIS_PASSWORD,
-        decode_responses=True
-    )
-    redis_client.ping()
-    logger.info("Successfully connected to Redis.")
-except Exception as e:
-    logger.error(f"Failed to connect to Redis: {e}")
-    redis_client = None
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for startup and shutdown events."""
+    global minio_client, redis_client
+    
+    # Startup
+    logger.info("Starting up file-uploader service...")
+    
+    # Initialize MinIO client
+    try:
+        logger.info("=== MinIO Connection Information ===")
+        logger.info(f"Attempting to connect to MinIO at: {MINIO_ENDPOINT}")
+        logger.info(f"Using access key: {MINIO_ACCESS_KEY[:3]}...{MINIO_ACCESS_KEY[-3:] if len(MINIO_ACCESS_KEY) > 6 else ''}")
+        logger.info(f"Secret key length: {len(MINIO_SECRET_KEY)}")
+        logger.info(f"Using secure connection: {MINIO_USE_SECURE}")
+        
+        minio_client = Minio(
+            MINIO_ENDPOINT,
+            access_key=MINIO_ACCESS_KEY,
+            secret_key=MINIO_SECRET_KEY,
+            secure=MINIO_USE_SECURE,
+        )
+        
+        # Test MinIO connection
+        buckets = list(minio_client.list_buckets())
+        logger.info(f"Successfully connected to MinIO. Found {len(buckets)} buckets: {', '.join([b.name for b in buckets])}")
+        
+        # Verify specifically that we can access the target bucket
+        if minio_client.bucket_exists(MINIO_BUCKET):
+            logger.info(f"Confirmed bucket '{MINIO_BUCKET}' exists")
+            # Try to list objects to verify permissions
+            objects = list(minio_client.list_objects(MINIO_BUCKET, prefix="", recursive=False))
+            logger.info(f"Successfully listed objects in bucket '{MINIO_BUCKET}'")
+        else:
+            logger.warning(f"Bucket '{MINIO_BUCKET}' does not exist. Creating it now...")
+            minio_client.make_bucket(MINIO_BUCKET)
+            logger.info(f"Created MinIO bucket: {MINIO_BUCKET}")
+    except Exception as e:
+        logger.error(f"Failed to connect to MinIO: {e}")
+        logger.error(f"Error type: {type(e).__name__}")
+        logger.error("MinIO connection failed - service will start but uploads may not work until MinIO is available")
+        minio_client = None
+
+    # Initialize Redis client
+    try:
+        redis_client = redis.Redis(
+            host=REDIS_HOST,
+            port=REDIS_PORT,
+            password=REDIS_PASSWORD,
+            decode_responses=True
+        )
+        redis_client.ping()
+        logger.info("Successfully connected to Redis.")
+    except Exception as e:
+        logger.error(f"Failed to connect to Redis: {e}")
+        logger.error("Redis connection failed - service will start but session management may not work until Redis is available")
+        redis_client = None
+        
+    # Warn about missing services but don't fail startup
+    if not redis_client:
+        logger.warning("Redis is not available - session management will be disabled")
+    if not minio_client:
+        logger.warning("MinIO is not available - file uploads will be disabled")
+        
+    logger.info("File-uploader service startup complete!")
+    
+    yield
+    
+    # Shutdown
+    logger.info("Shutting down file-uploader service...")
+    # Add any cleanup here if needed
+
+# --- FastAPI App Initialization ---
+app = FastAPI(
+    title="WhisperNotes File Uploader",
+    version="1.0.2",
+    description="Handles large file uploads using MinIO multipart uploads and notifies processing services via RabbitMQ.",
+    lifespan=lifespan
+)
+
+# --- CORS Middleware ---
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, restrict this to the frontend URL
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # --- Pydantic Models ---
 class UploadInitializationRequest(BaseModel):
@@ -176,36 +206,16 @@ def publish_to_video_processor(session_id: str, object_name: str, filename: str)
         logger.error(f"Failed to publish message for session {session_id} to RabbitMQ: {e}")
 
 # --- API Endpoints ---
-@app.on_event("startup")
-def startup_event():
-    """On startup, check connections and ensure MinIO bucket exists."""
-    if not redis_client:
-        logger.critical("Redis connection failed. Aborting startup.")
-        # In a real app, you might want to exit or have a retry mechanism
-        return
-    if not minio_client:
-        logger.critical("MinIO connection failed. Aborting startup.")
-        return
-        
-    try:
-        found = minio_client.bucket_exists(MINIO_BUCKET)
-        if not found:
-            minio_client.make_bucket(MINIO_BUCKET)
-            logger.info(f"Created MinIO bucket: {MINIO_BUCKET}")
-        else:
-            logger.info(f"MinIO bucket '{MINIO_BUCKET}' already exists.")
-    except S3Error as e:
-        logger.error(f"Error checking or creating MinIO bucket: {e}")
-        # Handle case where MinIO might not be ready
-    except Exception as e:
-        logger.error(f"An unexpected error occurred during startup bucket check: {e}")
-
-
 @app.post("/api/v1/uploads/initialize", response_model=UploadInitializationResponse)
 async def initialize_upload(request: UploadInitializationRequest):
     """
     Initiates a file upload with MinIO using presigned URLs.
     """
+    if not redis_client:
+        raise HTTPException(status_code=503, detail="Redis service unavailable")
+    if not minio_client:
+        raise HTTPException(status_code=503, detail="MinIO service unavailable")
+        
     session_id = str(uuid.uuid4())
     # Sanitize filename and create a unique object name
     safe_filename = "".join(c for c in request.filename if c.isalnum() or c in ('.', '_', '-')).strip()
@@ -246,6 +256,11 @@ async def get_presigned_upload_url(session_id: str, request: PresignedUrlRequest
     """
     Generates a presigned URL for uploading a specific part of a multipart upload.
     """
+    if not redis_client:
+        raise HTTPException(status_code=503, detail="Redis service unavailable")
+    if not minio_client:
+        raise HTTPException(status_code=503, detail="MinIO service unavailable")
+        
     session_data_raw = redis_client.get(f"upload_session:{session_id}")
     if not session_data_raw:
         raise HTTPException(status_code=404, detail="Upload session not found.")
@@ -292,6 +307,11 @@ async def upload_part(session_id: str, part_number: int, file: UploadFile = File
     Upload a single part directly to the server which will then upload it to MinIO.
     This bypasses the need for client-accessible presigned URLs.
     """
+    if not redis_client:
+        raise HTTPException(status_code=503, detail="Redis service unavailable")
+    if not minio_client:
+        raise HTTPException(status_code=503, detail="MinIO service unavailable")
+        
     session_data_raw = redis_client.get(f"upload_session:{session_id}")
     if not session_data_raw:
         raise HTTPException(status_code=404, detail="Upload session not found")
@@ -350,6 +370,11 @@ async def complete_upload(session_id: str, request: CompletionRequest):
     """
     Completes a multipart upload by combining all the uploaded parts.
     """
+    if not redis_client:
+        raise HTTPException(status_code=503, detail="Redis service unavailable")
+    if not minio_client:
+        raise HTTPException(status_code=503, detail="MinIO service unavailable")
+        
     session_data_raw = redis_client.get(f"upload_session:{session_id}")
     if not session_data_raw:
         raise HTTPException(status_code=404, detail="Upload session not found.")
@@ -461,6 +486,11 @@ async def direct_upload_file(session_id: str, file: UploadFile = File(...)):
     This bypasses the need for browser-accessible MinIO URLs.
     For smaller files only - not suitable for very large videos.
     """
+    if not redis_client:
+        raise HTTPException(status_code=503, detail="Redis service unavailable")
+    if not minio_client:
+        raise HTTPException(status_code=503, detail="MinIO service unavailable")
+        
     logger.info(f"Direct upload request for session {session_id}")
     
     # Verify session exists
@@ -533,6 +563,9 @@ async def get_upload_status(session_id: str):
     """
     Get the status of an upload by session ID.
     """
+    if not redis_client:
+        raise HTTPException(status_code=503, detail="Redis service unavailable")
+        
     # Key for storing upload initialization data
     init_key = f"upload_init:{session_id}"
     
@@ -591,6 +624,9 @@ async def update_progress(session_id: str, update: ProgressUpdate):
     """
     Update progress status for a session, used by other services to report status
     """
+    if not redis_client:
+        raise HTTPException(status_code=503, detail="Redis service unavailable")
+        
     try:
         redis_key = f"upload_progress:{session_id}"
         progress_data = {
@@ -619,6 +655,9 @@ async def update_progress_alt(request: Request):
     """
     Alternative progress update endpoint for backward compatibility
     """
+    if not redis_client:
+        raise HTTPException(status_code=503, detail="Redis service unavailable")
+        
     try:
         data = await request.json()
         session_id = data.get("session_id")
@@ -651,6 +690,9 @@ async def handle_completion(request: Request):
     """
     Handle completion notification compatibility endpoint
     """
+    if not redis_client:
+        raise HTTPException(status_code=503, detail="Redis service unavailable")
+        
     try:
         data = await request.json()
         session_id = data.get("session_id")
@@ -830,6 +872,9 @@ async def get_all_transcripts():
     """
     Get all transcripts from all users (admin only)
     """
+    if not redis_client:
+        raise HTTPException(status_code=503, detail="Redis service unavailable")
+        
     try:
         # Get all transcription data from Redis
         keys = redis_client.keys("transcription:*")
@@ -869,12 +914,20 @@ async def get_user_transcripts(user_id: str):
     """
     Get all transcripts for a specific user
     """
+    if not redis_client:
+        raise HTTPException(status_code=503, detail="Redis service unavailable")
+        
     try:
         # Get all transcription data from Redis
-        keys = redis_client.keys("transcription:*")
+        transcription_keys = redis_client.keys("transcription:*")
+        progress_keys = redis_client.keys("upload_progress:*")
+        upload_session_keys = redis_client.keys("upload_session:*")
+        
         transcriptions = []
+        session_ids_with_transcriptions = set()
 
-        for key in keys:
+        # Process completed transcriptions
+        for key in transcription_keys:
             data = redis_client.get(key)
             if data:
                 transcription = json.loads(data)
@@ -882,120 +935,74 @@ async def get_user_transcripts(user_id: str):
                 # Only include transcripts for this user
                 if transcription.get("user_id") == user_id:
                     session_id = key.split(":")[-1]
-                    
-                    # Check for real-time progress data and merge it
-                    progress_key = f"upload_progress:{session_id}"
-                    progress_data = redis_client.get(progress_key)
-                    
-                    if progress_data:
-                        try:
-                            progress_info = json.loads(progress_data)
-                            # Override status and progress with real-time data if available
-                            logger.info(f"Merging progress data for session {session_id}: {progress_info}")
-                            
-                            # Update status and progress from real-time data
-                            transcription["status"] = progress_info.get("status", transcription.get("status", "processing"))
-                            transcription["progress"] = progress_info.get("progress", transcription.get("progress", 0))
-                            
-                            # Update message if available
-                            if progress_info.get("message"):
-                                transcription["message"] = progress_info.get("message")
-                                
-                        except Exception as progress_error:
-                            logger.warning(f"Failed to parse progress data for session {session_id}: {progress_error}")
+                    session_ids_with_transcriptions.add(session_id)
                     
                     # Add session ID and format the data
                     transcription.update({
                         "id": session_id,
                         "sessionId": session_id,
                         "filename": transcription.get("filename", "Unknown"),
-                        "fileSize": transcription.get("file_size", 0),
-                        "mimeType": transcription.get("content_type", "unknown"),
-                        "participantCount": transcription.get("speaker_count", 1),
+                        "fileSize": transcription.get("fileSize", transcription.get("file_size", 0)),
+                        "mimeType": transcription.get("mimeType", transcription.get("content_type", "unknown")),
+                        "participantCount": transcription.get("participantCount", transcription.get("speaker_count", 1)),
                         "status": transcription.get("status", "processing"),
                         "sessionStatus": transcription.get("status", "processing"),
                         "progress": transcription.get("progress", 0),
                         "hasTranscript": transcription.get("status") == "completed",
-                        "transcriptData": transcription.get("transcript", None),
-                        "createdAt": transcription.get("created_at", datetime.now().isoformat()),
-                        "completedAt": transcription.get("completed_at", None),
+                        "transcriptData": transcription.get("transcriptData", transcription.get("transcript", None)),
+                        "createdAt": transcription.get("createdAt", transcription.get("created_at", datetime.now().isoformat())),
+                        "completedAt": transcription.get("completedAt", transcription.get("completed_at", None)),
                         "duration": transcription.get("duration", 0),
-                        "segmentCount": len(transcription.get("diarized_segments", [])),
+                        "segmentCount": len(transcription.get("diarizedSegments", transcription.get("diarized_segments", []))),
                         "language": transcription.get("language", "en"),
                         "speakers": transcription.get("speakers", []),
-                        "diarizedSegments": transcription.get("diarized_segments", [])
+                        "diarizedSegments": transcription.get("diarizedSegments", transcription.get("diarized_segments", []))
                     })
                     
                     transcriptions.append(transcription)
 
-        # Also check for upload sessions that might not have transcription data yet
-        upload_session_keys = redis_client.keys("upload_session:*")
-        for upload_key in upload_session_keys:
-            session_data_raw = redis_client.get(upload_key)
-            if session_data_raw:
-                try:
-                    session_data = json.loads(session_data_raw)
-                    session_user_id = session_data.get("user_id")
+        # Process files that are still in progress (have progress but no transcription yet)
+        for key in progress_keys:
+            session_id = key.split(":")[-1]
+            
+            # Skip if we already have a transcription for this session
+            if session_id in session_ids_with_transcriptions:
+                continue
+                
+            progress_data = redis_client.get(key)
+            if progress_data:
+                progress_info = json.loads(progress_data)
+                
+                # Try to get upload session data to check if it belongs to this user
+                upload_session_data = redis_client.get(f"upload_session:{session_id}")
+                if upload_session_data:
+                    session_info = json.loads(upload_session_data)
                     
-                    # Only include sessions for this user
-                    if session_user_id == user_id:
-                        session_id = upload_key.split(":")[-1]
+                    # Only include if it belongs to this user
+                    if session_info.get("user_id") == user_id:
+                        transcription = {
+                            "id": session_id,
+                            "sessionId": session_id,
+                            "filename": session_info.get("filename", "Processing..."),
+                            "fileSize": session_info.get("file_size", 0),
+                            "mimeType": session_info.get("content_type", "unknown"),
+                            "participantCount": 2,  # Default
+                            "status": progress_info.get("status", "processing"),
+                            "sessionStatus": progress_info.get("status", "processing"),
+                            "progress": progress_info.get("progress", 0),
+                            "hasTranscript": False,
+                            "transcriptData": None,
+                            "createdAt": session_info.get("creation_time", datetime.now().isoformat()),
+                            "completedAt": None,
+                            "duration": 0,
+                            "segmentCount": 0,
+                            "language": "en",
+                            "speakers": [],
+                            "diarizedSegments": []
+                        }
                         
-                        # Check if we already have this session in transcriptions
-                        existing = any(t.get("sessionId") == session_id for t in transcriptions)
-                        if not existing:
-                            # Check for progress data
-                            progress_key = f"upload_progress:{session_id}"
-                            progress_data = redis_client.get(progress_key)
-                            
-                            status = "uploading"
-                            progress = 0
-                            message = "Uploading file..."
-                            
-                            if progress_data:
-                                try:
-                                    progress_info = json.loads(progress_data)
-                                    status = progress_info.get("status", "uploading")
-                                    progress = progress_info.get("progress", 0)
-                                    message = progress_info.get("message", "Processing...")
-                                except Exception as e:
-                                    logger.warning(f"Failed to parse progress data for upload session {session_id}: {e}")
-                            
-                            # Add upload session as a transcript entry
-                            upload_transcript = {
-                                "id": session_id,
-                                "sessionId": session_id,
-                                "filename": session_data.get("filename", "Unknown"),
-                                "fileSize": session_data.get("file_size", 0),
-                                "mimeType": session_data.get("content_type", "unknown"),
-                                "participantCount": 1,
-                                "status": status,
-                                "sessionStatus": status,
-                                "progress": progress,
-                                "hasTranscript": False,
-                                "transcriptData": None,
-                                "createdAt": datetime.fromtimestamp(session_data.get("creation_time", time.time())).isoformat(),
-                                "completedAt": None,
-                                "duration": 0,
-                                "segmentCount": 0,
-                                "language": "en",
-                                "speakers": [],
-                                "diarizedSegments": [],
-                                "user_id": session_user_id,
-                                "content_type": session_data.get("content_type", "unknown"),
-                                "file_size": session_data.get("file_size", 0),
-                                "speaker_count": 1,
-                                "transcript": [],
-                                "created_at": datetime.fromtimestamp(session_data.get("creation_time", time.time())).isoformat(),
-                                "completed_at": None,
-                                "message": message
-                            }
-                            
-                            transcriptions.append(upload_transcript)
-                            
-                except Exception as e:
-                    logger.warning(f"Failed to process upload session {upload_key}: {e}")
-        
+                        transcriptions.append(transcription)
+
         # Sort by creation date (newest first)
         transcriptions.sort(key=lambda x: x.get("createdAt", ""), reverse=True)
         
@@ -1004,6 +1011,63 @@ async def get_user_transcripts(user_id: str):
         logger.error(f"Error retrieving transcripts for user {user_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to retrieve user transcripts: {str(e)}")
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8002)
+@app.delete("/api/v1/transcripts/{session_id}")
+async def delete_transcript(session_id: str, user_id: str = None):
+    """
+    Delete a transcript by session ID
+    """
+    if not redis_client:
+        raise HTTPException(status_code=503, detail="Redis service unavailable")
+        
+    try:
+        # Check if transcription exists
+        transcription_key = f"transcription:{session_id}"
+        data = redis_client.get(transcription_key)
+        
+        if not data:
+            raise HTTPException(status_code=404, detail="Transcript not found")
+        
+        transcription = json.loads(data)
+        
+        # Verify ownership if user_id is provided
+        if user_id and transcription.get("user_id") != user_id:
+            raise HTTPException(status_code=403, detail="Unauthorized to delete this transcript")
+        
+        # Delete from Redis
+        redis_client.delete(transcription_key)
+        
+        # Also clean up any related keys
+        related_keys = [
+            f"upload_session:{session_id}",
+            f"upload_progress:{session_id}",
+            f"upload_metadata:{session_id}",
+            f"processing_metadata:{session_id}",
+            f"session_metadata:{session_id}",
+            f"transcription_error:{session_id}",
+            f"transcribing:{session_id}",
+            f"llm_analysis:{session_id}"
+        ]
+        
+        for key in related_keys:
+            try:
+                redis_client.delete(key)
+            except Exception as e:
+                logger.warning(f"Failed to delete related key {key}: {e}")
+        
+        # Try to delete from MinIO if object_name exists
+        try:
+            object_name = transcription.get("object_name")
+            if object_name and minio_client:
+                minio_client.remove_object(MINIO_BUCKET, object_name)
+                logger.info(f"Deleted file {object_name} from MinIO")
+        except Exception as e:
+            logger.warning(f"Failed to delete file from MinIO: {e}")
+        
+        logger.info(f"Successfully deleted transcript for session {session_id}")
+        return {"message": "Transcript deleted successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting transcript {session_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete transcript: {str(e)}")

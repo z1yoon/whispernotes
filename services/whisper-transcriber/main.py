@@ -1035,6 +1035,68 @@ async def transcribe_audio_endpoint(
             temp_file.write(content)
             temp_audio_path = temp_file.name
         
+        # Store processing status immediately when transcription starts
+        processing_data = {
+            "session_id": session_id,
+            "id": session_id,
+            "sessionId": session_id,
+            "filename": "processing...",
+            "fileSize": 0,
+            "mimeType": "video/mp4",
+            "participantCount": participant_count,
+            "status": "processing",
+            "sessionStatus": "processing", 
+            "progress": 65,
+            "hasTranscript": False,
+            "transcriptData": None,
+            "createdAt": datetime.utcnow().isoformat(),
+            "completedAt": None,
+            "duration": 0,
+            "segmentCount": 0,
+            "language": language or "en",
+            "speakers": [],
+            "diarizedSegments": [],
+            "user_id": None,
+            "content_type": "video/mp4",
+            "file_size": 0,
+            "speaker_count": participant_count,
+            "transcript": [],
+            "created_at": datetime.utcnow().isoformat(),
+            "completed_at": None
+        }
+        
+        # Try to get upload metadata to fill in missing fields
+        try:
+            metadata_keys = [
+                f"upload_session:{session_id}",
+                f"upload_metadata:{session_id}",
+                f"processing_metadata:{session_id}",
+                f"session_metadata:{session_id}"
+            ]
+            
+            for key in metadata_keys:
+                upload_data_raw = redis_client.get(key)
+                if upload_data_raw:
+                    upload_data = json.loads(upload_data_raw)
+                    processing_data.update({
+                        "filename": upload_data.get("filename", "processing..."),
+                        "fileSize": upload_data.get("file_size", 0),
+                        "file_size": upload_data.get("file_size", 0),
+                        "mimeType": upload_data.get("content_type", "video/mp4"),
+                        "content_type": upload_data.get("content_type", "video/mp4"),
+                        "user_id": upload_data.get("user_id")
+                    })
+                    break
+        except Exception as e:
+            logger.warning(f"Could not retrieve upload metadata for session {session_id}: {e}")
+        
+        # Store processing status in Redis immediately
+        redis_client.setex(
+            f"transcription:{session_id}",
+            24 * 3600,  # 24 hours
+            json.dumps(processing_data)
+        )
+        
         # Start background transcription
         background_tasks.add_task(
             transcribe_async,

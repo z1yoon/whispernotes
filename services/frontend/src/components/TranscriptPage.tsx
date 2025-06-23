@@ -916,7 +916,7 @@ const TranscriptPage = () => {
       <TranscriptContainer>
         <Header>
           <HeaderLeft>
-            <BackButton onClick={() => router.push('/dashboard')}>
+            <BackButton onClick={() => router.push('/transcripts')}>
               <ArrowLeft size={18} />
             </BackButton>
             <HeaderTitle>Loading...</HeaderTitle>
@@ -940,7 +940,7 @@ const TranscriptPage = () => {
       <TranscriptContainer>
         <Header>
           <HeaderLeft>
-            <BackButton onClick={() => router.push('/dashboard')}>
+            <BackButton onClick={() => router.push('/transcripts')}>
               <ArrowLeft size={18} />
             </BackButton>
             <HeaderTitle>Error</HeaderTitle>
@@ -963,7 +963,7 @@ const TranscriptPage = () => {
     <TranscriptContainer>
       <Header>
         <HeaderLeft>
-          <BackButton onClick={() => router.push('/dashboard')}>
+          <BackButton onClick={() => router.push('/transcripts')}>
             <ArrowLeft size={18} />
           </BackButton>
           <HeaderTitle>{transcriptData?.filename || 'Transcript'}</HeaderTitle>

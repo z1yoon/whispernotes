@@ -17,7 +17,7 @@ export default async function transcriptHandler(req: NextApiRequest, res: NextAp
   }
 
   try {
-    // Verify user authentication
+    // First verify user authentication and get user ID
     const authResponse = await axios.get(`${AUTH_SERVICE_URL}/api/v1/auth/me`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });

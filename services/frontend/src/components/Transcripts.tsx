@@ -19,7 +19,8 @@ import {
   Eye,
   Calendar,
   HardDrive,
-  FileText
+  FileText,
+  Trash2
 } from 'lucide-react';
 import { useAuth } from '@/providers/auth-provider';
 import { useNotification } from './NotificationProvider';
@@ -502,6 +503,16 @@ const ActionButtons = styled.div`
         box-shadow: 0 8px 25px rgba(16, 185, 129, 0.4);
       }
     }
+
+    &.delete {
+      background: linear-gradient(135deg, #EF4444 0%, #F87171 100%);
+      color: white;
+
+      &:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 8px 25px rgba(239, 68, 68, 0.4);
+      }
+    }
   }
 `;
 
@@ -751,6 +762,41 @@ const Transcripts = () => {
     }
   };
 
+  const handleDeleteTranscript = async (transcription: Transcription) => {
+    if (!window.confirm(`Are you sure you want to delete "${transcription.filename}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/transcripts/${transcription.sessionId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete transcript');
+      }
+
+      // Remove from local state
+      setTranscriptions(prev => prev.filter(t => t.sessionId !== transcription.sessionId));
+      
+      // Update stats
+      const newTranscriptions = transcriptions.filter(t => t.sessionId !== transcription.sessionId);
+      setStats({
+        total: newTranscriptions.length,
+        completed: newTranscriptions.filter((t: Transcription) => t.status === 'completed').length,
+        processing: newTranscriptions.filter((t: Transcription) => ['processing', 'transcribing', 'uploading', 'analyzing', 'pending'].includes(t.status)).length,
+        failed: newTranscriptions.filter((t: Transcription) => t.status === 'failed').length,
+        totalDuration: newTranscriptions.reduce((acc: number, t: Transcription) => acc + (t.duration || 0), 0),
+        totalSize: newTranscriptions.reduce((acc: number, t: Transcription) => acc + (t.fileSize || 0), 0)
+      });
+
+      notification?.success('Transcript deleted successfully');
+    } catch (error) {
+      console.error('Delete error:', error);
+      notification?.error('Failed to delete transcript');
+    }
+  };
+
   const handleAdminPage = () => {
     if (mounted && router) {
       router.push('/admin');
@@ -974,6 +1020,13 @@ const Transcripts = () => {
                       >
                         <Download size={16} />
                         Download
+                      </button>
+                      <button 
+                        className="delete"
+                        onClick={() => handleDeleteTranscript(transcription)}
+                      >
+                        <Trash2 size={16} />
+                        Delete
                       </button>
                     </ActionButtons>
                   )}
