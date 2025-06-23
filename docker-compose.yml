@@ -190,32 +190,45 @@ services:
     networks:
       - whisper-network
 
+  llm-service:
+    build:
+      context: ./services
+      dockerfile: llm-service/Dockerfile
+    env_file: .env
+    ports:
+      - "8004:8004"
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - whisper-network
+
   frontend:
     build:
       context: ./services/frontend
       dockerfile: Dockerfile
-      target: development
+      target: production
     env_file: .env
     ports:
       - "3000:3000"
-    volumes:
-      - ./services/frontend:/app
-      - /app/node_modules
-      - /app/.next
     environment:
-      - NODE_ENV=development
-      - WATCHPACK_POLLING=true
+      - NODE_ENV=production
       - NEXT_TELEMETRY_DISABLED=1
       - FILE_UPLOADER_URL=http://file-uploader:8002
       - AUTH_SERVICE_URL=http://auth-service:8000
       - WHISPER_TRANSCRIBER_URL=http://whisper-transcriber:8003
+      - LLM_SERVICE_URL=http://llm-service:8004
     networks:
       - whisper-network
     depends_on:
       - auth-service
       - file-uploader
-    stdin_open: true
-    tty: true
 
 volumes:
   postgres_data:

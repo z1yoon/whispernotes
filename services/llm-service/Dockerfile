@@ -21,7 +21,7 @@ COPY llm-service/ .
 RUN mkdir -p /tmp/analysis
 
 # Expose port
-EXPOSE 8000
+EXPOSE 8004
 
 # Command to run the application
-CMD ["python", "main.py"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8004"]

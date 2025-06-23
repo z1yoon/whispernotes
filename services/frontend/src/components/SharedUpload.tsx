@@ -483,27 +483,24 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
     setProcessingStatus('Initializing uploads...');
     
     try {
-      // Process all files in parallel with Promise.all
+      // Start all file uploads in background
       const uploadTasks = files.map(fileData => processFile(fileData));
-      await Promise.all(uploadTasks);
       
-      // After all files are uploaded successfully, show success message
-      setProcessingProgress(100);
-      setProcessingStatus('Upload successful!');
-      
-      notification.success(
-        'Upload Complete', 
-        'Your files have been uploaded successfully and are being processed!'
-      );
-      
-      // Clear files to allow more uploads
+      // Don't wait for uploads to complete - redirect immediately
+      // Clear files and redirect to transcripts page right away
       setFiles([]);
       setIsProcessing(false);
       
-      // Call parent callback for navigation
+      // Call parent callback for immediate navigation to transcripts
       if (onStartProcessing) {
         onStartProcessing(files, options);
       }
+      
+      // Continue uploads in background
+      Promise.all(uploadTasks).catch(error => {
+        console.error('Background upload error:', error);
+        // Note: User has already been redirected, so they'll see the status on transcripts page
+      });
       
     } catch (error: any) {
       console.error('Processing error:', error);

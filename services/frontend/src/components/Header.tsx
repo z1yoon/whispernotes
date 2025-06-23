@@ -38,13 +38,9 @@ export function Header() {
                 My Transcripts
               </Link>
 
-              {user?.role === 'admin' ? (
+              {user?.role === 'admin' && (
                 <Link href="/admin" className="btn btn-secondary">
                   Admin
-                </Link>
-              ) : (
-                <Link href="/dashboard" className="btn btn-secondary">
-                  Dashboard
                 </Link>
               )}
               <button

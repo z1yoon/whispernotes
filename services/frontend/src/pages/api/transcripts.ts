@@ -50,7 +50,7 @@ export default async function transcriptsHandler(req: NextApiRequest, res: NextA
     const stats = {
       total: transcriptions.length,
       completed: transcriptions.filter((t: Transcript) => t.status === 'completed').length,
-      processing: transcriptions.filter((t: Transcript) => ['processing', 'transcribing', 'uploading'].includes(t.status)).length,
+      processing: transcriptions.filter((t: Transcript) => ['processing', 'transcribing', 'uploading', 'analyzing', 'pending'].includes(t.status)).length,
       failed: transcriptions.filter((t: Transcript) => t.status === 'failed').length,
       totalDuration: transcriptions.reduce((acc: number, t: Transcript) => acc + (t.duration || 0), 0),
       totalSize: transcriptions.reduce((acc: number, t: Transcript) => acc + (t.fileSize || 0), 0)

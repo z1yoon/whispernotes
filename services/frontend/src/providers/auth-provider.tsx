@@ -9,6 +9,7 @@ import {
 } from 'react'
 import axios from 'axios'
 import { useRouter } from 'next/navigation'
+import Loading from '@/components/Loading'
 
 // Define the shape of the auth context state
 interface AuthState {
@@ -35,11 +36,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isClient, setIsClient] = useState(false)
+  const [isHydrated, setIsHydrated] = useState(false)
   const router = useRouter()
 
   // Handle client-side hydration
   useEffect(() => {
     setIsClient(true)
+    setIsHydrated(true)
   }, [])
 
   const login = async (email: string, password: string) => {
@@ -183,8 +186,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [isClient]);
 
-  // Return a loading state during SSR
-  if (!isClient) {
+  // Return a loading state during SSR and initial hydration
+  if (!isClient || !isHydrated || (isClient && isLoading && !user)) {
     return (
       <AuthContext.Provider value={{ 
         user: null, 
@@ -195,7 +198,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logout,
         refreshUser
       }}>
-        {children}
+        <Loading message="Loading application..." />
       </AuthContext.Provider>
     )
   }

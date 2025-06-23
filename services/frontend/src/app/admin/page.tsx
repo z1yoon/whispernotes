@@ -670,8 +670,11 @@ export default function AdminPage() {
     if (user && user.is_admin) {
       loadPendingUsers()
       loadExistingUsers()
+      if (activeTab === 'transcripts') {
+        loadAllTranscripts()
+      }
     }
-  }, [user, router, notification])
+  }, [user, router, notification, activeTab])
 
   const loadPendingUsers = async () => {
     try {
@@ -710,6 +713,27 @@ export default function AdminPage() {
       setExistingUsers([])
     } finally {
       setIsLoadingUsers(false)
+    }
+  }
+
+  const loadAllTranscripts = async () => {
+    try {
+      setIsLoadingTranscripts(true)
+      const response = await fetch('/api/admin/transcripts')
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch transcripts')
+      }
+      
+      const data = await response.json()
+      setTranscripts(data.transcriptions)
+      setTranscriptStats(data.stats)
+    } catch (error: any) {
+      console.error('Load transcripts error:', error)
+      notification.error('Failed to load transcripts')
+      setTranscripts([])
+    } finally {
+      setIsLoadingTranscripts(false)
     }
   }
 
@@ -982,80 +1006,160 @@ export default function AdminPage() {
         
         {activeTab === 'transcripts' && (
           <>
-            <SearchFilter>
-              <div className="search-input">
-                <input
-                  type="text"
-                  placeholder="Search transcripts..."
-                  value={transcriptSearchTerm}
-                  onChange={e => setTranscriptSearchTerm(e.target.value)}
-                />
-                <Search className="search-icon" size={16} />
-              </div>
-              <div className="filter-buttons">
-                <FilterButton active={transcriptFilter === 'all'} onClick={() => setTranscriptFilter('all')}>
-                  All Transcripts
-                </FilterButton>
-                <FilterButton active={transcriptFilter === 'completed'} onClick={() => setTranscriptFilter('completed')}>
-                  Completed
-                </FilterButton>
-                <FilterButton active={transcriptFilter === 'processing'} onClick={() => setTranscriptFilter('processing')}>
-                  Processing
-                </FilterButton>
-                <FilterButton active={transcriptFilter === 'failed'} onClick={() => setTranscriptFilter('failed')}>
-                  Failed
-                </FilterButton>
-              </div>
-            </SearchFilter>
-            
-            {isLoadingTranscripts ? (
-              <LoadingState>
-                <div className="loading-spinner"></div>
-                <div className="loading-text">Loading transcripts...</div>
-              </LoadingState>
-            ) : (
-              <>
-                {transcripts.length === 0 ? (
-                  <EmptyState>
-                    <div className="empty-icon">
-                      <FileText size={48} />
-                    </div>
-                    <div className="empty-text">
-                      No transcripts found.
-                    </div>
-                  </EmptyState>
-                ) : (
-                  <UsersList>
-                    {transcripts.filter(transcript => {
-                      const matchesStatus = transcriptFilter === 'all' || transcript.status === transcriptFilter
-                      const matchesSearch = transcript.filename.toLowerCase().includes(transcriptSearchTerm.toLowerCase())
-                      return matchesStatus && matchesSearch
-                    }).map(transcript => (
-                      <UserCard key={transcript.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                        <UserHeader>
-                          <div className="user-avatar">
-                            <FileText size={24} />
-                          </div>
-                          <div className="user-info">
-                            <div className="user-name">{transcript.filename}</div>
-                            <div className="user-username">{transcript.userId}</div>
-                          </div>
-                          <StatusBadge status={transcript.status}>
-                            {transcript.status.charAt(0).toUpperCase() + transcript.status.slice(1)}
-                          </StatusBadge>
-                        </UserHeader>
-                        <ActionButtons>
-                          <button className="approve" onClick={() => {}}>
-                            <Eye size={16} />
-                            View
-                          </button>
-                        </ActionButtons>
-                      </UserCard>
-                    ))}
-                  </UsersList>
-                )}
-              </>
-            )}
+            <StatsGrid>
+              <StatCard
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0 }}
+              >
+                <div className="stat-label">Total Transcripts</div>
+                <div className="stat-value">{transcriptStats.total}</div>
+              </StatCard>
+              
+              <StatCard
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.1 }}
+              >
+                <div className="stat-label">Completed</div>
+                <div className="stat-value">{transcriptStats.completed}</div>
+              </StatCard>
+              
+              <StatCard
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.2 }}
+              >
+                <div className="stat-label">Processing</div>
+                <div className="stat-value">{transcriptStats.processing}</div>
+              </StatCard>
+
+              <StatCard
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.3 }}
+              >
+                <div className="stat-label">Active Users</div>
+                <div className="stat-value">{transcriptStats.userCount}</div>
+              </StatCard>
+            </StatsGrid>
+
+            <AdminPanel
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.4 }}
+            >
+              <PanelHeader>
+                <div className="panel-title">
+                  <FileText size={24} />
+                  All User Transcripts ({transcripts.length})
+                </div>
+
+                <SearchFilter>
+                  <div className="search-input">
+                    <input
+                      type="text"
+                      placeholder="Search transcripts or users..."
+                      value={transcriptSearchTerm}
+                      onChange={e => setTranscriptSearchTerm(e.target.value)}
+                    />
+                    <Search className="search-icon" size={16} />
+                  </div>
+                  <div className="filter-buttons">
+                    <FilterButton active={transcriptFilter === 'all'} onClick={() => setTranscriptFilter('all')}>
+                      All
+                    </FilterButton>
+                    <FilterButton active={transcriptFilter === 'completed'} onClick={() => setTranscriptFilter('completed')}>
+                      Completed
+                    </FilterButton>
+                    <FilterButton active={transcriptFilter === 'processing'} onClick={() => setTranscriptFilter('processing')}>
+                      Processing
+                    </FilterButton>
+                    <FilterButton active={transcriptFilter === 'failed'} onClick={() => setTranscriptFilter('failed')}>
+                      Failed
+                    </FilterButton>
+                  </div>
+                </SearchFilter>
+              </PanelHeader>
+              
+              {isLoadingTranscripts ? (
+                <LoadingState>
+                  <div className="loading-spinner"></div>
+                  <div className="loading-text">Loading transcripts...</div>
+                </LoadingState>
+              ) : (
+                <>
+                  {transcripts.length === 0 ? (
+                    <EmptyState>
+                      <div className="empty-icon">
+                        <FileText size={48} />
+                      </div>
+                      <div className="empty-text">
+                        No transcripts found.
+                      </div>
+                    </EmptyState>
+                  ) : (
+                    <UsersList>
+                      {transcripts.filter(transcript => {
+                        const matchesStatus = transcriptFilter === 'all' || transcript.status === transcriptFilter
+                        const matchesSearch = transcript.filename.toLowerCase().includes(transcriptSearchTerm.toLowerCase()) ||
+                                            (transcript.username && transcript.username.toLowerCase().includes(transcriptSearchTerm.toLowerCase()))
+                        return matchesStatus && matchesSearch
+                      }).map(transcript => (
+                        <UserCard key={transcript.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                          <UserHeader>
+                            <div className="user-avatar">
+                              {transcript.filename.includes('.mp4') || transcript.filename.includes('.avi') || transcript.filename.includes('.mov') ? 
+                                <FileVideo size={24} /> : <FileAudio size={24} />
+                              }
+                            </div>
+                            <div className="user-info">
+                              <div className="user-name">{transcript.filename}</div>
+                              <div className="user-username">User: {transcript.username || transcript.userId}</div>
+                            </div>
+                            <StatusBadge status={transcript.status}>
+                              {transcript.status.charAt(0).toUpperCase() + transcript.status.slice(1)}
+                            </StatusBadge>
+                          </UserHeader>
+
+                          <UserDetails>
+                            <div className="detail-item">
+                              <HardDrive className="icon" size={16} />
+                              {transcript.fileSize ? `${(transcript.fileSize / (1024 * 1024)).toFixed(1)} MB` : 'N/A'}
+                            </div>
+                            <div className="detail-item">
+                              <Clock className="icon" size={16} />
+                              {transcript.duration ? `${Math.floor(transcript.duration / 60)}m ${transcript.duration % 60}s` : 'Processing...'}
+                            </div>
+                            <div className="detail-item">
+                              <User className="icon" size={16} />
+                              {transcript.userId}
+                            </div>
+                            <div className="detail-item">
+                              <Calendar className="icon" size={16} />
+                              {new Date(transcript.createdAt).toLocaleDateString()}
+                            </div>
+                          </UserDetails>
+
+                          <ActionButtons>
+                            {transcript.hasTranscript && (
+                              <button className="approve" onClick={() => {}}>
+                                <Eye size={16} />
+                                View Details
+                              </button>
+                            )}
+                            <button className="delete" onClick={() => {}}>
+                              <Trash2 size={16} />
+                              Delete
+                            </button>
+                          </ActionButtons>
+                        </UserCard>
+                      ))}
+                    </UsersList>
+                  )}
+                </>
+              )}
+            </AdminPanel>
           </>
         )}
       </MainContent>

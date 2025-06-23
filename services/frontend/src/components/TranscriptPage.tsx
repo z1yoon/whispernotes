@@ -662,28 +662,76 @@ const TranscriptPage = () => {
       
       setTranscriptData(formattedData);
       
-      // For now, we'll still use mock action items
-      // In a real app, you might fetch these from another endpoint
-      setActionItems([
-        {
-          id: 1,
-          task: "Review transcript for accuracy",
-          assignee: "Current User",
-          deadline: "Today",
-          priority: "Medium",
-          source_time: "0-10s",
-          completed: false
-        },
-        {
-          id: 2,
-          task: "Update speaker names if necessary",
-          assignee: "Current User",
-          deadline: "Today",
-          priority: "Low",
-          source_time: "entire transcript",
-          completed: false
+      // Fetch action items from LLM analysis
+      try {
+        const analysisResponse = await fetch(`/api/analysis/${fileId}`);
+        if (analysisResponse.ok) {
+          const analysisData = await analysisResponse.json();
+          
+          // Map LLM analysis action items to our format
+          if (analysisData.analysis?.action_items) {
+            const llmActionItems = analysisData.analysis.action_items.map((item: any, index: number) => ({
+              id: index + 1,
+              task: item.task || "No task description",
+              assignee: item.assignee || "Not specified",
+              deadline: item.deadline || "Not specified", 
+              priority: item.priority || "Medium",
+              source_time: item.context || "Generated from transcript",
+              completed: false
+            }));
+            setActionItems(llmActionItems);
+          } else {
+            // Fallback to default action items if no LLM analysis
+            setActionItems([
+              {
+                id: 1,
+                task: "Review transcript for accuracy",
+                assignee: "Current User",
+                deadline: "Today",
+                priority: "Medium",
+                source_time: "0-10s",
+                completed: false
+              },
+              {
+                id: 2,
+                task: "Update speaker names if necessary",
+                assignee: "Current User",
+                deadline: "Today",
+                priority: "Low",
+                source_time: "entire transcript",
+                completed: false
+              }
+            ]);
+          }
+        } else {
+          // Use default action items if analysis fetch fails
+          setActionItems([
+            {
+              id: 1,
+              task: "Review transcript for accuracy",
+              assignee: "Current User",
+              deadline: "Today",
+              priority: "Medium",
+              source_time: "0-10s",
+              completed: false
+            }
+          ]);
         }
-      ]);
+      } catch (analysisError) {
+        console.error('Error fetching LLM analysis:', analysisError);
+        // Use default action items if analysis fetch fails
+        setActionItems([
+          {
+            id: 1,
+            task: "Review transcript for accuracy",
+            assignee: "Current User",
+            deadline: "Today",
+            priority: "Medium",
+            source_time: "0-10s", 
+            completed: false
+          }
+        ]);
+      }
 
       setLoading(false);
     } catch (error) {

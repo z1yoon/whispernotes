@@ -234,12 +234,8 @@ const LandingPage = () => {
   };
 
   const handleStartProcessing = (files: any[], options: any) => {
-    toast.success(`Files uploaded successfully! Redirecting to transcripts page...`);
-    
-    // Wait a short time before redirecting to transcripts page
-    setTimeout(() => {
-      router.push('/transcripts');
-    }, 1500);
+    // Immediately redirect to transcripts page to show processing status
+    router.push('/transcripts');
   };
 
   const handleLogout = () => {

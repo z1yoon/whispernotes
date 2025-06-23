@@ -883,6 +883,27 @@ async def get_user_transcripts(user_id: str):
                 if transcription.get("user_id") == user_id:
                     session_id = key.split(":")[-1]
                     
+                    # Check for real-time progress data and merge it
+                    progress_key = f"upload_progress:{session_id}"
+                    progress_data = redis_client.get(progress_key)
+                    
+                    if progress_data:
+                        try:
+                            progress_info = json.loads(progress_data)
+                            # Override status and progress with real-time data if available
+                            logger.info(f"Merging progress data for session {session_id}: {progress_info}")
+                            
+                            # Update status and progress from real-time data
+                            transcription["status"] = progress_info.get("status", transcription.get("status", "processing"))
+                            transcription["progress"] = progress_info.get("progress", transcription.get("progress", 0))
+                            
+                            # Update message if available
+                            if progress_info.get("message"):
+                                transcription["message"] = progress_info.get("message")
+                                
+                        except Exception as progress_error:
+                            logger.warning(f"Failed to parse progress data for session {session_id}: {progress_error}")
+                    
                     # Add session ID and format the data
                     transcription.update({
                         "id": session_id,
@@ -906,6 +927,74 @@ async def get_user_transcripts(user_id: str):
                     })
                     
                     transcriptions.append(transcription)
+
+        # Also check for upload sessions that might not have transcription data yet
+        upload_session_keys = redis_client.keys("upload_session:*")
+        for upload_key in upload_session_keys:
+            session_data_raw = redis_client.get(upload_key)
+            if session_data_raw:
+                try:
+                    session_data = json.loads(session_data_raw)
+                    session_user_id = session_data.get("user_id")
+                    
+                    # Only include sessions for this user
+                    if session_user_id == user_id:
+                        session_id = upload_key.split(":")[-1]
+                        
+                        # Check if we already have this session in transcriptions
+                        existing = any(t.get("sessionId") == session_id for t in transcriptions)
+                        if not existing:
+                            # Check for progress data
+                            progress_key = f"upload_progress:{session_id}"
+                            progress_data = redis_client.get(progress_key)
+                            
+                            status = "uploading"
+                            progress = 0
+                            message = "Uploading file..."
+                            
+                            if progress_data:
+                                try:
+                                    progress_info = json.loads(progress_data)
+                                    status = progress_info.get("status", "uploading")
+                                    progress = progress_info.get("progress", 0)
+                                    message = progress_info.get("message", "Processing...")
+                                except Exception as e:
+                                    logger.warning(f"Failed to parse progress data for upload session {session_id}: {e}")
+                            
+                            # Add upload session as a transcript entry
+                            upload_transcript = {
+                                "id": session_id,
+                                "sessionId": session_id,
+                                "filename": session_data.get("filename", "Unknown"),
+                                "fileSize": session_data.get("file_size", 0),
+                                "mimeType": session_data.get("content_type", "unknown"),
+                                "participantCount": 1,
+                                "status": status,
+                                "sessionStatus": status,
+                                "progress": progress,
+                                "hasTranscript": False,
+                                "transcriptData": None,
+                                "createdAt": datetime.fromtimestamp(session_data.get("creation_time", time.time())).isoformat(),
+                                "completedAt": None,
+                                "duration": 0,
+                                "segmentCount": 0,
+                                "language": "en",
+                                "speakers": [],
+                                "diarizedSegments": [],
+                                "user_id": session_user_id,
+                                "content_type": session_data.get("content_type", "unknown"),
+                                "file_size": session_data.get("file_size", 0),
+                                "speaker_count": 1,
+                                "transcript": [],
+                                "created_at": datetime.fromtimestamp(session_data.get("creation_time", time.time())).isoformat(),
+                                "completed_at": None,
+                                "message": message
+                            }
+                            
+                            transcriptions.append(upload_transcript)
+                            
+                except Exception as e:
+                    logger.warning(f"Failed to process upload session {upload_key}: {e}")
         
         # Sort by creation date (newest first)
         transcriptions.sort(key=lambda x: x.get("createdAt", ""), reverse=True)

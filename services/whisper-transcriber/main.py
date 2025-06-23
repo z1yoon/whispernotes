@@ -883,12 +883,12 @@ async def transcribe_async(audio_path: str, session_id: str, participant_count: 
             "session_id": session_id,
             "id": session_id,
             "sessionId": session_id,
-            "filename": "audio_file.wav",  # We'll get this from upload metadata
-            "fileSize": 0,  # We'll get this from upload metadata
-            "mimeType": "audio/wav",  # We'll get this from upload metadata
+            "filename": "audio_file.wav",  # Default filename, will be updated from upload metadata
+            "fileSize": 0,  # Will be updated from upload metadata
+            "mimeType": "audio/wav",  # Will be updated from upload metadata
             "participantCount": participant_count,
             "status": "completed",
-            "sessionStatus": "completed", 
+            "sessionStatus": "completed",
             "progress": 100,
             "hasTranscript": True,
             "transcriptData": formatted_result,
@@ -899,9 +899,9 @@ async def transcribe_async(audio_path: str, session_id: str, participant_count: 
             "language": language,
             "speakers": list(set([seg.get("speaker", "SPEAKER_0") for seg in formatted_result.get("diarized_segments", [])])),
             "diarizedSegments": formatted_result.get("diarized_segments", []),
-            "user_id": None,  # We'll get this from upload metadata
-            "content_type": "audio/wav",  # We'll get this from upload metadata
-            "file_size": 0,  # We'll get this from upload metadata
+            "user_id": None,  # Will be updated from upload metadata
+            "content_type": "audio/wav",  # Will be updated from upload metadata
+            "file_size": 0,  # Will be updated from upload metadata
             "speaker_count": participant_count,
             "transcript": formatted_result.get("segments", []),
             "created_at": datetime.utcnow().isoformat(),
@@ -910,35 +910,29 @@ async def transcribe_async(audio_path: str, session_id: str, participant_count: 
         
         # Try to get upload metadata to fill in missing fields
         try:
-            upload_session_data = redis_client.get(f"upload_session:{session_id}")
-            if upload_session_data:
-                upload_data = json.loads(upload_session_data)
-                transcription_data.update({
-                    "filename": upload_data.get("filename", "audio_file.wav"),
-                    "fileSize": upload_data.get("file_size", 0),
-                    "file_size": upload_data.get("file_size", 0),
-                    "mimeType": upload_data.get("content_type", "audio/wav"),
-                    "content_type": upload_data.get("content_type", "audio/wav"),
-                    "user_id": upload_data.get("user_id")
-                })
-                
-            # Try to get user_id and processing metadata
+            # Try multiple possible metadata keys
             metadata_keys = [
+                f"upload_session:{session_id}",
                 f"upload_metadata:{session_id}",
                 f"processing_metadata:{session_id}",
-                f"session_metadata:{session_id}",
-                f"user_session:{session_id}"
+                f"session_metadata:{session_id}"
             ]
             
             for key in metadata_keys:
-                metadata_raw = redis_client.get(key)
-                if metadata_raw:
-                    metadata = json.loads(metadata_raw)
-                    if metadata.get("user_id"):
-                        transcription_data["user_id"] = metadata["user_id"]
-                        break
+                upload_data_raw = redis_client.get(key)
+                if upload_data_raw:
+                    upload_data = json.loads(upload_data_raw)
+                    transcription_data.update({
+                        "filename": upload_data.get("filename", "audio_file.wav"),
+                        "fileSize": upload_data.get("file_size", 0),
+                        "file_size": upload_data.get("file_size", 0),
+                        "mimeType": upload_data.get("content_type", "audio/wav"),
+                        "content_type": upload_data.get("content_type", "audio/wav"),
+                        "user_id": upload_data.get("user_id")
+                    })
+                    break
         except Exception as e:
-            logger.warning(f"Could not retrieve upload metadata: {e}")
+            logger.warning(f"Could not retrieve upload metadata for session {session_id}: {e}")
         
         redis_client.setex(
             f"transcription:{session_id}",

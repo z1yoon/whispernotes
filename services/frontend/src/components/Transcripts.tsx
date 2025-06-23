@@ -23,7 +23,6 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/providers/auth-provider';
 import { useNotification } from './NotificationProvider';
-import UserButton from './UserButton';
 
 // TypeScript interfaces
 interface Transcription {
@@ -671,7 +670,6 @@ const Transcripts = () => {
 
   const loadTranscriptions = async () => {
     try {
-      setLoading(true);
       const response = await fetch('/api/transcripts');
       
       if (!response.ok) {
@@ -800,12 +798,15 @@ const Transcripts = () => {
             <ArrowLeft size={18} />
           </BackButton>
           <HeaderTitle>
-            <div className="title">My Transcripts</div>
-            <div className="subtitle">View & Download Your Diarized Transcripts</div>
+            <div className="title">{isAdmin ? 'Admin' : 'Your Transcripts'}</div>
+            <div className="subtitle">{isAdmin ? 'Manage System Transcripts' : 'View & Download Your Diarized Transcripts'}</div>
           </HeaderTitle>
         </HeaderLeft>
         <HeaderActions>
-          <UserButton />
+          <UsernameDisplay>
+            {isAdmin ? <Shield size={12} /> : <User size={12} />}
+            {displayUsername}
+          </UsernameDisplay>
           
           {isAdmin && (
             <AuthButton $variant="secondary" onClick={handleAdminPage}>
@@ -862,8 +863,8 @@ const Transcripts = () => {
 
         <TranscriptsPanel
           initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.4 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.4 }}
         >
           <PanelHeader>
             <div className="panel-title">
