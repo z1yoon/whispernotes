@@ -3,8 +3,10 @@ const CACHE_NAME = 'whisper-notes-v1';
 const urlsToCache = [
   '/',
   '/login',
+  '/signup',
+  '/transcripts',
   '/upload',
-  '/dashboard',
+  '/admin',
   '/static/js/bundle.js',
   '/static/css/main.css',
 ];

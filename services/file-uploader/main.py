@@ -1071,3 +1071,7 @@ async def delete_transcript(session_id: str, user_id: str = None):
     except Exception as e:
         logger.error(f"Error deleting transcript {session_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to delete transcript: {str(e)}")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8002)

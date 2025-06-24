@@ -22,7 +22,7 @@ import {
   FileText,
   Trash2
 } from 'lucide-react';
-import { useAuth } from '@/providers/auth-provider';
+import { useSession, signOut } from 'next-auth/react';
 import { useNotification } from './NotificationProvider';
 
 // TypeScript interfaces
@@ -644,7 +644,7 @@ const StatusMessage = styled.div`
 
 const Transcripts = () => {
   const router = useRouter();
-  const { user, logout } = useAuth();
+  const { data: session } = useSession();
   const notification = useNotification();
   
   const [transcriptions, setTranscriptions] = useState<Transcription[]>([]);
@@ -810,10 +810,7 @@ const Transcripts = () => {
   };
 
   const handleLogout = () => {
-    logout();
-    if (mounted && router) {
-      router.push('/');
-    }
+    signOut({ callbackUrl: '/' });
   };
 
   // Don't render until mounted to avoid SSR issues
@@ -833,8 +830,8 @@ const Transcripts = () => {
     );
   }
 
-  const displayUsername = user?.full_name || user?.username || 'User';
-  const isAdmin = user?.role === 'admin' || user?.is_admin;
+  const displayUsername = session?.user?.name || session?.user?.email || 'User';
+  const isAdmin = session?.user?.role === 'admin';
 
   return (
     <TranscriptsContainer>
@@ -844,8 +841,8 @@ const Transcripts = () => {
             <ArrowLeft size={18} />
           </BackButton>
           <HeaderTitle>
-            <div className="title">{isAdmin ? 'Admin' : 'Your Transcripts'}</div>
-            <div className="subtitle">{isAdmin ? 'Manage System Transcripts' : 'View & Download Your Diarized Transcripts'}</div>
+            <div className="title">Transcripts</div>
+            <div className="subtitle">{isAdmin ? 'Manage All System Transcripts' : 'View & Download Your Diarized Transcripts'}</div>
           </HeaderTitle>
         </HeaderLeft>
         <HeaderActions>
@@ -915,7 +912,7 @@ const Transcripts = () => {
           <PanelHeader>
             <div className="panel-title">
               <FileText size={24} />
-              Your Transcripts ({filteredTranscriptions.length})
+              {isAdmin ? 'All System Transcripts' : 'My Transcripts'} ({filteredTranscriptions.length})
             </div>
 
             <SearchFilter>

@@ -8,15 +8,18 @@ FROM base AS deps
 COPY package*.json ./
 RUN npm ci && npm cache clean --force
 
-# Development stage with pre-built assets
+# Development stage - optimized for hot reloading
 FROM base AS development
 COPY package*.json ./
 RUN npm install
 COPY . .
-# Pre-build to reduce initial compilation time
-RUN npm run build
+# Don't pre-build in development - let hot reload handle it
 EXPOSE 3000
-CMD ["npm", "run", "dev"]
+ENV NODE_ENV=development
+ENV NEXT_TELEMETRY_DISABLED=1
+# Enable hot reloading
+ENV WATCHPACK_POLLING=true
+CMD ["npm", "run", "dev", "--", "--hostname", "0.0.0.0"]
 
 # Production build stage
 FROM base AS builder

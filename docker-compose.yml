@@ -81,8 +81,6 @@ services:
       context: ./services
       dockerfile: auth-service/Dockerfile
     env_file: .env
-    environment:
-      - DATABASE_URL=${DATABASE_URL}
     ports:
       - "8000:8000"
     depends_on:
@@ -116,8 +114,6 @@ services:
     restart: unless-stopped
     volumes:
       - upload_temp:/tmp/uploads
-    environment:
-      - EXTERNAL_MINIO_HOST=localhost:9000
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
       interval: 30s
@@ -131,8 +127,6 @@ services:
       context: ./services
       dockerfile: video-processor/Dockerfile
     env_file: .env
-    environment:
-      - WHISPER_SERVICE_URL=http://whisper-transcriber:8003
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -157,12 +151,6 @@ services:
       context: ./services
       dockerfile: whisper-transcriber/Dockerfile
     env_file: .env
-    environment:
-      - DEVICE=${DEVICE:-cpu}
-      - BATCH_SIZE=${WHISPER_BATCH_SIZE:-4}
-      - COMPUTE_TYPE=${COMPUTE_TYPE:-float32}
-      - MIN_SPEAKERS=${MIN_SPEAKERS:-1}
-      - MAX_SPEAKERS=${MAX_SPEAKERS:-5}
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -217,13 +205,6 @@ services:
     env_file: .env
     ports:
       - "3000:3000"
-    environment:
-      - NODE_ENV=production
-      - NEXT_TELEMETRY_DISABLED=1
-      - FILE_UPLOADER_URL=http://file-uploader:8002
-      - AUTH_SERVICE_URL=http://auth-service:8000
-      - WHISPER_TRANSCRIBER_URL=http://whisper-transcriber:8003
-      - LLM_SERVICE_URL=http://llm-service:8004
     networks:
       - whisper-network
     depends_on:

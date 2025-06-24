@@ -7,7 +7,11 @@
       "Bash(rm:*)",
       "Bash(docker compose logs:*)",
       "Bash(docker compose exec:*)",
-      "Bash(docker compose restart:*)"
+      "Bash(docker compose restart:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run lint)",
+      "Bash(npm run build:*)",
+      "Bash(npm run dev:*)"
     ],
     "deny": []
   }

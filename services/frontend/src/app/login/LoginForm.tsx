@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Eye, EyeOff } from 'lucide-react'
-import { useAuth } from '@/providers/auth-provider'
+import { signIn, useSession } from 'next-auth/react'
 import { useNotification } from '@/components/NotificationProvider'
 import {
   AuthContainer,
@@ -30,16 +30,16 @@ export default function LoginForm() {
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { login, isAuthenticated } = useAuth()
+  const { data: session, status } = useSession()
   const notification = useNotification()
   const initializedRef = useRef(false)
 
   // Redirect if already authenticated
   useEffect(() => {
-    if (isAuthenticated) {
+    if (session) {
       router.replace('/')
     }
-  }, [isAuthenticated, router])
+  }, [session, router])
 
   // Handle signup pending message - only on initial render
   useEffect(() => {
@@ -71,35 +71,52 @@ export default function LoginForm() {
     setIsLoading(true)
 
     try {
-      await login(formData.email, formData.password)
-      // Success - redirect to landing page where upload functionality will be shown
-      notification.success('Login Successful', 'Welcome back!')
-      router.replace('/')
-    } catch (error: any) {
-      const errorMessage = error.message || 'An unknown error occurred';
-      console.log('Login error:', errorMessage);
-      
-      // Show specific notifications based on error message
-      if (errorMessage.toLowerCase().includes('rejected')) {
-        notification.error('Access Denied', 'Your access request was rejected. Please contact an administrator.');
-      } else if (errorMessage.toLowerCase().includes('incorrect email or password')) {
-        // When credentials are incorrect, suggest signing up if this might be a new user
-        const signUpLink = `<a href="/signup" class="notification-button">Sign Up Now</a>`;
-        notification.info(
-          'Account Not Found!', 
-          `This email may not be registered.<br/><br/>${signUpLink}`
-        );
-      } else if (errorMessage.toLowerCase().includes('pending')) {
-        notification.warning('Pending Approval', 'Your account is awaiting admin approval');
-      } else if (errorMessage.toLowerCase().includes('not found') || errorMessage.toLowerCase().includes('invalid credentials')) {
-        const signUpLink = `<a href="/signup" class="notification-button">Create Account</a>`;
-        notification.info(
-          'New User?', 
-          `No account found with these credentials.<br/><br/>${signUpLink}`
-        );
+      const result = await signIn('credentials', {
+        email: formData.email,
+        password: formData.password,
+        redirect: false,
+      })
+
+      if (result?.ok) {
+        notification.success('Welcome back! 🎉', 'You have successfully logged in')
+        router.replace('/')
       } else {
-        notification.error('Login Failed', errorMessage);
+        // Handle different error cases with modern notifications
+        if (result?.error) {
+          if (result.error === 'NO_ACCOUNT_FOUND') {
+            // User doesn't exist - redirect to signup with modern notification
+            notification.info(
+              'Account Not Found 🔍', 
+              'We couldn\'t find an account with that email. Let\'s get you signed up!'
+            )
+            setTimeout(() => {
+              router.push(`/signup?email=${encodeURIComponent(formData.email)}`)
+            }, 2500)
+          } else if (result.error.toLowerCase().includes('pending')) {
+            notification.warning(
+              'Account Under Review ⏳', 
+              'Your account request is being reviewed by our team. Please check with an admin for approval status.'
+            )
+          } else if (result.error.toLowerCase().includes('rejected')) {
+            notification.error(
+              'Access Request Declined ❌', 
+              'Your previous access request was declined. Please contact support for assistance.'
+            )
+          } else if (result.error.toLowerCase().includes('incorrect email or password')) {
+            notification.error(
+              'Invalid Credentials 🔐', 
+              'The email or password you entered is incorrect. Please try again.'
+            )
+          } else {
+            notification.error('Login Failed ⚠️', result.error)
+          }
+        } else {
+          notification.error('Login Failed ⚠️', 'Please check your credentials and try again')
+        }
       }
+    } catch (error: any) {
+      console.log('Login error:', error);
+      notification.error('Connection Error 🌐', 'Unable to connect to our servers. Please try again.');
     } finally {
       setIsLoading(false)
     }

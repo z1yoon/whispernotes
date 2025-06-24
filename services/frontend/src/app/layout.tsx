@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { inter, plusJakarta, roboto, robotoCondensed } from "@/lib/fonts";
 import "./globals.css";
 import { QueryProvider } from "@/providers/query-provider";
-import { AuthProvider } from "@/providers/auth-provider";
+import { SessionWrapper } from "@/components/SessionWrapper";
 import { NotificationProvider } from "@/components/NotificationProvider";
 import { ConditionalHeader } from "@/components/ConditionalHeader";
 
@@ -63,14 +63,14 @@ export default function RootLayout({
       </head>
       <body className="min-h-screen bg-background font-sans antialiased">
         <QueryProvider>
-          <AuthProvider>
+          <SessionWrapper>
             <NotificationProvider>
               <ConditionalHeader />
               <main className="relative flex min-h-screen flex-col">
                 {children}
               </main>
             </NotificationProvider>
-          </AuthProvider>
+          </SessionWrapper>
         </QueryProvider>
       </body>
     </html>

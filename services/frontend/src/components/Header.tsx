@@ -2,12 +2,12 @@
 
 import Link from 'next/link'
 import { Mic, User, LogOut } from 'lucide-react'
-import { useAuth } from '@/providers/auth-provider'
+import { useSession, signOut } from 'next-auth/react'
 import { useRouter, usePathname } from 'next/navigation'
 import { LogoText } from './AuthStyles'
 
 export function Header() {
-  const { user, isAuthenticated, logout } = useAuth()
+  const { data: session } = useSession()
   const router = useRouter()
   const pathname = usePathname()
 
@@ -17,8 +17,7 @@ export function Header() {
   }
 
   const handleLogout = () => {
-    logout()
-    router.push('/')
+    signOut({ callbackUrl: '/' })
   }
 
   return (
@@ -32,13 +31,13 @@ export function Header() {
         </Link>
 
         <nav className="flex items-center gap-4">
-          {isAuthenticated ? (
+          {session ? (
             <div className="flex items-center gap-4">
               <Link href="/transcripts" className="btn btn-secondary">
                 My Transcripts
               </Link>
 
-              {user?.role === 'admin' && (
+              {session.user?.role === 'admin' && (
                 <Link href="/admin" className="btn btn-secondary">
                   Admin
                 </Link>

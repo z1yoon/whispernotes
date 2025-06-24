@@ -77,10 +77,10 @@ const UploadPage = () => {
       `Processing ${files.length} file(s) with ${options.generateToDoList ? 'to-do list' : ''} ${options.userCountEnabled ? 'and user count' : ''}`
     );
     
-    // Redirect to dashboard after processing is complete
+    // Redirect to transcripts after processing is complete
     setTimeout(() => {
       notification.info('Processing Complete', 'Your files have been processed successfully');
-      router.push('/dashboard');
+      router.push('/transcripts');
       setIsProcessing(false);
     }, 3000);
   };
@@ -88,7 +88,7 @@ const UploadPage = () => {
   return (
     <UploadContainer>
       <Header>
-        <BackButton onClick={() => router.push('/dashboard')} disabled={isProcessing}>
+        <BackButton onClick={() => router.push('/')} disabled={isProcessing}>
           <ArrowLeft size={18} />
         </BackButton>
         <HeaderTitle>Upload Files</HeaderTitle>

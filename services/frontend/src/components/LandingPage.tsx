@@ -14,7 +14,7 @@ import {
 import toast from 'react-hot-toast';
 import { SharedUpload } from './SharedUpload';
 
-import { useAuth } from '@/providers/auth-provider';
+import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 
 const LandingContainer = styled.div`
@@ -221,11 +221,11 @@ const SharedUploadCard = styled(motion.div)<{ $isAuthenticated: boolean }>`
 `;
 
 const LandingPage = () => {
-  const { isAuthenticated, user, logout } = useAuth();
+  const { data: session } = useSession();
   const router = useRouter();
 
   const handleUploadClick = (e: React.MouseEvent) => {
-    if (!isAuthenticated) {
+    if (!session) {
       e.preventDefault();
       e.stopPropagation();
       toast.error('Please login to upload files');
@@ -239,7 +239,7 @@ const LandingPage = () => {
   };
 
   const handleLogout = () => {
-    logout();
+    signOut({ callbackUrl: '/' });
     toast.success('Logged out successfully');
   };
 
@@ -251,10 +251,10 @@ const LandingPage = () => {
     router.push('/transcripts');
   };
 
-  const isAdmin = user?.role === 'admin' || user?.is_admin;
+  const isAdmin = session?.user?.role === 'admin';
   
-  // Get display username from user data (removed environment variable fallback)
-  const displayUsername = user?.full_name || user?.username || 'User';
+  // Get display username from session data
+  const displayUsername = session?.user?.name || session?.user?.email || 'User';
 
   return (
     <LandingContainer>
@@ -262,7 +262,7 @@ const LandingPage = () => {
         National Institute of Education
       </InstituteName>
 
-      {isAuthenticated ? (
+      {session ? (
         <AuthenticatedNav>
           <UsernameButton onClick={handleViewTranscripts}>
             {isAdmin ? <Shield size={16} /> : <User size={16} />}
@@ -338,7 +338,7 @@ const LandingPage = () => {
 
           <RightSection>
             <SharedUpload 
-              isAuthenticated={isAuthenticated}
+              isAuthenticated={!!session}
               onStartProcessing={handleStartProcessing}
               onUploadClick={handleUploadClick}
               showProcessingOverlay={false}

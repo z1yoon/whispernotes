@@ -2,26 +2,26 @@
 
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { useAuth } from '@/providers/auth-provider'
+import { useSession } from 'next-auth/react'
 import { SharedUpload } from '@/components/SharedUpload'
 
 export default function UploadPage() {
   const router = useRouter()
-  const { isAuthenticated } = useAuth()
+  const { data: session } = useSession()
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!session) {
       router.push('/login')
     }
-  }, [isAuthenticated, router])
+  }, [session, router])
 
-  if (!isAuthenticated) {
+  if (!session) {
     return null
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-      <SharedUpload isAuthenticated={isAuthenticated} />
+      <SharedUpload isAuthenticated={!!session} />
     </div>
   )
 }

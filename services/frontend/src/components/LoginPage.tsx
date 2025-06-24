@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import styled, { keyframes } from 'styled-components';
 import { motion } from 'framer-motion';
 import { LogIn, User, Lock, AlertCircle, Eye, EyeOff, Mic, Zap, ArrowRight } from 'lucide-react';
-import { useAuth } from '@/providers/auth-provider';
+import { useSession, signIn } from 'next-auth/react';
 import { useNotification } from '@/components/NotificationProvider';
 
 // TypeScript interfaces
@@ -413,17 +413,18 @@ const LoginPage = () => {
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
-  const auth = useAuth();
+  const { data: session, status } = useSession();
   const notification = useNotification();
 
   // Redirect if already authenticated
   useEffect(() => {
-    if (auth.isAuthenticated && !auth.isLoading) {
+    if (session && status === 'authenticated') {
       console.log('LoginPage: User is authenticated, redirecting to /upload');
       router.replace('/upload');
     }
-  }, [auth.isAuthenticated, auth.isLoading, router]);
+  }, [session, status, router]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -441,28 +442,43 @@ const LoginPage = () => {
       return;
     }
 
+    setIsLoading(true);
     try {
-      await auth.login(formData.email, formData.password);
-      notification.success('Welcome back!', 'Login successful');
+      const result = await signIn('credentials', {
+        email: formData.email,
+        password: formData.password,
+        redirect: false,
+      });
+
+      if (result?.error) {
+        const errorMessage = result.error;
+        setError(errorMessage);
+        
+        // Show specific notifications based on error type
+        if (errorMessage.toLowerCase().includes('rejected')) {
+          notification.error('Access Denied', 'Your access request was rejected. Please contact an administrator.');
+        } else if (errorMessage.toLowerCase().includes('incorrect email or password')) {
+          notification.error('Invalid Credentials', 'Email or password is incorrect');
+        } else if (errorMessage.toLowerCase().includes('pending')) {
+          notification.warning('Pending Approval', 'Your account is awaiting admin approval');
+        } else {
+          notification.error('Login Failed', errorMessage);
+        }
+      } else {
+        notification.success('Welcome back!', 'Login successful');
+        router.push('/upload');
+      }
     } catch (error: any) {
       const errorMessage = error.message || 'An unknown error occurred.';
       setError(errorMessage);
-      
-      // Show specific notifications based on error type
-      if (errorMessage.toLowerCase().includes('rejected')) {
-        notification.error('Access Denied', 'Your access request was rejected. Please contact an administrator.');
-      } else if (errorMessage.toLowerCase().includes('incorrect email or password')) {
-        notification.error('Invalid Credentials', 'Email or password is incorrect');
-      } else if (errorMessage.toLowerCase().includes('pending')) {
-        notification.warning('Pending Approval', 'Your account is awaiting admin approval');
-      } else {
-        notification.error('Login Failed', errorMessage);
-      }
+      notification.error('Login Failed', errorMessage);
+    } finally {
+      setIsLoading(false);
     }
   };
 
   // Show loading state while checking authentication
-  if (auth.isLoading) {
+  if (status === 'loading') {
     return (
       <LoginContainer>
         <LoginCard
@@ -480,7 +496,7 @@ const LoginPage = () => {
   }
 
   // Don't render login form if user is authenticated
-  if (auth.isAuthenticated) {
+  if (session) {
     return null;
   }
 
@@ -549,7 +565,7 @@ const LoginPage = () => {
                 onChange={handleInputChange}
                 placeholder="you@example.com"
                 hasError={!!error}
-                disabled={auth.isLoading}
+                disabled={isLoading}
                 autoComplete="email"
               />
             </InputWrapper>
@@ -568,7 +584,7 @@ const LoginPage = () => {
                 onChange={handleInputChange}
                 placeholder="••••••••••••"
                 hasError={!!error}
-                disabled={auth.isLoading}
+                disabled={isLoading}
                 autoComplete="current-password"
               />
               <PasswordToggle 
@@ -581,11 +597,11 @@ const LoginPage = () => {
           </InputGroup>
           <SubmitButton 
             type="submit" 
-            disabled={auth.isLoading}
+            disabled={isLoading}
             whileHover={{ y: -2, boxShadow: '0 10px 30px rgba(136, 80, 242, 0.3)' }}
             whileTap={{ scale: 0.98 }}
           >
-            {auth.isLoading ? (
+            {isLoading ? (
               <>
                 <Spinner />
                 <span>Authenticating...</span>

@@ -2,7 +2,7 @@ import React from 'react';
 import { useRouter } from 'next/navigation';
 import styled from 'styled-components';
 import { Shield, User } from 'lucide-react';
-import { useAuth } from '@/providers/auth-provider';
+import { useSession } from 'next-auth/react';
 
 const UserButtonContainer = styled.div`
   padding: 0.75rem 1.5rem;
@@ -27,11 +27,11 @@ interface UserButtonProps {
 }
 
 export const UserButton: React.FC<UserButtonProps> = ({ onClick }) => {
-  const { user } = useAuth();
+  const { data: session } = useSession();
   const router = useRouter();
   
-  const displayUsername = user?.full_name || user?.username || 'User';
-  const isAdmin = user?.role === 'admin' || user?.is_admin;
+  const displayUsername = session?.user?.name || session?.user?.email || 'User';
+  const isAdmin = session?.user?.role === 'admin';
 
   const handleClick = () => {
     if (onClick) {

@@ -484,6 +484,26 @@ async def delete_user(user_id: str, db=Depends(get_db), admin_user: User = Depen
             detail=f"Failed to delete user: {str(e)}"
         )
 
+@app.post("/api/v1/admin/approve-request/{request_id}")
+async def approve_request_alt(request_id: str, db=Depends(get_db), admin_user: User = Depends(get_current_admin_user)):
+    """Alternative endpoint for approving requests - matches frontend expectations"""
+    return await approve_request(request_id, db, admin_user)
+
+@app.post("/api/v1/admin/reject-request/{request_id}")
+async def reject_request_alt(request_id: str, db=Depends(get_db), admin_user: User = Depends(get_current_admin_user)):
+    """Alternative endpoint for rejecting requests - matches frontend expectations"""
+    return await reject_request(request_id, db, admin_user)
+
+@app.post("/api/v1/admin/toggle-admin/{user_id}")
+async def toggle_admin_alt(user_id: str, db=Depends(get_db), admin_user: User = Depends(get_current_admin_user)):
+    """Alternative endpoint for toggling admin status - matches frontend expectations"""
+    return await toggle_user_admin_status(user_id, db, admin_user)
+
+@app.delete("/api/v1/admin/delete-user/{user_id}")
+async def delete_user_alt(user_id: str, db=Depends(get_db), admin_user: User = Depends(get_current_admin_user)):
+    """Alternative endpoint for deleting users - matches frontend expectations"""
+    return await delete_user(user_id, db, admin_user)
+
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}

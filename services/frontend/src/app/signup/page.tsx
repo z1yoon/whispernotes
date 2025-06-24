@@ -1,12 +1,12 @@
 'use client'
 
 import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import styled, { keyframes } from 'styled-components';
 import { motion } from 'framer-motion';
 import { User, Mail, Lock, FileText, AlertCircle, Eye, EyeOff, Mic, ArrowRight, ArrowLeft, CheckCircle } from 'lucide-react';
 import Link from 'next/link';
-import { useAuth } from '@/providers/auth-provider';
+import { useSession } from 'next-auth/react';
 import { useNotification } from '@/components/NotificationProvider';
 
 // TypeScript interfaces
@@ -409,15 +409,24 @@ const SignupPage = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
-  const auth = useAuth();
+  const { data: session } = useSession();
   const notification = useNotification();
+  const searchParams = useSearchParams();
 
   // Redirect if already authenticated
   useEffect(() => {
-    if (auth.isAuthenticated && !auth.isLoading) {
-      router.replace('/dashboard');
+    if (!!session) {
+      router.replace('/transcripts');
     }
-  }, [auth.isAuthenticated, auth.isLoading, router]);
+  }, [session, router]);
+
+  // Pre-fill email from URL parameter (when redirected from login)
+  useEffect(() => {
+    const emailParam = searchParams?.get('email');
+    if (emailParam && !formData.email) {
+      setFormData(prev => ({ ...prev, email: emailParam }));
+    }
+  }, [searchParams, formData.email]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -449,7 +458,7 @@ const SignupPage = () => {
     setIsLoading(true);
 
     try {
-      const response = await fetch('/api/auth/signup', {
+      const response = await fetch('/api/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -464,50 +473,53 @@ const SignupPage = () => {
       const data = await response.json();
 
       if (!response.ok) {
-        // Handle specific error cases with appropriate notifications
+        // Handle specific error cases with modern notifications
         const errorMsg = data.error || data.detail || 'Signup failed';
         
-        // Email already exists cases
-        if (errorMsg.toLowerCase().includes('already exists') || 
-            errorMsg.toLowerCase().includes('already registered')) {
-          
-          notification.error('Email Already Registered', errorMsg);
-          
-          // If this appears to be an existing user, suggest login
-          if (errorMsg.toLowerCase().includes('please log in')) {
-            setTimeout(() => {
-              router.push('/login');
-            }, 2000);
-          }
-          
+        // Parse modern error messages that include emojis and better descriptions
+        if (errorMsg.includes('👤') && errorMsg.toLowerCase().includes('already exists')) {
+          notification.error('Account Already Exists', 'An account with this email already exists. Redirecting to login...');
+          setTimeout(() => {
+            router.push(`/login?email=${encodeURIComponent(formData.email)}`);
+          }, 2000);
         } 
-        // Pending approval case
-        else if (errorMsg.toLowerCase().includes('pending')) {
-          notification.warning('Request Already Pending', errorMsg);
+        else if (errorMsg.includes('⏳') && errorMsg.toLowerCase().includes('pending')) {
+          notification.warning('Request Already Pending', 'You already have a pending access request. Please wait for admin approval.');
           setTimeout(() => {
             router.push('/login?message=signup-pending');
           }, 2000);
         }
-        // Rejected request case
-        else if (errorMsg.toLowerCase().includes('rejected')) {
-          notification.error('Request Previously Rejected', errorMsg);
+        else if (errorMsg.includes('❌') && errorMsg.toLowerCase().includes('declined')) {
+          notification.error('Request Previously Declined', 'Your previous access request was declined. Please contact support for assistance.');
         }
-        // Other error cases
+        else if (errorMsg.includes('📧') && errorMsg.toLowerCase().includes('invalid email')) {
+          notification.error('Invalid Email', 'Please enter a valid email address.');
+        }
+        else if (errorMsg.includes('🔐') && errorMsg.toLowerCase().includes('password')) {
+          notification.error('Password Issue', 'Please ensure your password meets the requirements.');
+        }
+        else if (errorMsg.includes('🔧') && errorMsg.toLowerCase().includes('temporarily unavailable')) {
+          notification.error('Service Unavailable', 'Our signup service is temporarily down. Please try again in a few minutes.');
+        }
+        else if (errorMsg.includes('🌐') && errorMsg.toLowerCase().includes('connection')) {
+          notification.error('Connection Error', 'Unable to connect to our servers. Please check your internet connection.');
+        }
         else {
-          notification.error('Signup Failed', errorMsg);
+          // Handle generic error messages
+          const cleanMsg = errorMsg.replace(/[🎉👤⏳❌📧🔐🔧🌐🔄📝⚠️]/g, '').trim();
+          notification.error('Signup Error', cleanMsg);
         }
         
         throw new Error(errorMsg);
       }
 
-      // Show brief success message
-      notification.success('Request Submitted', 'Your account request is awaiting admin approval');
+      // Show modern success message
+      notification.success('Request Submitted Successfully! 🎉', 'Your account request is now under review. Please check with an admin for approval status.');
 
       // Wait a moment then redirect
       setTimeout(() => {
         router.push('/login?message=signup-pending');
-      }, 1500); // Reduced timeout to 1.5 seconds
-
+      }, 2000);
     } catch (error: any) {
       console.error('Signup error:', error);
       setError(error.message || 'Failed to submit request. Please try again.');
@@ -517,7 +529,7 @@ const SignupPage = () => {
   };
 
   // Don't render signup form if user is authenticated
-  if (auth.isAuthenticated) {
+  if (!!session) {
     return null;
   }
 
