@@ -201,10 +201,14 @@ services:
     build:
       context: ./services/frontend
       dockerfile: Dockerfile
-      target: production
+      target: development
     env_file: .env
     ports:
       - "3000:3000"
+    volumes:
+      - ./services/frontend:/app
+      - /app/node_modules
+      - /app/.next
     networks:
       - whisper-network
     depends_on:

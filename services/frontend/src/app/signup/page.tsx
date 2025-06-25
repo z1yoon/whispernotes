@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import styled, { keyframes } from 'styled-components';
 import { motion } from 'framer-motion';
@@ -395,7 +395,7 @@ const LoadingSpinner = styled.div`
   }
 `;
 
-const SignupPage = () => {
+const SignupForm = () => {
   const [formData, setFormData] = useState<FormData>({
     username: '',
     email: '',
@@ -725,6 +725,14 @@ const SignupPage = () => {
         </AuthLink>
       </SignupCard>
     </SignupContainer>
+  );
+};
+
+const SignupPage = () => {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <SignupForm />
+    </Suspense>
   );
 };
 
