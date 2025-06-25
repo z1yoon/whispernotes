@@ -14,7 +14,7 @@ export async function POST(req: NextRequest, context: { params: { sessionId: str
       return NextResponse.json({ message: 'Unauthorized: Not authenticated' }, { status: 401 });
     }
 
-    const { sessionId } = context.params;
+    const { sessionId } = await context.params;
     const { parts } = await req.json();
 
     if (!sessionId || !parts || !Array.isArray(parts)) {
@@ -25,7 +25,7 @@ export async function POST(req: NextRequest, context: { params: { sessionId: str
 
     // Forward the completion request to the file-uploader service
     const uploaderResponse = await fetch(
-      `${FILE_UPLOADER_URL}/api/v1/uploads/${sessionId}/complete-upload`,
+      `${FILE_UPLOADER_URL}/api/v1/uploads/${sessionId}/complete`,
       {
         method: 'POST',
         headers: {

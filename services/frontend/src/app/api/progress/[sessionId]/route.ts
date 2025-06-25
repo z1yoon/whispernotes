@@ -3,56 +3,60 @@ import Redis from 'ioredis';
 
 const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
   retryDelayOnFailover: 100,
-  maxRetriesPerRequest: 1,
+  maxRetriesPerRequest: 3,
   lazyConnect: true,
 });
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { sessionId: string } }
+  context: { params: { sessionId: string } }
 ) {
-  const { sessionId } = params;
+  const { sessionId } = await context.params;
 
-  // Create a ReadableStream for real-time updates
-  const stream = new ReadableStream({
-    start(controller) {
-      const sendUpdate = (data: any) => {
-        const chunk = `data: ${JSON.stringify(data)}\n\n`;
-        controller.enqueue(new TextEncoder().encode(chunk));
-      };
+  try {
+    // Try multiple Redis keys to find progress data
+    const keys = [
+      `progress_state:${sessionId}`,
+      `upload_progress:${sessionId}`,
+      `transcription_progress:${sessionId}`
+    ];
 
-      // Subscribe to Redis updates for this session
-      const subscriber = redis.duplicate();
-      subscriber.subscribe(`progress:${sessionId}`);
-      
-      subscriber.on('message', (channel, message) => {
-        try {
-          const update = JSON.parse(message);
-          sendUpdate(update);
-          
-          // Close stream when processing is complete
-          if (update.status === 'COMPLETED' || update.status === 'FAILED') {
-            controller.close();
-            subscriber.disconnect();
-          }
-        } catch (error) {
-          console.error('Error parsing progress update:', error);
-        }
-      });
+    for (const key of keys) {
+      const progressData = await redis.get(key);
+      if (progressData) {
+        const progress = JSON.parse(progressData);
+        const result = {
+          session_id: sessionId,
+          status: progress.status || 'processing',
+          progress: progress.progress || 0,
+          message: progress.message || 'Processing...',
+          stage: progress.stage || progress.status || 'processing',
+          timestamp: progress.timestamp || new Date().toISOString()
+        };
+        
+        return NextResponse.json(result);
+      }
+    }
+    
+    // Return default state if no progress found - no logging for unknown states
+    return NextResponse.json({
+      session_id: sessionId,
+      status: 'unknown',
+      progress: 0,
+      message: 'No progress data found',
+      stage: 'unknown',
+      timestamp: new Date().toISOString()
+    });
 
-      // Handle client disconnect
-      request.signal.addEventListener('abort', () => {
-        subscriber.disconnect();
-        controller.close();
-      });
-    },
-  });
-
-  return new NextResponse(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
-    },
-  });
+  } catch (error) {
+    console.error('Error fetching progress for session', sessionId, ':', error);
+    return NextResponse.json({
+      session_id: sessionId,
+      status: 'error',
+      progress: 0,
+      message: 'Error fetching progress',
+      stage: 'error',
+      timestamp: new Date().toISOString()
+    }, { status: 500 });
+  }
 }

@@ -350,11 +350,14 @@ def process_upload_message(ch, method, properties, body):
         session_id = message.get("session_id")
         object_name = message.get("object_name")
         original_filename = message.get("original_filename")
+        num_speakers = message.get("num_speakers", 2)  # Get speaker count from message
         
         if not session_id or not object_name:
             logger.error("Invalid message: missing session_id or object_name")
             ch.basic_ack(delivery_tag=method.delivery_tag)
             return
+            
+        logger.info(f"Processing video for session {session_id} with {num_speakers} speakers")
             
         # Create download path
         download_path = os.path.join(TEMP_DIR, f"{session_id}_{original_filename}")
@@ -366,7 +369,7 @@ def process_upload_message(ch, method, properties, body):
             ch.basic_ack(delivery_tag=method.delivery_tag)
             return
             
-        # Get participant count and speaker names from Redis if available
+        # Get additional metadata from Redis if available
         metadata = None
         try:
             metadata_raw = redis_client.get(f"upload_metadata:{session_id}")
@@ -375,11 +378,11 @@ def process_upload_message(ch, method, properties, body):
         except Exception as e:
             logger.error(f"Error getting metadata from Redis: {e}")
             
-        participant_count = 2  # Default
+        # Use speaker count from message, fallback to metadata or default
+        participant_count = num_speakers
         speaker_names = None
         
         if metadata:
-            participant_count = metadata.get("participant_count", 2)
             speaker_names = metadata.get("speaker_names")
         
         # Start processing

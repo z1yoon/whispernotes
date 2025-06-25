@@ -24,24 +24,43 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # --- Configuration ---
-MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "minio:9000")
-MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
-MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin123")
-MINIO_BUCKET = os.getenv("MINIO_BUCKET", "whisper-files")
+# Configuration - Get from environment without defaults
+MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT")
+MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY")
+MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY")
+MINIO_BUCKET = os.getenv("MINIO_BUCKET")
 MINIO_USE_SECURE = os.getenv("MINIO_USE_SECURE", "false").lower() == "true"
 
-REDIS_HOST = os.getenv("REDIS_HOST", "redis")
-REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+REDIS_HOST = os.getenv("REDIS_HOST")
+REDIS_PORT = int(os.getenv("REDIS_PORT")) if os.getenv("REDIS_PORT") else None
 REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "")
 
-# Add this for consistency with other services:
-REDIS_URL = f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/0" if REDIS_PASSWORD else f"redis://{REDIS_HOST}:{REDIS_PORT}/0"
-
-RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "rabbitmq")
-RABBITMQ_PORT = int(os.getenv("RABBITMQ_PORT", "5672"))
-RABBITMQ_USER = os.getenv("RABBITMQ_DEFAULT_USER", "user")
-RABBITMQ_PASS = os.getenv("RABBITMQ_DEFAULT_PASS", "password")
+RABBITMQ_HOST = os.getenv("RABBITMQ_HOST")
+RABBITMQ_PORT = int(os.getenv("RABBITMQ_PORT")) if os.getenv("RABBITMQ_PORT") else None
+RABBITMQ_USER = os.getenv("RABBITMQ_DEFAULT_USER")
+RABBITMQ_PASS = os.getenv("RABBITMQ_DEFAULT_PASS")
 VIDEO_PROCESSING_QUEUE = "video_processing_queue"
+
+# Validate required environment variables
+required_env_vars = {
+    "MINIO_ENDPOINT": MINIO_ENDPOINT,
+    "MINIO_ACCESS_KEY": MINIO_ACCESS_KEY,
+    "MINIO_SECRET_KEY": MINIO_SECRET_KEY,
+    "MINIO_BUCKET": MINIO_BUCKET,
+    "REDIS_HOST": REDIS_HOST,
+    "REDIS_PORT": REDIS_PORT,
+    "RABBITMQ_HOST": RABBITMQ_HOST,
+    "RABBITMQ_PORT": RABBITMQ_PORT,
+    "RABBITMQ_DEFAULT_USER": RABBITMQ_USER,
+    "RABBITMQ_DEFAULT_PASS": RABBITMQ_PASS,
+}
+
+missing_vars = [var for var, value in required_env_vars.items() if value is None]
+if missing_vars:
+    raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
+
+# Build Redis URL
+REDIS_URL = f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/0" if REDIS_PASSWORD else f"redis://{REDIS_HOST}:{REDIS_PORT}/0"
 
 # Global variables for clients
 minio_client = None
@@ -142,6 +161,7 @@ class UploadInitializationRequest(BaseModel):
     file_size: int = Field(..., gt=0, description="The total size of the file in bytes.")
     content_type: str = Field(..., description="The MIME type of the file.")
     user_id: Optional[str] = Field(None, description="The ID of the user uploading the file.")
+    num_speakers: Optional[int] = Field(2, description="Number of speakers for transcription.")
     
 class UploadInitializationResponse(BaseModel):
     session_id: str = Field(..., description="A unique session ID for this upload.")
@@ -179,6 +199,13 @@ def publish_to_video_processor(session_id: str, object_name: str, filename: str)
         return
 
     try:
+        # Get session data to include speaker count
+        session_data_raw = redis_client.get(f"upload_session:{session_id}")
+        num_speakers = 2  # default
+        if session_data_raw:
+            session_data = json.loads(session_data_raw)
+            num_speakers = session_data.get("num_speakers", 2)
+
         credentials = pika.PlainCredentials(RABBITMQ_USER, RABBITMQ_PASS)
         connection = pika.BlockingConnection(
             pika.ConnectionParameters(host=RABBITMQ_HOST, port=RABBITMQ_PORT, credentials=credentials)
@@ -190,6 +217,7 @@ def publish_to_video_processor(session_id: str, object_name: str, filename: str)
             "session_id": session_id,
             "object_name": object_name,
             "original_filename": filename,
+            "num_speakers": num_speakers,  # Include speaker count
         })
 
         channel.basic_publish(
@@ -201,7 +229,7 @@ def publish_to_video_processor(session_id: str, object_name: str, filename: str)
             ),
         )
         connection.close()
-        logger.info(f"Successfully published message for session {session_id} to RabbitMQ.")
+        logger.info(f"Successfully published message for session {session_id} to RabbitMQ with {num_speakers} speakers.")
     except Exception as e:
         logger.error(f"Failed to publish message for session {session_id} to RabbitMQ: {e}")
 
@@ -236,6 +264,7 @@ async def initialize_upload(request: UploadInitializationRequest):
             "file_size": request.file_size,
             "content_type": request.content_type,
             "user_id": request.user_id,  # Store the user_id
+            "num_speakers": request.num_speakers or 2,  # Store speaker count
             "parts": [],
             "creation_time": time.time()
         }
@@ -327,7 +356,10 @@ async def upload_part(session_id: str, part_number: int, file: UploadFile = File
         # Read the file content
         content = await file.read()
         file_size = len(content)
-        logger.info(f"Received part {part_number} for session {session_id}, size: {file_size} bytes")
+        
+        # Log detailed part upload info
+        part_size_mb = file_size / (1024 * 1024)
+        logger.info(f"📤 Part {part_number} upload started - Session: {session_id[:8]}, Size: {part_size_mb:.1f}MB")
         
         # Generate part key for storage
         part_key = f"{object_name}.part{part_number}"
@@ -346,13 +378,34 @@ async def upload_part(session_id: str, part_number: int, file: UploadFile = File
             content_type="application/octet-stream"
         )
         
-        logger.info(f"Successfully uploaded part {part_number} for session {session_id}, etag: {result.etag}")
-        
         # Update part information in Redis
         parts = session_data.get("parts", [])
         parts.append({"part_number": part_number, "etag": result.etag})
         session_data["parts"] = parts
         redis_client.set(f"upload_session:{session_id}", json.dumps(session_data), ex=86400)
+        
+        # Calculate total uploaded parts for progress
+        total_parts = session_data.get("total_parts", 1)
+        
+        # Send detailed progress update
+        try:
+            progress_percentage = (len(parts) / total_parts) * 45 + 5  # 5-50% for upload
+            progress_message = f"Uploaded part {part_number}/{total_parts} ({part_size_mb:.1f}MB) ✓"
+            
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                await client.post(
+                    f"{os.getenv('FILE_UPLOADER_URL', 'http://file-uploader:8002')}/upload/progress/{session_id}",
+                    json={
+                        "progress": progress_percentage,
+                        "message": progress_message,
+                        "status": "uploading"
+                    }
+                )
+            logger.info(f"📊 Progress update sent: {session_id[:8]} - {progress_percentage:.0f}% - {progress_message}")
+        except Exception as e:
+            logger.warning(f"Failed to send progress update: {e}")
+        
+        logger.info(f"✅ Part {part_number} uploaded successfully - Session: {session_id[:8]}, ETag: {result.etag}")
         
         return {
             "status": "success",
@@ -361,7 +414,7 @@ async def upload_part(session_id: str, part_number: int, file: UploadFile = File
             "size": file_size
         }
     except Exception as e:
-        logger.error(f"Error uploading part {part_number} for session {session_id}: {e}", exc_info=True)
+        logger.error(f"❌ Error uploading part {part_number} for session {session_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to upload part: {str(e)}")
 
 
@@ -628,6 +681,7 @@ async def update_progress(session_id: str, update: ProgressUpdate):
         raise HTTPException(status_code=503, detail="Redis service unavailable")
         
     try:
+        # Update progress data
         redis_key = f"upload_progress:{session_id}"
         progress_data = {
             "progress": update.progress,
@@ -643,7 +697,39 @@ async def update_progress(session_id: str, update: ProgressUpdate):
             json.dumps(progress_data)
         )
         
+        # ALSO update the transcription entry if it exists
+        transcription_key = f"transcription:{session_id}"
+        existing_transcription = redis_client.get(transcription_key)
+        
+        if existing_transcription:
+            transcription_data = json.loads(existing_transcription)
+            # Update the status and progress in the main transcription entry
+            transcription_data.update({
+                "status": update.status,
+                "sessionStatus": update.status,
+                "progress": update.progress,
+                "updated_at": datetime.now().isoformat()
+            })
+            
+            # If completed, mark as completed
+            if update.status == "completed" or update.progress >= 100:
+                transcription_data.update({
+                    "completedAt": datetime.now().isoformat(),
+                    "completed_at": datetime.now().isoformat()
+                })
+            
+            # Store updated transcription entry
+            redis_client.setex(transcription_key, 48 * 3600, json.dumps(transcription_data))
+            logger.info(f"Updated transcription entry for session {session_id} with new status: {update.status}")
+        
         logger.info(f"Updated progress for session {session_id}: {update.progress}% - {update.message}")
+        
+        # Only log specific progress stages you want to see
+        if any(keyword in update.message.lower() for keyword in [
+            'uploading part', 'multipart', 'video', 'whisper', 'transcrib', 'todo', 'completed', 'failed'
+        ]):
+            logger.info(f"📊 {session_id[:8]}: {update.progress}% - {update.message}")
+        
         return {"success": True}
     except Exception as e:
         logger.error(f"Failed to update progress for session {session_id}: {e}")
@@ -868,7 +954,7 @@ async def test_minio_access():
         }
 
 @app.get("/api/v1/transcripts/admin/all")
-async def get_all_transcripts():
+async def get_all_transcripts_for_admin():
     """
     Get all transcripts from all users (admin only)
     """
@@ -898,13 +984,37 @@ async def get_all_transcripts():
                 
                 # Add session ID and additional information
                 transcription.update({
+                    "id": session_id,
                     "sessionId": session_id,
-                    "username": username
+                    "username": username,
+                    "filename": transcription.get("filename", "Unknown"),
+                    "fileSize": transcription.get("fileSize", transcription.get("file_size", 0)),
+                    "mimeType": transcription.get("mimeType", transcription.get("content_type", "unknown")),
+                    "status": transcription.get("status", "processing"),
+                    "progress": transcription.get("progress", 0),
+                    "hasTranscript": transcription.get("status") == "completed",
+                    "createdAt": transcription.get("createdAt", transcription.get("created_at", datetime.now().isoformat())),
+                    "completedAt": transcription.get("completedAt", transcription.get("completed_at", None)),
+                    "duration": transcription.get("duration", 0),
                 })
                 
                 transcriptions.append(transcription)
+
+        # Calculate stats
+        stats = {
+            "total": len(transcriptions),
+            "completed": len([t for t in transcriptions if t.get("status") == "completed"]),
+            "processing": len([t for t in transcriptions if t.get("status") in ["processing", "transcribing", "uploading", "analyzing", "pending"]]),
+            "failed": len([t for t in transcriptions if t.get("status") == "failed"]),
+            "totalSize": sum(t.get("fileSize", 0) for t in transcriptions),
+            "totalDuration": sum(t.get("duration", 0) for t in transcriptions),
+            "userCount": len(set(t.get("user_id") for t in transcriptions if t.get("user_id")))
+        }
+
+        # Sort by creation date (newest first)
+        transcriptions.sort(key=lambda x: x.get("createdAt", ""), reverse=True)
         
-        return {"transcriptions": transcriptions}
+        return {"transcriptions": transcriptions, "stats": stats}
     except Exception as e:
         logger.error(f"Error retrieving all transcripts: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to retrieve transcripts: {str(e)}")
@@ -1071,6 +1181,48 @@ async def delete_transcript(session_id: str, user_id: str = None):
     except Exception as e:
         logger.error(f"Error deleting transcript {session_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to delete transcript: {str(e)}")
+
+@app.post("/api/v1/immediate-transcription")
+async def create_immediate_transcription(transcription_data: dict):
+    """
+    Create an immediate transcription entry in Redis for progress tracking
+    This allows the transcripts page to show uploads immediately
+    """
+    if not redis_client:
+        raise HTTPException(status_code=503, detail="Redis service unavailable")
+    
+    try:
+        session_id = transcription_data.get("session_id")
+        if not session_id:
+            raise HTTPException(status_code=400, detail="Missing session_id")
+        
+        # Store in Redis using the same key pattern that get_user_transcripts expects
+        redis_key = f"transcription:{session_id}"
+        
+        # Store with 48 hour TTL (longer than progress data since this is the main entry)
+        redis_client.setex(
+            redis_key,
+            48 * 3600,  # 48 hours
+            json.dumps(transcription_data)
+        )
+        
+        # Also create progress entry for real-time updates
+        progress_key = f"upload_progress:{session_id}"
+        progress_data = {
+            "progress": 0,
+            "message": "Starting upload...",
+            "status": "uploading",
+            "stage": "uploading",
+            "updated_at": datetime.now().isoformat()
+        }
+        redis_client.setex(progress_key, 24 * 3600, json.dumps(progress_data))
+        
+        logger.info(f"Created immediate transcription entry for session {session_id}")
+        return {"status": "success", "message": "Transcription entry created"}
+        
+    except Exception as e:
+        logger.error(f"Failed to create immediate transcription entry: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create entry: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

@@ -15,7 +15,7 @@ export async function POST(req: NextRequest, context: { params: { sessionId: str
       return NextResponse.json({ message: 'Unauthorized: Not authenticated' }, { status: 401 });
     }
 
-    const { sessionId } = context.params;
+    const { sessionId } = await context.params;
     const { parts } = await req.json();
 
     console.log('API: Completing upload for session:', sessionId, 'with parts:', JSON.stringify(parts));

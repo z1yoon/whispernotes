@@ -14,7 +14,7 @@ export async function POST(req: NextRequest, context: { params: { sessionId: str
       return NextResponse.json({ message: 'Unauthorized: Not authenticated' }, { status: 401 });
     }
 
-    const { sessionId } = context.params;
+    const { sessionId } = await context.params;
 
     if (!sessionId) {
       return NextResponse.json({ message: 'Missing sessionId parameter' }, { status: 400 });
@@ -22,23 +22,23 @@ export async function POST(req: NextRequest, context: { params: { sessionId: str
 
     // Get the form data
     const formData = await req.formData();
-    const part = formData.get('part') as File;
+    const file = formData.get('file') as File;
     const partNumber = formData.get('partNumber') as string;
 
-    if (!part || !partNumber) {
-      return NextResponse.json({ message: 'Missing required fields: part, partNumber' }, { status: 400 });
+    if (!file || !partNumber) {
+      return NextResponse.json({ message: 'Missing required fields: file, partNumber' }, { status: 400 });
     }
 
-    console.log(`API: Uploading part ${partNumber} for session ${sessionId}, size: ${part.size} bytes`);
+    console.log(`API: Uploading part ${partNumber} for session ${sessionId}, size: ${file.size} bytes`);
 
     // Create a new FormData to send to the file-uploader service
     const uploadFormData = new FormData();
-    uploadFormData.append('part', part);
-    uploadFormData.append('partNumber', partNumber);
+    uploadFormData.append('file', file);
+    // Note: partNumber goes in URL path, not form data
 
     // Forward the part to the file-uploader service
     const uploaderResponse = await fetch(
-      `${FILE_UPLOADER_URL}/api/v1/uploads/${sessionId}/upload-part`,
+      `${FILE_UPLOADER_URL}/api/v1/uploads/${sessionId}/upload-part/${partNumber}`,
       {
         method: 'POST',
         body: uploadFormData,

@@ -15,7 +15,7 @@ export async function POST(req: NextRequest, context: { params: { sessionId: str
       return NextResponse.json({ message: 'Unauthorized: Not authenticated' }, { status: 401 });
     }
 
-    const { sessionId } = context.params;
+    const { sessionId } = await context.params;
     
     if (!sessionId) {
       return NextResponse.json({ message: 'Missing sessionId parameter' }, { status: 400 });

@@ -555,16 +555,8 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
       await handleDirectUpload(file, sessionId);
     }
     
-    // Complete the upload processing
-    await fetch(`/api/upload/${sessionId}/complete`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        parts: [], // For direct uploads, no parts needed
-      }),
-    });
+    // Note: For multipart uploads, completion is already handled in handleMultipartUpload
+    // For direct uploads, we don't need additional completion since the file is already uploaded
     
     // We don't wait for transcription to complete anymore
     // Just return when the upload is done to allow parallel processing
@@ -574,7 +566,9 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
   // Helper function to handle direct upload for smaller files
   const handleDirectUpload = async (file: File, sessionId: string) => {
     try {
-      setProcessingStatus(`Uploading ${file.name}...`);
+      const uploadingMessage = `Uploading ${file.name}...`;
+      await publishProgress(sessionId, 10, uploadingMessage, 'uploading');
+      setProcessingStatus(uploadingMessage);
       setProcessingProgress(10);
       
       // Create FormData for the upload
@@ -592,8 +586,10 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
         try {
           const responseText = await uploadResponse.text();
           console.error('Upload error response:', responseText);
+          await publishProgress(sessionId, 10, `Upload failed: ${responseText}`, 'failed');
         } catch (textError) {
           console.error('Could not read error response:', textError);
+          await publishProgress(sessionId, 10, `Upload failed: ${uploadResponse.statusText}`, 'failed');
         }
         
         throw new Error(`Failed to upload file: ${uploadResponse.status} ${uploadResponse.statusText}`);
@@ -602,14 +598,37 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
       const uploadData = await uploadResponse.json();
       console.log('Upload completed successfully:', uploadData);
       
-      setProcessingProgress(50);
-      setProcessingStatus('Processing audio for transcription...');
+      const processingMessage = 'Upload completed, starting transcription...';
+      await publishProgress(sessionId, 55, processingMessage, 'processing');
+      setProcessingProgress(55);
+      setProcessingStatus(processingMessage);
     } catch (error) {
       console.error('Direct upload error:', error);
       throw error;
     }
   };
   
+  // Helper function to publish progress updates to Redis
+  const publishProgress = async (sessionId: string, progress: number, status: string, stage: string) => {
+    try {
+      await fetch('/api/upload/progress', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          session_id: sessionId,
+          progress,
+          status,
+          stage,
+          message: status
+        })
+      });
+    } catch (error) {
+      console.error('Failed to publish progress:', error);
+    }
+  };
+
   // Helper function to handle multipart upload for larger files
   const handleMultipartUpload = async (file: File, sessionId: string, uploadId: string) => {
     try {
@@ -619,26 +638,36 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
       const totalParts = Math.ceil(file.size / chunkSize);
       
       console.log(`Starting multipart upload with ${totalParts} parts of ${chunkSize / (1024 * 1024)}MB each`);
-      setProcessingStatus(`Preparing to upload file in ${totalParts} parts...`);
       
-      const parts = [];
+      // Publish initial upload status with detailed info
+      await publishProgress(sessionId, 0, `Preparing multipart upload: ${totalParts} parts of ${(chunkSize / (1024 * 1024)).toFixed(1)}MB each`, 'uploading');
+      setProcessingStatus(`Preparing multipart upload: ${totalParts} parts`);
       
+      const parts: { PartNumber: number; ETag: string }[] = [];
+      
+      // Upload parts sequentially with detailed progress
       for (let partNumber = 1; partNumber <= totalParts; partNumber++) {
         const start = (partNumber - 1) * chunkSize;
         const end = Math.min(start + chunkSize, file.size);
-        const partBlob = file.slice(start, end);
+        const chunk = file.slice(start, end);
         
-        // Update progress for each part
-        const progressPercent = Math.min(5 + (partNumber / totalParts) * 45, 50);
-        setProcessingProgress(progressPercent);
-        setProcessingStatus(`Uploading part ${partNumber} of ${totalParts}`);
-        
-        // Create FormData for this part
         const formData = new FormData();
-        formData.append('part', partBlob);
+        formData.append('file', chunk);
         formData.append('partNumber', partNumber.toString());
         
-        // Upload the part
+        // Calculate progress: 5% for setup + (part progress * 45%)
+        const partProgress = 5 + (partNumber / totalParts) * 45;
+        
+        // Detailed progress message showing current part and size
+        const partSizeMB = (chunk.size / (1024 * 1024)).toFixed(1);
+        const progressMessage = `Uploading part ${partNumber}/${totalParts} (${partSizeMB}MB)...`;
+        
+        await publishProgress(sessionId, partProgress, progressMessage, 'uploading');
+        setProcessingProgress(partProgress);
+        setProcessingStatus(progressMessage);
+        
+        console.log(`Uploading part ${partNumber}/${totalParts}, size: ${chunk.size} bytes`);
+        
         const response = await fetch(`/api/upload/${sessionId}/upload-part`, {
           method: 'POST',
           body: formData
@@ -647,6 +676,7 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
         if (!response.ok) {
           const errorText = await response.text();
           console.error(`Upload part ${partNumber} failed:`, errorText);
+          await publishProgress(sessionId, partProgress, `Upload failed: ${errorText}`, 'failed');
           throw new Error(`Failed to upload part ${partNumber}: ${response.status} ${response.statusText}`);
         }
         
@@ -661,7 +691,10 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
       }
       
       // Complete the multipart upload
-      setProcessingStatus('Finalizing upload...');
+      const finalizingMessage = `Finalizing upload: combining ${totalParts} parts...`;
+      await publishProgress(sessionId, 50, finalizingMessage, 'uploading');
+      setProcessingStatus(finalizingMessage);
+      
       const completeResponse = await fetch(`/api/upload/${sessionId}/complete-upload`, {
         method: 'POST',
         headers: {
@@ -673,14 +706,18 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
       if (!completeResponse.ok) {
         const errorText = await completeResponse.text();
         console.error('Complete upload failed:', errorText);
+        await publishProgress(sessionId, 50, `Upload completion failed: ${errorText}`, 'failed');
         throw new Error(`Failed to complete multipart upload: ${completeResponse.status} ${completeResponse.statusText}`);
       }
       
       const completeData = await completeResponse.json();
       console.log('Multipart upload completed successfully:', completeData);
       
-      setProcessingProgress(50);
-      setProcessingStatus('Processing audio for transcription...');
+      // Upload completed, now processing begins
+      const processingMessage = `Upload completed successfully! Starting video processing...`;
+      await publishProgress(sessionId, 55, processingMessage, 'processing');
+      setProcessingProgress(55);
+      setProcessingStatus(processingMessage);
     } catch (error) {
       console.error('Multipart upload error:', error);
       throw error;

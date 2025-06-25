@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
 import { useNotification } from './NotificationProvider';
+import { useProgressUpdates } from '../hooks/useProgressUpdates';
 
 // TypeScript interfaces
 interface Transcription {
@@ -425,11 +426,16 @@ const StatusBadge = styled.span<{ status: string }>`
         `;
       case 'processing':
       case 'transcribing':
-      case 'uploading':
         return `
           background: rgba(251, 191, 36, 0.1);
           color: #FCD34D;
           border-color: rgba(251, 191, 36, 0.3);
+        `;
+      case 'uploading':
+        return `
+          background: rgba(59, 130, 246, 0.1);
+          color: #60A5FA;
+          border-color: rgba(59, 130, 246, 0.3);
         `;
       case 'failed':
         return `
@@ -661,6 +667,14 @@ const Transcripts = () => {
   const [filter, setFilter] = useState('all');
   const [mounted, setMounted] = useState(false);
 
+  // Get session IDs for processing files to enable real-time progress updates
+  // Include files that are uploading, processing, or transcribing
+  const processingSessions = transcriptions
+    .filter(t => ['uploading', 'processing', 'transcribing'].includes(t.status))
+    .map(t => t.sessionId);
+  
+  const { getProgress, isProcessing, getDetailedStatus } = useProgressUpdates(processingSessions);
+
   // Ensure component is mounted before using router
   useEffect(() => {
     setMounted(true);
@@ -722,12 +736,16 @@ const Transcripts = () => {
   };
 
   const formatDate = (dateString: string): string => {
-    return new Date(dateString).toLocaleDateString('en-US', {
+    // Convert to Singapore timezone (UTC+8)
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-SG', {
+      timeZone: 'Asia/Singapore',
       year: 'numeric',
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
+      hour12: false // Use 24-hour format
     });
   };
 
@@ -1028,22 +1046,28 @@ const Transcripts = () => {
                     </ActionButtons>
                   )}
 
-                  {transcription.status === 'processing' && (
+                  {(['uploading', 'processing', 'transcribing'].includes(transcription.status) || isProcessing(transcription.sessionId)) && (
                     <ProcessingIndicator>
                       <ProcessingHeader>
                         <div className="processing-text">
                           <ProcessingSpinner />
-                          Processing
+                          {getProgress(transcription.sessionId)?.message || 
+                           (transcription.status === 'uploading' ? 'Uploading file...' : 
+                            transcription.status === 'processing' ? 'Processing file...' : 
+                            'Transcribing audio...')}
                         </div>
                         <div className="processing-percentage">
-                          {transcription.progress}%
+                          {Math.round(getProgress(transcription.sessionId)?.progress || transcription.progress || 0)}%
                         </div>
                       </ProcessingHeader>
                       <ProgressBarContainer>
-                        <ProgressBar $progress={transcription.progress} />
+                        <ProgressBar $progress={getProgress(transcription.sessionId)?.progress || transcription.progress || 0} />
                       </ProgressBarContainer>
                       <StatusMessage>
-                        Your file is being processed. This may take a few minutes.
+                        {getProgress(transcription.sessionId)?.message || 
+                         (transcription.status === 'uploading' ? 'Uploading your file parts to storage...' : 
+                          transcription.status === 'processing' ? 'Processing and extracting audio...' :
+                          'Generating transcript with speaker diarization...')}
                       </StatusMessage>
                     </ProcessingIndicator>
                   )}

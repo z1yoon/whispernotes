@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
     if (isAdmin) {
       // Admin can see all transcripts from all users
       response = await axios.get(
-        `${FILE_UPLOADER_URL}/api/v1/transcripts/all`,
+        `${FILE_UPLOADER_URL}/api/v1/transcripts/admin/all`,
         { 
           headers: { 
             'Authorization': `Bearer ${session.accessToken}` 
@@ -57,21 +57,26 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Calculate stats from the transcripts
-    const transcriptions: Transcript[] = response.data.transcriptions || [];
-    const stats = {
-      total: transcriptions.length,
-      completed: transcriptions.filter(t => t.status === 'completed').length,
-      processing: transcriptions.filter(t => ['processing', 'transcribing', 'uploading', 'analyzing', 'pending'].includes(t.status)).length,
-      failed: transcriptions.filter(t => t.status === 'failed').length,
-      totalSize: transcriptions.reduce((sum, t) => sum + (t.fileSize || 0), 0),
-      totalDuration: transcriptions.reduce((sum, t) => sum + (t.duration || 0), 0),
-    };
+    // For regular users, we need to calculate stats from the transcripts
+    if (!isAdmin) {
+      const transcriptions: Transcript[] = response.data.transcriptions || [];
+      const stats = {
+        total: transcriptions.length,
+        completed: transcriptions.filter(t => t.status === 'completed').length,
+        processing: transcriptions.filter(t => ['processing', 'transcribing', 'uploading', 'analyzing', 'pending'].includes(t.status)).length,
+        failed: transcriptions.filter(t => t.status === 'failed').length,
+        totalSize: transcriptions.reduce((sum, t) => sum + (t.fileSize || 0), 0),
+        totalDuration: transcriptions.reduce((sum, t) => sum + (t.duration || 0), 0),
+      };
 
-    return NextResponse.json({
-      transcriptions,
-      stats
-    });
+      return NextResponse.json({
+        transcriptions,
+        stats
+      });
+    }
+
+    // For admins, the response already includes stats
+    return NextResponse.json(response.data);
 
   } catch (error: any) {
     console.error('Error fetching transcripts:', error.response?.data || error.message);

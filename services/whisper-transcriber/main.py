@@ -11,6 +11,9 @@ import redis
 import httpx
 import logging
 import pika
+import socket
+import urllib.request
+import ssl
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Union
 from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Form, Depends
@@ -62,6 +65,211 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger("main")
+
+# Network connectivity check functions
+def check_internet_connectivity():
+    """Check basic internet connectivity"""
+    try:
+        # Test with Google DNS
+        socket.create_connection(("8.8.8.8", 53), timeout=10)
+        logger.info("✅ Basic internet connectivity: OK")
+        return True
+    except socket.error as e:
+        logger.error(f"❌ No internet connectivity: {e}")
+        return False
+
+def check_huggingface_connectivity():
+    """Check connectivity to Hugging Face"""
+    urls_to_test = [
+        "https://huggingface.co",
+        "https://huggingface.co/api/models",
+        "https://cdn-lfs.huggingface.co"
+    ]
+    
+    results = {}
+    
+    for url in urls_to_test:
+        try:
+            logger.info(f"Testing connectivity to {url}...")
+            
+            # Create SSL context that's more permissive
+            ssl_context = ssl.create_default_context()
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
+            
+            # Test with urllib first
+            req = urllib.request.Request(url, headers={
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+            })
+            
+            with urllib.request.urlopen(req, timeout=30, context=ssl_context) as response:
+                status_code = response.getcode()
+                results[url] = {
+                    "status": "success",
+                    "status_code": status_code,
+                    "accessible": True
+                }
+                logger.info(f"✅ {url}: HTTP {status_code}")
+                
+        except urllib.error.HTTPError as e:
+            results[url] = {
+                "status": "http_error", 
+                "status_code": e.code,
+                "error": str(e),
+                "accessible": e.code < 500  # 4xx might still be accessible
+            }
+            logger.warning(f"⚠️ {url}: HTTP {e.code} - {e}")
+            
+        except urllib.error.URLError as e:
+            results[url] = {
+                "status": "url_error",
+                "error": str(e),
+                "accessible": False
+            }
+            logger.error(f"❌ {url}: URL Error - {e}")
+            
+        except Exception as e:
+            results[url] = {
+                "status": "error",
+                "error": str(e),
+                "accessible": False
+            }
+            logger.error(f"❌ {url}: Error - {e}")
+    
+    return results
+
+def check_dns_resolution():
+    """Check DNS resolution for Hugging Face domains"""
+    domains = [
+        "huggingface.co",
+        "cdn-lfs.huggingface.co",
+        "s3.amazonaws.com"  # Some models might be hosted on S3
+    ]
+    
+    results = {}
+    
+    for domain in domains:
+        try:
+            ip_addresses = socket.gethostbyname_ex(domain)[2]
+            results[domain] = {
+                "status": "success",
+                "ip_addresses": ip_addresses,
+                "resolvable": True
+            }
+            logger.info(f"✅ DNS {domain}: {ip_addresses[0]}")
+        except socket.gaierror as e:
+            results[domain] = {
+                "status": "dns_error",
+                "error": str(e),
+                "resolvable": False
+            }
+            logger.error(f"❌ DNS {domain}: {e}")
+    
+    return results
+
+def test_huggingface_model_access():
+    """Test if we can access a specific Hugging Face model endpoint"""
+    test_urls = [
+        "https://huggingface.co/Systran/faster-whisper-large-v3",
+        "https://huggingface.co/Systran/faster-whisper-large-v3/resolve/main/config.json",
+        "https://huggingface.co/Systran/faster-whisper-medium",
+    ]
+    
+    results = {}
+    
+    for url in test_urls:
+        try:
+            logger.info(f"Testing model access: {url}")
+            
+            req = urllib.request.Request(url, headers={
+                'User-Agent': 'WhisperNotes/1.0 (Python urllib)',
+                'Accept': 'application/json, text/plain, */*',
+            })
+            
+            with urllib.request.urlopen(req, timeout=30) as response:
+                status_code = response.getcode()
+                content_length = response.headers.get('content-length', 'unknown')
+                results[url] = {
+                    "status": "success",
+                    "status_code": status_code,
+                    "content_length": content_length,
+                    "accessible": True
+                }
+                logger.info(f"✅ Model access {url}: HTTP {status_code}, Length: {content_length}")
+                
+        except Exception as e:
+            results[url] = {
+                "status": "error",
+                "error": str(e),
+                "accessible": False
+            }
+            logger.error(f"❌ Model access {url}: {e}")
+    
+    return results
+
+def comprehensive_network_diagnostics():
+    """Run comprehensive network diagnostics"""
+    logger.info("🔍 Starting comprehensive network diagnostics...")
+    
+    diagnostics = {
+        "timestamp": datetime.utcnow().isoformat(),
+        "environment": {
+            "HF_HUB_CACHE": os.getenv("HF_HUB_CACHE", "not_set"),
+            "HF_HOME": os.getenv("HF_HOME", "not_set"),
+            "HF_TOKEN": "set" if os.getenv("HF_TOKEN") else "not_set",
+            "HTTP_PROXY": os.getenv("HTTP_PROXY", "not_set"),
+            "HTTPS_PROXY": os.getenv("HTTPS_PROXY", "not_set"),
+        }
+    }
+    
+    # Test basic connectivity
+    diagnostics["internet_connectivity"] = check_internet_connectivity()
+    
+    # Test DNS resolution
+    diagnostics["dns_resolution"] = check_dns_resolution()
+    
+    # Test Hugging Face connectivity
+    diagnostics["huggingface_connectivity"] = check_huggingface_connectivity()
+    
+    # Test specific model access
+    diagnostics["model_access"] = test_huggingface_model_access()
+    
+    # Overall assessment
+    hf_accessible = any(
+        result.get("accessible", False) 
+        for result in diagnostics["huggingface_connectivity"].values()
+    )
+    
+    dns_working = any(
+        result.get("resolvable", False)
+        for result in diagnostics["dns_resolution"].values()
+    )
+    
+    diagnostics["overall_assessment"] = {
+        "internet_ok": diagnostics["internet_connectivity"],
+        "dns_ok": dns_working,
+        "huggingface_accessible": hf_accessible,
+        "recommendation": get_network_recommendation(diagnostics)
+    }
+    
+    logger.info(f"🔍 Network diagnostics complete. HF accessible: {hf_accessible}")
+    return diagnostics
+
+def get_network_recommendation(diagnostics):
+    """Get recommendation based on network diagnostics"""
+    if not diagnostics["internet_connectivity"]:
+        return "No internet connectivity. Check network connection."
+    
+    if not any(r.get("resolvable", False) for r in diagnostics["dns_resolution"].values()):
+        return "DNS resolution failed. Check DNS settings or use different DNS servers."
+    
+    if not any(r.get("accessible", False) for r in diagnostics["huggingface_connectivity"].values()):
+        return "Cannot reach Hugging Face. May be blocked by firewall or proxy. Try setting HTTP_PROXY/HTTPS_PROXY environment variables."
+    
+    return "Network connectivity appears OK. Model download issues may be temporary or model-specific."
+
+# Add environment variable to enable/disable offline mode
+OFFLINE_MODE = os.getenv("OFFLINE_MODE", "false").lower() == "true"
 
 # Initialize FastAPI app
 app = FastAPI()
@@ -204,22 +412,46 @@ async def send_progress_update(session_id: str, progress: float, message: str, s
 
 
 def load_whisper_model(model_name="large-v3"):
-    """Load WhisperX model, with caching"""
+    """Load WhisperX model, with caching and timeout handling"""
     if "whisper" not in models:
         try:
             logger.info(f"Loading WhisperX model: {model_name}")
+            
+            # Set environment variables for better download handling
+            os.environ["HF_HUB_DOWNLOAD_TIMEOUT"] = "120"  # 2 minutes timeout
+            os.environ["REQUESTS_CA_BUNDLE"] = ""  # Use system CA bundle
+            
             # Use compute_type based on device
             compute_type = COMPUTE_TYPE if DEVICE == "cuda" else "int8"
-            models["whisper"] = whisperx.load_model(
-                model_name, 
-                device=DEVICE, 
-                compute_type=compute_type,
-                language=DEFAULT_LANGUAGE if DEFAULT_LANGUAGE else None,
-                local_files_only=False  # Set to True if you want to use only local files
-            )
-            logger.info(f"Successfully loaded {model_name} model on {DEVICE} with {compute_type} precision")
+            
+            # Try loading with retries
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    logger.info(f"Attempt {attempt + 1}/{max_retries} to load {model_name}")
+                    models["whisper"] = whisperx.load_model(
+                        model_name, 
+                        device=DEVICE, 
+                        compute_type=compute_type,
+                        language=DEFAULT_LANGUAGE if DEFAULT_LANGUAGE else None,
+                        local_files_only=False,
+                        download_root=None,  # Use default cache
+                        vad_onset=0.5,  # Voice activity detection onset
+                        vad_offset=0.363   # Voice activity detection offset
+                    )
+                    logger.info(f"Successfully loaded {model_name} model on {DEVICE} with {compute_type} precision")
+                    break
+                except Exception as retry_error:
+                    logger.warning(f"Attempt {attempt + 1} failed: {retry_error}")
+                    if attempt < max_retries - 1:
+                        wait_time = (attempt + 1) * 30  # Progressive backoff: 30s, 60s, 90s
+                        logger.info(f"Waiting {wait_time}s before retry...")
+                        time.sleep(wait_time)
+                    else:
+                        raise retry_error
+                        
         except Exception as e:
-            logger.error(f"Failed to load model {model_name}: {e}")
+            logger.error(f"Failed to load model {model_name} after all retries: {e}")
             # Try with a smaller model as fallback
             if model_name not in ["tiny", "base"]:
                 logger.info("Trying to load a smaller model instead...")
@@ -228,11 +460,14 @@ def load_whisper_model(model_name="large-v3"):
                         fallback = "medium"
                     else:
                         fallback = "base"
+                    
+                    logger.info(f"Loading fallback model: {fallback}")
                     models["whisper"] = whisperx.load_model(
                         fallback,
                         device=DEVICE,
                         compute_type="int8",  # Always use int8 for fallback
-                        language=DEFAULT_LANGUAGE if DEFAULT_LANGUAGE else None
+                        language=DEFAULT_LANGUAGE if DEFAULT_LANGUAGE else None,
+                        local_files_only=False
                     )
                     logger.info(f"Successfully loaded fallback model {fallback}")
                 except Exception as fallback_error:
