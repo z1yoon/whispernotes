@@ -17,6 +17,7 @@ from minio import Minio
 from minio.error import S3Error
 import redis
 import pika
+import httpx
 from starlette.responses import JSONResponse
 
 # Configure logging
@@ -390,7 +391,7 @@ async def upload_part(session_id: str, part_number: int, file: UploadFile = File
         # Send detailed progress update
         try:
             progress_percentage = (len(parts) / total_parts) * 45 + 5  # 5-50% for upload
-            progress_message = f"Uploaded part {part_number}/{total_parts} ({part_size_mb:.1f}MB) ✓"
+            progress_message = f"Uploading parts to storage... {len(parts)}/{total_parts} ({part_size_mb:.1f}MB) ✓"
             
             async with httpx.AsyncClient(timeout=5.0) as client:
                 await client.post(

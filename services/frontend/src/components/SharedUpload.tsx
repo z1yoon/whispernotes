@@ -609,7 +609,7 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
   };
   
   // Helper function to publish progress updates to Redis
-  const publishProgress = async (sessionId: string, progress: number, status: string, stage: string) => {
+  const publishProgress = async (sessionId: string, progress: number, message: string, stage: string) => {
     try {
       await fetch('/api/upload/progress', {
         method: 'POST',
@@ -619,9 +619,9 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
         body: JSON.stringify({
           session_id: sessionId,
           progress,
-          status,
+          status: stage,
           stage,
-          message: status
+          message
         })
       });
     } catch (error) {

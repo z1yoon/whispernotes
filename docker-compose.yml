@@ -165,11 +165,17 @@ services:
         delay: 5s
         max_attempts: 5
         window: 120s
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
     ports:
       - "8003:8003"
     volumes:
       - transcription_temp:/tmp/transcription
       - whisper_models:/app/models
+      - huggingface_cache:/root/.cache/huggingface
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
       interval: 30s
@@ -224,6 +230,7 @@ volumes:
   processing_temp:
   transcription_temp:
   whisper_models:
+  huggingface_cache:
 
 networks:
   whisper-network:

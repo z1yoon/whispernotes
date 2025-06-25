@@ -35,16 +35,12 @@ interface Transcription {
   mimeType: string;
   participantCount: number;
   status: string;
-  sessionStatus: string;
   progress: number;
   hasTranscript: boolean;
   transcriptData: any;
   createdAt: string;
   completedAt: string;
   duration: number;
-  segmentCount: number;
-  language: string;
-  speakers: string[];
   diarizedSegments: any[];
 }
 
@@ -409,6 +405,15 @@ const TranscriptionHeader = styled.div`
   }
 `;
 
+const statusColors = {
+  completed: { bg: 'rgba(34, 197, 94, 0.1)', color: '#4ADE80', border: 'rgba(34, 197, 94, 0.3)' },
+  processing: { bg: 'rgba(251, 191, 36, 0.1)', color: '#FCD34D', border: 'rgba(251, 191, 36, 0.3)' },
+  transcribing: { bg: 'rgba(251, 191, 36, 0.1)', color: '#FCD34D', border: 'rgba(251, 191, 36, 0.3)' },
+  uploading: { bg: 'rgba(59, 130, 246, 0.1)', color: '#60A5FA', border: 'rgba(59, 130, 246, 0.3)' },
+  failed: { bg: 'rgba(239, 68, 68, 0.1)', color: '#F87171', border: 'rgba(239, 68, 68, 0.3)' },
+  default: { bg: 'rgba(107, 114, 128, 0.1)', color: '#9CA3AF', border: 'rgba(107, 114, 128, 0.3)' }
+};
+
 const StatusBadge = styled.span<{ status: string }>`
   padding: 0.5rem 1rem;
   border-radius: 20px;
@@ -417,39 +422,12 @@ const StatusBadge = styled.span<{ status: string }>`
   border: 1px solid;
   
   ${props => {
-    switch (props.status) {
-      case 'completed':
-        return `
-          background: rgba(34, 197, 94, 0.1);
-          color: #4ADE80;
-          border-color: rgba(34, 197, 94, 0.3);
-        `;
-      case 'processing':
-      case 'transcribing':
-        return `
-          background: rgba(251, 191, 36, 0.1);
-          color: #FCD34D;
-          border-color: rgba(251, 191, 36, 0.3);
-        `;
-      case 'uploading':
-        return `
-          background: rgba(59, 130, 246, 0.1);
-          color: #60A5FA;
-          border-color: rgba(59, 130, 246, 0.3);
-        `;
-      case 'failed':
-        return `
-          background: rgba(239, 68, 68, 0.1);
-          color: #F87171;
-          border-color: rgba(239, 68, 68, 0.3);
-        `;
-      default:
-        return `
-          background: rgba(107, 114, 128, 0.1);
-          color: #9CA3AF;
-          border-color: rgba(107, 114, 128, 0.3);
-        `;
-    }
+    const colors = statusColors[props.status as keyof typeof statusColors] || statusColors.default;
+    return `
+      background: ${colors.bg};
+      color: ${colors.color};
+      border-color: ${colors.border};
+    `;
   }}
 `;
 
@@ -831,6 +809,35 @@ const Transcripts = () => {
     signOut({ callbackUrl: '/' });
   };
 
+  // Helper function to get progress messages
+  const getProgressText = (sessionId: string, status: string, isShort: boolean = false): string => {
+    const progress = getProgress(sessionId);
+    const message = progress?.message;
+    
+    // Check for multipart upload progress
+    if (message) {
+      const partMatch = message.match(/(\d+)\/(\d+)/);
+      if (partMatch) {
+        return isShort ? `Uploading part ${partMatch[1]}/${partMatch[2]}` : `Uploading part ${partMatch[1]}/${partMatch[2]} to storage...`;
+      }
+      
+      // Use backend message if available and not short format
+      if (!isShort && message.trim()) {
+        return message;
+      }
+    }
+    
+    // Status-based fallbacks
+    const statusMessages = {
+      uploading: isShort ? 'Uploading file' : 'Uploading large file in chunks to secure storage...',
+      processing: isShort ? 'Processing video' : 'Processing video and extracting audio for transcription...',
+      transcribing: isShort ? 'Transcribing audio' : 'Transcribing audio with speaker identification using WhisperX...',
+      default: isShort ? 'Processing' : 'Processing your file...'
+    };
+    
+    return statusMessages[status as keyof typeof statusMessages] || statusMessages.default;
+  };
+
   // Don't render until mounted to avoid SSR issues
   if (!mounted) {
     return (
@@ -1051,10 +1058,7 @@ const Transcripts = () => {
                       <ProcessingHeader>
                         <div className="processing-text">
                           <ProcessingSpinner />
-                          {getProgress(transcription.sessionId)?.message || 
-                           (transcription.status === 'uploading' ? 'Uploading file...' : 
-                            transcription.status === 'processing' ? 'Processing file...' : 
-                            'Transcribing audio...')}
+                          {getProgressText(transcription.sessionId, transcription.status, true)}
                         </div>
                         <div className="processing-percentage">
                           {Math.round(getProgress(transcription.sessionId)?.progress || transcription.progress || 0)}%
@@ -1064,10 +1068,7 @@ const Transcripts = () => {
                         <ProgressBar $progress={getProgress(transcription.sessionId)?.progress || transcription.progress || 0} />
                       </ProgressBarContainer>
                       <StatusMessage>
-                        {getProgress(transcription.sessionId)?.message || 
-                         (transcription.status === 'uploading' ? 'Uploading your file parts to storage...' : 
-                          transcription.status === 'processing' ? 'Processing and extracting audio...' :
-                          'Generating transcript with speaker diarization...')}
+                        {getProgressText(transcription.sessionId, transcription.status, false)}
                       </StatusMessage>
                     </ProcessingIndicator>
                   )}

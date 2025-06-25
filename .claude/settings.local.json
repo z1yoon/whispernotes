@@ -14,7 +14,10 @@
       "Bash(npm run dev:*)",
       "Bash(rg:*)",
       "Bash(docker exec:*)",
-      "Bash(docker logs:*)"
+      "Bash(docker logs:*)",
+      "Bash(find:*)",
+      "Bash(redis-cli:*)",
+      "WebFetch(domain:github.com)"
     ],
     "deny": []
   }

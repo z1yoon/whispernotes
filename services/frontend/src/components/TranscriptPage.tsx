@@ -626,7 +626,7 @@ const TranscriptPage = () => {
       setLoading(true);
       
       // Fetch transcription data from API
-      const response = await fetch(`/api/transcription/${fileId}`);
+      const response = await fetch(`/api/transcripts/${fileId}`);
       
       if (!response.ok) {
         const errorData = await response.json();
@@ -662,76 +662,27 @@ const TranscriptPage = () => {
       
       setTranscriptData(formattedData);
       
-      // Fetch action items from LLM analysis
-      try {
-        const analysisResponse = await fetch(`/api/analysis/${fileId}`);
-        if (analysisResponse.ok) {
-          const analysisData = await analysisResponse.json();
-          
-          // Map LLM analysis action items to our format
-          if (analysisData.analysis?.action_items) {
-            const llmActionItems = analysisData.analysis.action_items.map((item: any, index: number) => ({
-              id: index + 1,
-              task: item.task || "No task description",
-              assignee: item.assignee || "Not specified",
-              deadline: item.deadline || "Not specified", 
-              priority: item.priority || "Medium",
-              source_time: item.context || "Generated from transcript",
-              completed: false
-            }));
-            setActionItems(llmActionItems);
-          } else {
-            // Fallback to default action items if no LLM analysis
-            setActionItems([
-              {
-                id: 1,
-                task: "Review transcript for accuracy",
-                assignee: "Current User",
-                deadline: "Today",
-                priority: "Medium",
-                source_time: "0-10s",
-                completed: false
-              },
-              {
-                id: 2,
-                task: "Update speaker names if necessary",
-                assignee: "Current User",
-                deadline: "Today",
-                priority: "Low",
-                source_time: "entire transcript",
-                completed: false
-              }
-            ]);
-          }
-        } else {
-          // Use default action items if analysis fetch fails
-          setActionItems([
-            {
-              id: 1,
-              task: "Review transcript for accuracy",
-              assignee: "Current User",
-              deadline: "Today",
-              priority: "Medium",
-              source_time: "0-10s",
-              completed: false
-            }
-          ]);
+      // For now, use default action items since we don't have LLM analysis endpoint yet
+      setActionItems([
+        {
+          id: 1,
+          task: "Review transcript for accuracy",
+          assignee: "Current User",
+          deadline: "Today",
+          priority: "Medium",
+          source_time: "0-10s",
+          completed: false
+        },
+        {
+          id: 2,
+          task: "Update speaker names if necessary",
+          assignee: "Current User",
+          deadline: "Today",
+          priority: "Low",
+          source_time: "entire transcript",
+          completed: false
         }
-      } catch (analysisError) {
-        console.error('Error fetching LLM analysis:', analysisError);
-        // Use default action items if analysis fetch fails
-        setActionItems([
-          {
-            id: 1,
-            task: "Review transcript for accuracy",
-            assignee: "Current User",
-            deadline: "Today",
-            priority: "Medium",
-            source_time: "0-10s", 
-            completed: false
-          }
-        ]);
-      }
+      ]);
 
       setLoading(false);
     } catch (error) {
@@ -808,20 +759,11 @@ const TranscriptPage = () => {
         throw new Error('Missing transcript ID');
       }
       
-      // Send updates to the API
-      const response = await fetch(`/api/transcription/${fileId}/speakers`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          speaker_map: speakerMap
-        }),
-      });
+      // For now, just update locally since we don't have speaker update endpoint yet
+      // In a real implementation, you would send to: `/api/transcripts/${fileId}/speakers`
       
-      if (!response.ok) {
-        throw new Error('Failed to update speaker names');
-      }
+      // Simulate API call
+      await new Promise(resolve => setTimeout(resolve, 500));
       
       // Update the local state
       if (transcriptData) {

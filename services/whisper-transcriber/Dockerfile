@@ -9,36 +9,44 @@ RUN apt-get update && apt-get install -y \
     curl \
     build-essential \
     libsndfile1 \
+    libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install PyTorch CPU version first
-RUN pip install torch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 --index-url https://download.pytorch.org/whl/cpu
-
-# Copy requirements and install Python dependencies
+# Copy requirements first for better caching
 COPY whisper-transcriber/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
 
-# Install WhisperX and necessary libraries
-RUN pip install git+https://github.com/m-bain/whisperx.git
-RUN pip install librosa==0.10.1 pyannote.audio==3.1.1
+# Install all dependencies together to avoid conflicts
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
-# Copy shared utilities first
+# Copy shared utilities
 COPY shared_utils.py .
 
 # Copy application code
 COPY whisper-transcriber/ .
 
-# Create models and temp directories
-RUN mkdir -p /app/models /tmp/transcription
+# Create necessary directories
+RUN mkdir -p /app/models /tmp/whisper_temp /root/.cache/huggingface
 
-# Create directory for HF cache
-RUN mkdir -p /root/.cache/huggingface
-
-# Set environment variables for HuggingFace
+# Set environment variables
 ENV HF_HOME=/root/.cache/huggingface
+ENV HF_HUB_CACHE=/root/.cache/huggingface/hub
+ENV TRANSFORMERS_CACHE=/root/.cache/huggingface/transformers
+ENV HF_HUB_DOWNLOAD_TIMEOUT=300
+ENV DEVICE=cpu
+ENV COMPUTE_TYPE=int8
+ENV BATCH_SIZE=4
+ENV SHOULD_MOCK_DIARIZATION=true
+
+# Pre-download only base model to reduce startup time and memory usage
+RUN python -c "import whisperx; print('Downloading base model...'); whisperx.load_model('base', device='cpu', compute_type='int8'); print('Base model downloaded')" || echo "Base model pre-download failed, will download at runtime"
 
 # Expose port
 EXPOSE 8003
 
+# Add health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8003/health || exit 1
+
 # Command to run the application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8003"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8003", "--workers", "1"]

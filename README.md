@@ -61,7 +61,7 @@ Edit `.env` file with your API keys:
 DEEPSEEK_API_KEY=your_deepseek_api_key_here
 
 # Optional: Enhanced speaker diarization
-HUGGINGFACE_TOKEN=your_huggingface_token_here
+HF_TOKEN=your_huggingface_token_here
 
 # Update other configurations as needed
 ```
@@ -212,15 +212,12 @@ Key configurations in `.env`:
 ```bash
 # AI Services
 DEEPSEEK_API_KEY=xxx
-WHISPER_MODEL=large-v2
 DEVICE=cpu
-
-# File Limits
-MAX_FILE_SIZE=5368709120  # 5GB
-CHUNK_SIZE=10485760       # 10MB
+BATCH_SIZE=4
 
 # Security
 JWT_SECRET=secure-secret-key
+JWT_EXPIRE_MINUTES=30
 ```
 
 ### Scaling Configuration
@@ -244,8 +241,9 @@ deploy:
 
 1. **Out of Memory during processing**
    ```bash
-   # Reduce Whisper model size
-   WHISPER_MODEL=medium  # or small, base
+   # Reduce batch size for processing
+   BATCH_SIZE=2  # or 1 for very limited memory
+   COMPUTE_TYPE=int8  # Use quantized models
    ```
 
 2. **Upload failures**
