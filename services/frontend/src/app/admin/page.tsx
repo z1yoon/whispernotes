@@ -96,7 +96,7 @@ const HeaderActions = styled.div`
   gap: 1rem;
 `;
 
-const UsernameButton = styled.div`
+const UsernameButton = styled.button`
   padding: 0.75rem 1.5rem;
   border-radius: 8px;
   font-family: 'Roboto', sans-serif;
@@ -106,6 +106,18 @@ const UsernameButton = styled.div`
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  
+  &:hover {
+    background: rgba(255, 255, 255, 0.15);
+    transform: translateY(-1px);
+  }
+  
+  &:active {
+    transform: translateY(0);
+  }
 `;
 
 const AuthButton = styled.button<{ $variant?: 'primary' | 'secondary' }>`
@@ -1025,6 +1037,10 @@ export default function AdminPage() {
     await signOut({ callbackUrl: '/' })
   }
 
+  const handleUsernameClick = () => {
+    router.push('/transcripts')
+  }
+
   const updateFilter = (filter: FilterType) => {
     setFilters(prev => ({ ...prev, [activeTab]: filter }))
   }
@@ -1116,7 +1132,7 @@ export default function AdminPage() {
         </HeaderLeft>
 
         <HeaderActions>
-          <UsernameButton>
+          <UsernameButton onClick={handleUsernameClick}>
             <Shield size={12} />
             {displayUsername}
           </UsernameButton>
@@ -1258,9 +1274,9 @@ export default function AdminPage() {
                           <User size={20} />
                         </div>
                         <div className="user-info">
-                          <ClickableUserName onClick={() => router.push(`/admin/user-transcripts/${item.id}`)}>
+                          <div style={{ color: '#FFFFFF', fontSize: '1.125rem', fontWeight: 700, marginBottom: '0.25rem' }}>
                             {item.full_name}
-                          </ClickableUserName>
+                          </div>
                           <UserEmail>{item.email}</UserEmail>
                         </div>
                         <StatusBadge $status={item.status}>
@@ -1317,9 +1333,9 @@ export default function AdminPage() {
                           {item.is_admin ? <Shield size={20} /> : <User size={20} />}
                         </div>
                         <div className="user-info">
-                          <ClickableUserName onClick={() => router.push(`/admin/user-transcripts/${item.id}`)}>
+                          <div style={{ color: '#FFFFFF', fontSize: '1.125rem', fontWeight: 700, marginBottom: '0.25rem' }}>
                             {item.full_name}
-                          </ClickableUserName>
+                          </div>
                           <UserEmail>{item.email}</UserEmail>
                         </div>
                         <AdminBadge $isAdmin={item.is_admin}>
@@ -1344,14 +1360,6 @@ export default function AdminPage() {
                       </UserDetails>
 
                       <ActionButtons>
-                        <button
-                          className="view"
-                          onClick={() => router.push(`/admin/user-transcripts/${item.id}`)}
-                        >
-                          <Eye size={16} />
-                          View Transcripts
-                        </button>
-
                         {item.id !== session.user?.id && (
                           <>
                             <button

@@ -912,7 +912,7 @@ const Transcripts = () => {
           <PanelHeader>
             <div className="panel-title">
               <FileText size={24} />
-              {isAdmin ? 'All System Transcripts' : 'My Transcripts'} ({filteredTranscriptions.length})
+              My Transcripts ({filteredTranscriptions.length})
             </div>
 
             <SearchFilter>

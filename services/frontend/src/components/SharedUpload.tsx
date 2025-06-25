@@ -483,29 +483,40 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
     setProcessingStatus('Initializing uploads...');
     
     try {
-      // Start all file uploads in background
+      // Start all file uploads in parallel in background
       const uploadTasks = files.map(fileData => processFile(fileData));
       
-      // Don't wait for uploads to complete - redirect immediately
-      // Clear files and redirect to transcripts page right away
+      // Show brief loading state, then redirect immediately
+      setProcessingStatus('Starting uploads...');
+      setProcessingProgress(5);
+      
+      // Small delay to show user that uploads are starting
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Clear UI state and redirect immediately
       setFiles([]);
       setIsProcessing(false);
+      setProcessingProgress(0);
+      setProcessingStatus('');
       
       // Call parent callback for immediate navigation to transcripts
       if (onStartProcessing) {
         onStartProcessing(files, options);
       }
       
-      // Continue uploads in background
+      // Continue all uploads in parallel in background
+      // Don't await - this allows user to navigate away immediately
       Promise.all(uploadTasks).catch(error => {
         console.error('Background upload error:', error);
-        // Note: User has already been redirected, so they'll see the status on transcripts page
+        // User has already been redirected, they'll see the status on transcripts page
       });
       
     } catch (error: any) {
       console.error('Processing error:', error);
-      notification.error('Upload Failed', `There was an error uploading your files: ${error.message}`);
+      notification.error('Upload Failed', `There was an error starting uploads: ${error.message}`);
       setIsProcessing(false);
+      setProcessingProgress(0);
+      setProcessingStatus('');
     }
   };
   
@@ -522,8 +533,8 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
       },
       body: JSON.stringify({
         filename: file.name,
-        fileSize: file.size,
-        contentType: file.type,
+        file_size: file.size,
+        num_speakers: options.numberOfSpeakers,
       }),
     });
     
@@ -545,17 +556,13 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
     }
     
     // Complete the upload processing
-    await fetch('/api/upload/complete', {
+    await fetch(`/api/upload/${sessionId}/complete`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        sessionId,
-        processingOptions: {
-          speakerDiarization: options.speakerDiarization,
-          numberOfSpeakers: options.numberOfSpeakers
-        }
+        parts: [], // For direct uploads, no parts needed
       }),
     });
     
@@ -575,7 +582,7 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
       formData.append('file', file);
       
       // Upload directly to our API which forwards to file-uploader service
-      const uploadResponse = await fetch(`/api/upload/direct-upload?sessionId=${sessionId}`, {
+      const uploadResponse = await fetch(`/api/upload/${sessionId}/direct-upload`, {
         method: 'POST',
         body: formData,
       });
@@ -628,10 +635,11 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
         
         // Create FormData for this part
         const formData = new FormData();
-        formData.append('file', partBlob, file.name + '.part' + partNumber);
+        formData.append('part', partBlob);
+        formData.append('partNumber', partNumber.toString());
         
         // Upload the part
-        const response = await fetch(`/api/upload/upload-part?sessionId=${sessionId}&partNumber=${partNumber}`, {
+        const response = await fetch(`/api/upload/${sessionId}/upload-part`, {
           method: 'POST',
           body: formData
         });
@@ -654,7 +662,7 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
       
       // Complete the multipart upload
       setProcessingStatus('Finalizing upload...');
-      const completeResponse = await fetch(`/api/upload/complete-upload?sessionId=${sessionId}`, {
+      const completeResponse = await fetch(`/api/upload/${sessionId}/complete-upload`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
