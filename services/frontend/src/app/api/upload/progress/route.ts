@@ -38,10 +38,9 @@ export async function POST(req: NextRequest) {
 
     console.log(`API: Publishing progress for session ${session_id}: ${progress}% - ${status} - ${message || status}`);
 
-    // Only log important progress updates to reduce noise
+    // Only log important progress updates to reduce noise - even more restrictive
     if (progress >= 100 || status.toLowerCase().includes('failed') || status.toLowerCase().includes('error') ||
-        (message && (message.includes('part') || message.includes('video') || message.includes('whisper') || 
-                    message.includes('transcrib') || message.includes('todo') || message.includes('completed')))) {
+        status.toLowerCase().includes('completed')) {
       console.log(`🎯 Upload Progress: ${session_id.slice(0, 8)} - ${progress}% - ${message || status}`);
     }
 

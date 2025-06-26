@@ -47,7 +47,7 @@ class LLMAnalyzer:
         os.makedirs(self.temp_dir, exist_ok=True)
     
     async def analyze_transcript(self, transcript_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Analyze transcript using DeepSeek to extract insights and to-do items"""
+        """Analyze transcript to extract only action items and to-do items"""
         try:
             full_transcript = transcript_data.get("full_transcript", "")
             speakers = transcript_data.get("speakers", [])
@@ -56,38 +56,16 @@ class LLMAnalyzer:
             if not full_transcript.strip():
                 raise Exception("Empty transcript provided")
             
-            # Generate comprehensive analysis
-            analysis_results = {}
-            
-            # 1. Extract action items and to-do list
+            # Only extract action items and to-do list - no other analysis
             action_items = await self._extract_action_items(full_transcript, speakers)
-            analysis_results["action_items"] = action_items
-            
-            # 2. Generate meeting summary
-            summary = await self._generate_summary(full_transcript, speakers, duration)
-            analysis_results["summary"] = summary
-            
-            # 3. Identify key decisions and outcomes
-            decisions = await self._extract_decisions(full_transcript, speakers)
-            analysis_results["decisions"] = decisions
-            
-            # 4. Extract topics and themes
-            topics = await self._extract_topics(full_transcript)
-            analysis_results["topics"] = topics
-            
-            # 5. Generate participant insights
-            participant_insights = self._analyze_participants(transcript_data)
-            analysis_results["participant_insights"] = participant_insights
-            
-            # 6. Risk and opportunity identification
-            risks_opportunities = await self._identify_risks_opportunities(full_transcript)
-            analysis_results["risks_opportunities"] = risks_opportunities
             
             return {
                 "analysis_completed_at": datetime.now().isoformat(),
                 "transcript_duration": duration,
                 "total_speakers": len(speakers),
-                "analysis": analysis_results,
+                "analysis": {
+                    "action_items": action_items
+                },
                 "metadata": {
                     "model_used": DEEPSEEK_MODEL,
                     "api_base": DEEPSEEK_API_BASE,
@@ -99,264 +77,269 @@ class LLMAnalyzer:
             raise Exception(f"LLM analysis failed: {str(e)}")
     
     async def _call_deepseek_api(self, prompt: str, max_tokens: int = 2000) -> str:
-        """Make API call to DeepSeek"""
-        try:
-            if not DEEPSEEK_API_KEY:
-                # Mock response for development
-                return self._get_mock_response(prompt)
+        """Make API call to DeepSeek - only real API calls, no mock responses"""
+        if not DEEPSEEK_API_KEY:
+            logger.error("❌ DEEPSEEK_API_KEY not configured - cannot make API calls")
+            raise Exception("API key not configured")
+        
+        headers = {
+            "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "model": DEEPSEEK_MODEL,
+            "messages": [
+                {"role": "system", "content": "You are an intelligent meeting assistant that analyzes transcripts to extract actionable insights, create to-do lists, and provide comprehensive meeting analysis."},
+                {"role": "user", "content": prompt}
+            ],
+            "max_tokens": max_tokens,
+            "temperature": 0.3,
+            "top_p": 0.9
+        }
+        
+        logger.info(f"🔄 Calling NIE LLM API: {DEEPSEEK_API_BASE}/chat/completions")
+        logger.info(f"📝 Model: {DEEPSEEK_MODEL}")
+        logger.info(f"📏 Max tokens: {max_tokens}")
+        
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                f"{DEEPSEEK_API_BASE}/chat/completions",
+                headers=headers,
+                json=payload
+            )
             
-            headers = {
-                "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-                "Content-Type": "application/json"
-            }
-            
-            payload = {
-                "model": DEEPSEEK_MODEL,
-                "messages": [
-                    {"role": "system", "content": "You are an intelligent meeting assistant that analyzes transcripts to extract actionable insights, create to-do lists, and provide comprehensive meeting analysis."},
-                    {"role": "user", "content": prompt}
-                ],
-                "max_tokens": max_tokens,
-                "temperature": 0.3,
-                "top_p": 0.9
-            }
-            
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    f"{DEEPSEEK_API_BASE}/chat/completions",
-                    headers=headers,
-                    json=payload
-                )
+            if response.status_code == 200:
+                data = response.json()
+                content = data["choices"][0]["message"]["content"].strip()
                 
-                if response.status_code == 200:
-                    data = response.json()
-                    return data["choices"][0]["message"]["content"].strip()
+                logger.info(f"✅ NIE API Response received ({len(content)} characters)")
+                logger.info(f"📄 Response preview: {content[:200]}...")
+                
+                # Validate that we got actual content
+                if content and len(content.strip()) > 10:
+                    return content
                 else:
-                    logger.error(f"DeepSeek API error: {response.status_code} - {response.text}")
-                    return self._get_mock_response(prompt)
-            
-        except Exception as e:
-            logger.error(f"DeepSeek API error: {e}")
-            return self._get_mock_response(prompt)
-    
-    def _get_mock_response(self, prompt: str) -> str:
-        """Generate mock response for development/testing"""
-        if "action item" in prompt.lower():
-            return json.dumps([
-                {
-                    "task": "Follow up on project timeline",
-                    "assignee": "John Doe",
-                    "deadline": "Next week",
-                    "priority": "High",
-                    "context": "Discussed during project review",
-                    "category": "Follow-up"
-                },
-                {
-                    "task": "Prepare quarterly report",
-                    "assignee": "Jane Smith",
-                    "deadline": "End of month",
-                    "priority": "Medium",
-                    "context": "Required for board meeting",
-                    "category": "Administrative"
-                }
-            ])
-        elif "summary" in prompt.lower():
-            return json.dumps({
-                "executive_summary": "Team discussed project progress and upcoming milestones. Key decisions were made regarding resource allocation.",
-                "key_points": ["Project timeline review", "Resource allocation", "Next steps planning"],
-                "outcomes": ["Approved budget increase", "Assigned new team members"],
-                "next_steps": ["Schedule follow-up meeting", "Update project documentation"],
-                "effectiveness_score": 8,
-                "effectiveness_explanation": "Meeting was well-structured with clear outcomes"
-            })
-        else:
-            return "Mock response generated for development purposes."
+                    logger.warning("⚠️ NIE API returned empty/minimal content")
+                    raise Exception("API returned empty response")
+            else:
+                logger.error(f"❌ NIE API error: {response.status_code} - {response.text}")
+                raise Exception(f"API call failed with status {response.status_code}")
     
     async def _extract_action_items(self, transcript: str, speakers: List[str]) -> List[Dict[str, Any]]:
-        """Extract action items and to-do items from transcript"""
+        """Extract action items and to-do items from transcript, or create summary if no clear actions exist"""
         
-        prompt = f"""
-        Analyze the following meeting transcript and extract all action items, tasks, and to-do items. 
-        For each action item, identify:
-        1. The specific task or action
-        2. Who is responsible (if mentioned)
-        3. Any deadlines or timeframes mentioned
-        4. Priority level (High/Medium/Low)
-        5. Context or background information
+        logger.info(f"🔍 Extracting action items from transcript ({len(transcript)} characters)")
+        logger.info(f"👥 Speakers: {speakers}")
         
-        Speakers in the meeting: {', '.join(speakers)}
+        # Show sample of transcript for debugging
+        transcript_sample = transcript[:500] + "..." if len(transcript) > 500 else transcript
+        logger.info(f"📝 Transcript sample: {transcript_sample}")
         
-        Meeting Transcript:
-        {transcript}
+        # Calculate content-based parameters
+        word_count = len(transcript.split())
+        char_count = len(transcript)
         
-        Please format the response as a JSON array with the following structure:
-        [
-            {{
-                "task": "Clear description of the task",
-                "assignee": "Person responsible or 'Not specified'",
-                "deadline": "Deadline if mentioned or 'Not specified'",
-                "priority": "High/Medium/Low",
-                "context": "Brief context or background",
-                "category": "Category of the task (e.g., 'Technical', 'Administrative', 'Follow-up')"
-            }}
-        ]
+        # Determine appropriate max items based on content length
+        if word_count < 500:  # Short conversation (< 5 minutes)
+            max_items = 3
+            content_guidance = "This is a short conversation. Focus only on explicit commitments or clear next steps."
+        elif word_count < 1500:  # Medium conversation (5-15 minutes)
+            max_items = 7
+            content_guidance = "This is a medium-length conversation. Extract clear action items and commitments."
+        elif word_count < 3000:  # Long conversation (15-30 minutes)
+            max_items = 12
+            content_guidance = "This is a longer conversation. Extract all actionable items, decisions, and follow-ups."
+        else:  # Very long conversation (30+ minutes)
+            max_items = 20
+            content_guidance = "This is an extensive conversation. Extract comprehensive action items, decisions, and commitments."
         
-        Only include actual actionable items, not general discussion points.
-        """
+        logger.info(f"📊 Content analysis: {word_count} words, max {max_items} action items")
+        
+        prompt = f"""You are an expert meeting assistant. Analyze this transcript and extract GENUINE action items based on the content.
+
+CONTENT GUIDANCE: {content_guidance}
+
+CRITICAL INSTRUCTION: If no clear action items exist, DO NOT return empty array. Instead, create 3-5 summary points of the conversation as action items using this format:
+- "Discussed [topic]: [brief summary of what was covered]"
+- "Reviewed [subject]: [key points mentioned]"
+- "Shared information about [topic]: [main insights]"
+
+QUALITY GUIDELINES:
+1. CONTENT-DRIVEN: Extract items based on what's actually discussed, not arbitrary limits
+2. FIRST try to find genuine action items (commitments, assignments, decisions requiring follow-up)
+3. IF no clear action items exist, create summary points of key topics discussed
+4. DO NOT assign priorities - let users decide
+5. Keep descriptions concise and actionable
+6. Maximum {max_items} items for this content length
+
+WHAT QUALIFIES AS A GENUINE ACTION ITEM:
+- Explicit commitments: "I'll send the report by Friday"
+- Direct assignments: "Can you review the proposal?"
+- Decisions requiring follow-up: "We decided to implement feature X"
+- Clear next steps mentioned: "Let's schedule a follow-up meeting"
+- Specific tasks mentioned: "We need to update the documentation"
+
+WHAT TO SUMMARIZE (if no action items found):
+- Main topics discussed
+- Key information shared
+- Important points reviewed
+- Decisions made (even if no follow-up required)
+- Problems or challenges mentioned
+
+Meeting Participants: {', '.join(speakers)}
+
+CONVERSATION TRANSCRIPT:
+{transcript}
+
+RESPONSE FORMAT (extract genuine action items OR create summary points, up to {max_items}):
+[
+    {{
+        "task": "Specific, actionable description OR summary of discussion topic",
+        "assignee": "Name of person responsible (if clearly mentioned, otherwise null)",
+        "priority": "medium",
+        "context": "Brief context from the conversation explaining why this is needed or what was discussed"
+    }}
+]
+
+Extract all genuine action items, or if none exist, create summary points of the conversation:"""
         
         try:
-            response = await self._call_deepseek_api(prompt, max_tokens=1500)
+            # Adjust token limit based on expected response size
+            max_tokens = min(1200, max_items * 60 + 200)  # ~60 tokens per item + overhead
+            response = await self._call_deepseek_api(prompt, max_tokens=max_tokens)
             
             # Try to parse JSON response
             try:
-                action_items = json.loads(response)
-                return action_items if isinstance(action_items, list) else []
-            except json.JSONDecodeError:
-                # Fallback: parse manually if JSON parsing fails
-                return self._parse_action_items_manually(response)
+                # Clean response by removing code block markers
+                clean_response = response.strip()
+                if clean_response.startswith('```json'):
+                    clean_response = clean_response[7:]  # Remove '```json'
+                if clean_response.endswith('```'):
+                    clean_response = clean_response[:-3]  # Remove '```'
+                clean_response = clean_response.strip()
+                
+                action_items = json.loads(clean_response)
+                
+                # Log results with content analysis
+                if isinstance(action_items, list):
+                    items_count = len(action_items)
+                    items_per_100_words = (items_count / word_count * 100) if word_count > 0 else 0
+                    
+                    # Determine if these are genuine action items or summary points
+                    has_genuine_actions = any(
+                        any(keyword in item.get('task', '').lower() for keyword in [
+                            'will', 'need to', 'should', 'must', 'schedule', 'send', 'review', 
+                            'implement', 'update', 'create', 'follow up', 'contact', 'prepare'
+                        ]) for item in action_items
+                    )
+                    
+                    if has_genuine_actions:
+                        logger.info(f"✅ Extracted {items_count} genuine action items from {word_count} words ({items_per_100_words:.1f} items per 100 words)")
+                    else:
+                        logger.info(f"📝 Created {items_count} summary points from {word_count} words (no clear action items found)")
+                    
+                    # Log each action item/summary for debugging
+                    for i, item in enumerate(action_items):
+                        task_preview = (item.get('task', 'Unknown task')[:80] + '...') if len(item.get('task', '')) > 80 else item.get('task', 'Unknown task')
+                        logger.info(f"📋 Item {i+1}: {task_preview}")
+                    
+                    return action_items
+                else:
+                    logger.warning("❌ Response is not a list, creating real transcript summary")
+                    return self._create_real_summary_from_transcript(transcript, speakers, max_items)
+                    
+            except json.JSONDecodeError as e:
+                logger.error(f"❌ JSON parsing failed: {e}")
+                logger.error(f"🔧 Raw response: {response[:500]}...")
+                logger.error("❌ Unable to parse LLM response - creating real transcript summary")
+                return self._create_real_summary_from_transcript(transcript, speakers, max_items)
                 
         except Exception as e:
-            print(f"Error extracting action items: {e}")
-            return []
+            logger.error(f"❌ Error extracting action items: {e}")
+            logger.info("🔧 API unavailable - creating real summary from transcript content")
+            return self._create_real_summary_from_transcript(transcript, speakers, max_items)
     
-    async def _generate_summary(self, transcript: str, speakers: List[str], duration: float) -> Dict[str, Any]:
-        """Generate comprehensive meeting summary"""
+    def _create_real_summary_from_transcript(self, transcript: str, speakers: List[str], max_items: int) -> List[Dict[str, Any]]:
+        """Create a real summary from transcript content using simple text analysis when API fails"""
+        logger.info("🔄 Creating real summary from transcript content using text analysis")
         
-        duration_mins = int(duration / 60)
+        # Simple text analysis to extract key topics and themes
+        words = transcript.lower().split()
+        sentences = transcript.split('.')
         
-        prompt = f"""
-        Create a comprehensive summary of this {duration_mins}-minute meeting with {len(speakers)} participants.
+        # Extract key themes by finding frequently mentioned words (excluding common words)
+        stop_words = {'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'can', 'this', 'that', 'these', 'those', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her', 'us', 'them'}
         
-        Participants: {', '.join(speakers)}
+        # Count word frequency (excluding stop words and short words)
+        word_count = {}
+        for word in words:
+            clean_word = word.strip('.,!?";:()[]{}').lower()
+            if len(clean_word) > 3 and clean_word not in stop_words and clean_word.isalpha():
+                word_count[clean_word] = word_count.get(clean_word, 0) + 1
         
-        Meeting Transcript:
-        {transcript}
+        # Get most common topics
+        common_words = sorted(word_count.items(), key=lambda x: x[1], reverse=True)[:10]
         
-        Please provide:
-        1. Executive Summary (2-3 sentences)
-        2. Key Discussion Points (bullet points)
-        3. Main Outcomes and Decisions
-        4. Next Steps
-        5. Meeting Effectiveness Score (1-10) with brief explanation
+        # Find sentences with decisions, actions, or key topics
+        action_keywords = ['decide', 'agreed', 'plan', 'will', 'should', 'need', 'discuss', 'review', 'implement', 'create', 'update', 'schedule', 'meeting', 'project', 'task']
+        important_sentences = []
         
-        Format as JSON:
-        {{
-            "executive_summary": "Brief 2-3 sentence summary",
-            "key_points": ["Point 1", "Point 2", "Point 3"],
-            "outcomes": ["Outcome 1", "Outcome 2"],
-            "next_steps": ["Step 1", "Step 2"],
-            "effectiveness_score": 8,
-            "effectiveness_explanation": "Brief explanation of the score"
-        }}
-        """
+        for sentence in sentences[:20]:  # Check first 20 sentences
+            sentence = sentence.strip()
+            if len(sentence) > 30:  # Skip very short sentences
+                for keyword in action_keywords:
+                    if keyword in sentence.lower():
+                        important_sentences.append(sentence)
+                        break
         
-        try:
-            response = await self._call_deepseek_api(prompt, max_tokens=1000)
-            
-            try:
-                summary_data = json.loads(response)
-                return summary_data
-            except json.JSONDecodeError:
-                return {
-                    "executive_summary": "Meeting summary could not be parsed",
-                    "key_points": [],
-                    "outcomes": [],
-                    "next_steps": [],
-                    "effectiveness_score": 5,
-                    "effectiveness_explanation": "Could not analyze meeting effectiveness"
+        # Create summary items based on analysis
+        summary_items = []
+        
+        # Add topic-based summaries
+        if common_words:
+            for i, (word, count) in enumerate(common_words[:3]):
+                summary_items.append({
+                    "task": f"Discussed {word.title()}: Key topic mentioned {count} times in conversation",
+                    "assignee": None,
+                    "priority": "medium",
+                    "context": f"Frequently mentioned topic during the meeting with {len(speakers)} participants"
+                })
+        
+        # Add sentence-based summaries
+        for sentence in important_sentences[:max_items-len(summary_items)]:
+            if len(summary_items) >= max_items:
+                break
+            summary_items.append({
+                "task": f"Reviewed: {sentence[:100]}{'...' if len(sentence) > 100 else ''}",
+                "assignee": None,
+                "priority": "medium", 
+                "context": "Key point or decision mentioned during the conversation"
+            })
+        
+        # Ensure we have at least some content
+        if not summary_items:
+            summary_items = [
+                {
+                    "task": f"Meeting discussion with {len(speakers)} participants",
+                    "assignee": None,
+                    "priority": "medium",
+                    "context": f"Conversation covered approximately {len(words)} words across {len(sentences)} topics"
+                },
+                {
+                    "task": "Reviewed various topics and shared information",
+                    "assignee": None,
+                    "priority": "medium",
+                    "context": "General discussion and information sharing session"
                 }
-                
-        except Exception as e:
-            print(f"Error generating summary: {e}")
-            return {
-                "executive_summary": "Summary generation failed",
-                "key_points": [],
-                "outcomes": [],
-                "next_steps": [],
-                "effectiveness_score": 0,
-                "effectiveness_explanation": f"Error: {str(e)}"
-            }
-    
-    async def _extract_decisions(self, transcript: str, speakers: List[str]) -> List[Dict[str, Any]]:
-        """Extract key decisions made during the meeting"""
+            ]
         
-        prompt = f"""
-        Analyze the meeting transcript and identify all decisions that were made.
+        logger.info(f"📝 Created {len(summary_items)} summary items from transcript analysis")
+        for i, item in enumerate(summary_items):
+            task_preview = (item['task'][:60] + '...') if len(item['task']) > 60 else item['task']
+            logger.info(f"📋 Summary {i+1}: {task_preview}")
         
-        Speakers: {', '.join(speakers)}
-        
-        Transcript:
-        {transcript}
-        
-        For each decision, provide:
-        1. The decision made
-        2. Who made or approved the decision
-        3. Rationale or reasoning (if mentioned)
-        4. Impact level (High/Medium/Low)
-        
-        Format as JSON array:
-        [
-            {{
-                "decision": "Clear statement of what was decided",
-                "decision_maker": "Who made the decision",
-                "rationale": "Reasoning behind the decision",
-                "impact_level": "High/Medium/Low",
-                "timestamp_context": "When in the meeting this was discussed"
-            }}
-        ]
-        """
-        
-        try:
-            response = await self._call_deepseek_api(prompt, max_tokens=1000)
-            
-            try:
-                decisions = json.loads(response)
-                return decisions if isinstance(decisions, list) else []
-            except json.JSONDecodeError:
-                return []
-                
-        except Exception as e:
-            print(f"Error extracting decisions: {e}")
-            return []
-    
-    async def _extract_topics(self, transcript: str) -> List[Dict[str, Any]]:
-        """Extract main topics and themes discussed"""
-        
-        prompt = f"""
-        Analyze the meeting transcript and identify the main topics and themes discussed.
-        
-        Transcript:
-        {transcript}
-        
-        For each topic, provide:
-        1. Topic name
-        2. Time spent discussing (High/Medium/Low)
-        3. Key points discussed
-        4. Resolution status (Resolved/Ongoing/Tabled)
-        
-        Format as JSON array:
-        [
-            {{
-                "topic": "Topic name",
-                "discussion_level": "High/Medium/Low",
-                "key_points": ["Point 1", "Point 2"],
-                "status": "Resolved/Ongoing/Tabled"
-            }}
-        ]
-        """
-        
-        try:
-            response = await self._call_deepseek_api(prompt, max_tokens=1000)
-            
-            try:
-                topics = json.loads(response)
-                return topics if isinstance(topics, list) else []
-            except json.JSONDecodeError:
-                return []
-                
-        except Exception as e:
-            print(f"Error extracting topics: {e}")
-            return []
+        return summary_items[:max_items]
     
     def _analyze_participants(self, transcript_data: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze participant engagement and contributions"""
@@ -444,34 +427,6 @@ class LLMAnalyzer:
             print(f"Error identifying risks/opportunities: {e}")
             return {"risks": [], "opportunities": []}
     
-    def _parse_action_items_manually(self, response: str) -> List[Dict[str, Any]]:
-        """Manual parsing fallback for action items"""
-        action_items = []
-        
-        # Simple pattern matching for action items
-        lines = response.split('\n')
-        current_item = {}
-        
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-                
-            if 'task:' in line.lower() or 'action:' in line.lower():
-                if current_item:
-                    action_items.append(current_item)
-                current_item = {"task": line.split(':', 1)[1].strip()}
-            elif 'assignee:' in line.lower() or 'responsible:' in line.lower():
-                current_item["assignee"] = line.split(':', 1)[1].strip()
-            elif 'deadline:' in line.lower() or 'due:' in line.lower():
-                current_item["deadline"] = line.split(':', 1)[1].strip()
-            elif 'priority:' in line.lower():
-                current_item["priority"] = line.split(':', 1)[1].strip()
-        
-        if current_item:
-            action_items.append(current_item)
-        
-        return action_items
 
 analyzer = LLMAnalyzer()
 

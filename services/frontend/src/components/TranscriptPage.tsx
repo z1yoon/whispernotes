@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
@@ -55,6 +55,7 @@ interface ActionItem {
   context?: string;
   category?: string;
   completed?: boolean;
+  id?: string; // Add unique ID for editing
 }
 
 interface SpeakerMap {
@@ -272,9 +273,21 @@ const SpeakerAvatar = styled.div<SpeakerAvatarProps>`
   height: 36px;
   border-radius: 8px;
   background: ${props => {
-    const colors = ['#667eea', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6'];
+    // More distinguishable color palette in purple family
+    const gradients = [
+      'linear-gradient(135deg, #8850F2 0%, #A855F7 100%)', // Violet purple
+      'linear-gradient(135deg, #4F46E5 0%, #6366F1 100%)', // Indigo
+      'linear-gradient(135deg, #D946EF 0%, #F0ABFC 100%)', // Fuchsia
+      'linear-gradient(135deg, #6D28D9 0%, #8B5CF6 100%)', // Purple
+      'linear-gradient(135deg, #2563EB 0%, #60A5FA 100%)', // Blue
+      'linear-gradient(135deg, #C026D3 0%, #E879F9 100%)', // Pink
+      'linear-gradient(135deg, #5B21B6 0%, #7E22CE 100%)', // Deep purple
+      'linear-gradient(135deg, #1D4ED8 0%, #3B82F6 100%)', // Royal blue
+      'linear-gradient(135deg, #86198F 0%, #BE185D 100%)', // Magenta to pink
+      'linear-gradient(135deg, #7C3AED 0%, #A78BFA 100%)', // Violet
+    ];
     const speakerNum = parseInt(props.speaker.replace('SPEAKER_', '')) || 0;
-    return colors[speakerNum % colors.length];
+    return gradients[speakerNum % gradients.length];
   }};
   display: flex;
   align-items: center;
@@ -282,6 +295,7 @@ const SpeakerAvatar = styled.div<SpeakerAvatarProps>`
   color: white;
   font-size: 0.875rem;
   font-weight: 600;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 `;
 
 const SpeakerDetails = styled.div`
@@ -315,70 +329,175 @@ const ActionItemsList = styled.div`
   gap: 1rem;
 `;
 
-const ActionItem = styled.div`
+const ActionItemCard = styled.div<{ isEditing?: boolean }>`
   background: rgba(20, 20, 24, 0.5);
-  border: 1px solid rgba(136, 80, 242, 0.2);
+  border: 1px solid ${props => props.isEditing ? 'rgba(136, 80, 242, 0.4)' : 'rgba(136, 80, 242, 0.2)'};
   border-radius: 12px;
-  padding: 1.5rem;
+  padding: 1rem;
   position: relative;
   z-index: 1;
+  transition: all 0.2s ease;
   
-  .header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 0.75rem;
-  }
-  
-  .task {
-    color: #FFFFFF;
-    font-size: 0.875rem;
-    font-weight: 600;
-    margin: 0 0 0.75rem 0;
-    line-height: 1.4;
-  }
-  
-  .meta {
-    display: flex;
-    gap: 1rem;
-    font-size: 0.75rem;
-    color: #8D8D99;
-    flex-wrap: wrap;
+  &:hover {
+    border-color: rgba(136, 80, 242, 0.3);
+    background: rgba(20, 20, 24, 0.7);
   }
 `;
 
-const PriorityBadge = styled.span<PriorityBadgeProps>`
-  padding: 0.5rem 1rem;
-  border-radius: 20px;
+const ActionItemHeader = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+`;
+
+const PrioritySelector = styled.select`
+  background: rgba(30, 30, 34, 0.8);
+  border: 1px solid rgba(136, 80, 242, 0.3);
+  border-radius: 8px;
+  color: #FFFFFF;
+  padding: 0.5rem 0.75rem;
   font-size: 0.75rem;
-  font-weight: 700;
-  border: 1px solid;
-  background: ${props => {
-    switch (props.priority?.toLowerCase()) {
-      case 'high': return 'rgba(239, 68, 68, 0.1)';
-      case 'medium': return 'rgba(251, 191, 36, 0.1)';
-      case 'low': return 'rgba(34, 197, 94, 0.1)';
-      default: return 'rgba(136, 80, 242, 0.1)';
-    }
-  }};
-  color: ${props => {
-    switch (props.priority?.toLowerCase()) {
-      case 'high': return '#F87171';
-      case 'medium': return '#FCD34D';
-      case 'low': return '#4ADE80';
-      default: return '#A855F7';
-    }
-  }};
-  border-color: ${props => {
-    switch (props.priority?.toLowerCase()) {
-      case 'high': return 'rgba(239, 68, 68, 0.3)';
-      case 'medium': return 'rgba(251, 191, 36, 0.3)';
-      case 'low': return 'rgba(34, 197, 94, 0.3)';
-      default: return 'rgba(136, 80, 242, 0.3)';
-    }
-  }};
+  font-weight: 600;
+  cursor: pointer;
+  
+  &:focus {
+    outline: none;
+    border-color: #8850F2;
+  }
+  
+  option {
+    background: #1F1F23;
+    color: #FFFFFF;
+  }
 `;
 
+const TaskInput = styled.textarea`
+  width: 100%;
+  background: rgba(30, 30, 34, 0.8);
+  border: 1px solid rgba(136, 80, 242, 0.3);
+  border-radius: 8px;
+  color: #FFFFFF;
+  padding: 0.75rem;
+  font-size: 0.875rem;
+  font-family: 'Inter', sans-serif;
+  resize: vertical;
+  min-height: 60px;
+  
+  &:focus {
+    outline: none;
+    border-color: #8850F2;
+    box-shadow: 0 0 0 2px rgba(136, 80, 242, 0.15);
+  }
+  
+  &::placeholder {
+    color: #6B7280;
+  }
+`;
+
+const TaskText = styled.div`
+  color: #FFFFFF;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.5;
+  margin: 0;
+`;
+
+const ActionItemActions = styled.div`
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+`;
+
+const IconButton = styled.button`
+  background: rgba(136, 80, 242, 0.1);
+  border: 1px solid rgba(136, 80, 242, 0.2);
+  border-radius: 6px;
+  color: #A855F7;
+  padding: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 10;
+  pointer-events: auto;
+  
+  &:hover {
+    background: rgba(136, 80, 242, 0.2);
+    border-color: rgba(136, 80, 242, 0.3);
+    transform: scale(1.05);
+  }
+
+  &:active {
+    transform: scale(0.95);
+  }
+`;
+
+const SaveAllButton = styled.button`
+  width: 100%;
+  background: linear-gradient(135deg, #8850F2 0%, #A855F7 100%);
+  border: none;
+  border-radius: 12px;
+  color: white;
+  padding: 0.875rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  box-shadow: 0 4px 12px rgba(136, 80, 242, 0.25);
+  
+  &:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(136, 80, 242, 0.4);
+    background: linear-gradient(135deg, #9333EA 0%, #B548F7 100%);
+  }
+  
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: 0 4px 12px rgba(136, 80, 242, 0.25);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+`;
+
+const AddItemButton = styled.button`
+  width: 100%;
+  background: rgba(136, 80, 242, 0.1);
+  border: 2px dashed rgba(136, 80, 242, 0.3);
+  border-radius: 12px;
+  color: #A855F7;
+  padding: 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  
+  &:hover {
+    background: rgba(136, 80, 242, 0.15);
+    border-color: rgba(136, 80, 242, 0.4);
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+`;
 const LoadingState = styled.div`
   display: flex;
   flex-direction: column;
@@ -524,19 +643,18 @@ const StyledActionButton = styled.button<{ variant?: 'primary' | 'secondary' }>`
   transition: all 0.2s ease;
   
   ${props => props.variant === 'primary' ? `
-    background: linear-gradient(135deg, #8850F2 0%, #A855F7 100%);
+    background: linear-gradient(135deg, #6D28D9 0%, #8B5CF6 100%);
     color: white;
     border: none;
     
     &:hover {
       transform: translateY(-1px);
-      box-shadow: 0 8px 25px rgba(136, 80, 242, 0.4);
+      box-shadow: 0 8px 25px rgba(109, 40, 217, 0.4);
     }
   ` : `
     background: rgba(32, 32, 36, 0.65);
     color: #FFFFFF;
     border: 1px solid rgba(136, 80, 242, 0.3);
-    backdrop-filter: blur(14px);
     
     &:hover {
       background: rgba(136, 80, 242, 0.2);
@@ -569,6 +687,454 @@ const TooltipWrapper = styled.div`
   }
 `;
 
+// Enhanced Speaker Editor Modal following admin design patterns
+const ModalOverlay = styled(motion.div)`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 2rem;
+`;
+
+const ModalContent = styled(motion.div)`
+  background: rgba(32, 32, 36, 0.95);
+  border-radius: 24px;
+  backdrop-filter: blur(14px);
+  box-shadow: 0px 12px 40px rgba(0, 0, 0, 0.6);
+  width: 100%;
+  max-width: 600px;
+  max-height: 80vh;
+  overflow: hidden;
+  position: relative;
+  border: 1px solid rgba(136, 80, 242, 0.3);
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    padding: 2px;
+    border-radius: inherit;
+    background: linear-gradient(135deg, #8850F2 0%, #A855F7 30%, #B0E54F 100%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+            mask-composite: exclude;
+    pointer-events: none;
+    opacity: 0.6;
+  }
+`;
+
+const ModalHeader = styled.div`
+  padding: 2rem 2rem 1rem 2rem;
+  border-bottom: 1px solid rgba(136, 80, 242, 0.2);
+  position: relative;
+  z-index: 1;
+
+  .modal-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+
+    h2 {
+      color: #FFFFFF;
+      font-size: 1.5rem;
+      font-weight: 700;
+      font-family: 'Inter', sans-serif;
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+  }
+
+  .modal-description {
+    color: #8D8D99;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    margin: 0;
+  }
+`;
+
+const CloseButton = styled.button`
+  background: rgba(20, 20, 24, 0.5);
+  border: 1px solid rgba(136, 80, 242, 0.3);
+  color: #8D8D99;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  
+  &:hover {
+    background: rgba(136, 80, 242, 0.2);
+    border-color: rgba(136, 80, 242, 0.4);
+    color: #FFFFFF;
+  }
+`;
+
+const ModalBody = styled.div`
+  padding: 1.5rem 2rem;
+  max-height: 400px;
+  overflow-y: auto;
+  position: relative;
+  z-index: 1;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: rgba(20, 20, 24, 0.3);
+    border-radius: 3px;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background: rgba(136, 80, 242, 0.5);
+    border-radius: 3px;
+  }
+`;
+
+const SpeakerEditorList = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+`;
+
+const SpeakerEditorItem = styled.div`
+  background: rgba(20, 20, 24, 0.5);
+  border: 1px solid rgba(136, 80, 242, 0.2);
+  border-radius: 16px;
+  padding: 1.5rem;
+  transition: all 0.2s ease;
+
+  &:hover {
+    border-color: rgba(136, 80, 242, 0.4);
+    background: rgba(20, 20, 24, 0.7);
+  }
+`;
+
+const SpeakerEditorHeader = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+`;
+
+const SpeakerAvatarLarge = styled.div<SpeakerAvatarProps>`
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: ${props => {
+    // More distinguishable color palette in purple family
+    const gradients = [
+      'linear-gradient(135deg, #8850F2 0%, #A855F7 100%)', // Violet purple
+      'linear-gradient(135deg, #4F46E5 0%, #6366F1 100%)', // Indigo
+      'linear-gradient(135deg, #D946EF 0%, #F0ABFC 100%)', // Fuchsia
+      'linear-gradient(135deg, #6D28D9 0%, #8B5CF6 100%)', // Purple
+      'linear-gradient(135deg, #2563EB 0%, #60A5FA 100%)', // Blue
+      'linear-gradient(135deg, #C026D3 0%, #E879F9 100%)', // Pink
+      'linear-gradient(135deg, #5B21B6 0%, #7E22CE 100%)', // Deep purple
+      'linear-gradient(135deg, #1D4ED8 0%, #3B82F6 100%)', // Royal blue
+      'linear-gradient(135deg, #86198F 0%, #BE185D 100%)', // Magenta to pink
+      'linear-gradient(135deg, #7C3AED 0%, #A78BFA 100%)', // Violet
+    ];
+    const speakerNum = parseInt(props.speaker.replace('SPEAKER_', '')) || 0;
+    return gradients[speakerNum % gradients.length];
+  }};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 1rem;
+  font-weight: 700;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+`;
+
+const SpeakerEditorInfo = styled.div`
+  flex: 1;
+
+  .speaker-id {
+    color: #8D8D99;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.25rem;
+  }
+
+  .current-name {
+    color: #FFFFFF;
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 0;
+  }
+`;
+
+const SpeakerNameInput = styled.input`
+  width: 100%;
+  padding: 1rem 1.25rem;
+  background: rgba(30, 30, 34, 0.8);
+  border: 1px solid rgba(136, 80, 242, 0.3);
+  border-radius: 12px;
+  color: #FFFFFF;
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-family: 'Inter', sans-serif;
+  transition: all 0.2s ease;
+
+  &::placeholder {
+    color: #6B7280;
+  }
+
+  &:focus {
+    outline: none;
+    border-color: #8850F2;
+    box-shadow: 0 0 0 3px rgba(136, 80, 242, 0.15);
+    background: rgba(30, 30, 34, 0.9);
+  }
+
+  &:hover:not(:focus) {
+    border-color: rgba(136, 80, 242, 0.4);
+  }
+`;
+
+const ModalFooter = styled.div`
+  padding: 1.5rem 2rem 2rem 2rem;
+  border-top: 1px solid rgba(136, 80, 242, 0.2);
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  position: relative;
+  z-index: 1;
+`;
+
+const ModalButton = styled.button<{ variant?: 'primary' | 'secondary' }>`
+  padding: 0.875rem 1.75rem;
+  border-radius: 12px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-family: 'Inter', sans-serif;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 120px;
+  justify-content: center;
+  
+  ${props => props.variant === 'primary' ? `
+    background: linear-gradient(135deg, #5B21B6 0%, #7E22CE 100%);
+    color: white;
+    border: none;
+    
+    &:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 25px rgba(91, 33, 182, 0.4);
+    }
+
+    &:active {
+      transform: translateY(0);
+    }
+    
+    &:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+  ` : `
+    background: rgba(20, 20, 24, 0.5);
+    color: #C4C4CC;
+    border: 1px solid rgba(136, 80, 242, 0.3);
+    
+    &:hover {
+      background: rgba(136, 80, 242, 0.1);
+      border-color: rgba(136, 80, 242, 0.4);
+      color: #FFFFFF;
+    }
+  `}
+`;
+
+const ChangesIndicator = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #FCD34D;
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-right: auto;
+
+  .indicator-dot {
+    width: 6px;
+    height: 6px;
+    background: #FCD34D;
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+`;
+
+const PriorityBadge = styled.span<{ priority: string }>`
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid;
+  
+  ${props => {
+    switch (props.priority) {
+      case 'high':
+        return `
+          background: rgba(239, 68, 68, 0.1);
+          color: #F87171;
+          border-color: rgba(239, 68, 68, 0.3);
+        `;
+      case 'medium':
+        return `
+          background: rgba(251, 191, 36, 0.1);
+          color: #FCD34D;
+          border-color: rgba(251, 191, 36, 0.3);
+        `;
+      case 'low':
+        return `
+          background: rgba(34, 197, 94, 0.1);
+          color: #4ADE80;
+          border-color: rgba(34, 197, 94, 0.3);
+        `;
+      default:
+        return `
+          background: rgba(107, 114, 128, 0.1);
+          color: #9CA3AF;
+          border-color: rgba(107, 114, 128, 0.3);
+        `;
+    }
+  }}
+`;
+
+// Move SpeakerNameEditor outside the main component to prevent re-creation on every render
+const SpeakerNameEditor = React.memo(({ 
+  speakerMap, 
+  originalSpeakerMap, 
+  onSpeakerNameChange, 
+  onCancel, 
+  onSave, 
+  hasChanges,
+  getSpeakerInitials 
+}: {
+  speakerMap: SpeakerMap;
+  originalSpeakerMap: SpeakerMap;
+  onSpeakerNameChange: (speaker: string, name: string) => void;
+  onCancel: () => void;
+  onSave: () => void;
+  hasChanges: boolean;
+  getSpeakerInitials: (speakerName: string) => string;
+}) => (
+  <ModalOverlay
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    exit={{ opacity: 0 }}
+    onClick={(e) => {
+      // Close modal when clicking outside content
+      if (e.target === e.currentTarget) {
+        onCancel();
+      }
+    }}
+  >
+    <ModalContent
+      initial={{ scale: 0.9, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      exit={{ scale: 0.9, opacity: 0 }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <ModalHeader>
+        <div className="modal-title">
+          <h2>
+            <UserPlus size={20} />
+            Edit Speaker Names
+          </h2>
+          <CloseButton onClick={onCancel}>
+            <X size={16} />
+          </CloseButton>
+        </div>
+        <p className="modal-description">
+          Edit speaker names to make the transcript more readable. These changes will be applied to all transcript segments.
+        </p>
+      </ModalHeader>
+      
+      <ModalBody>
+        <SpeakerEditorList>
+          {Object.keys(speakerMap).map(speaker => (
+            <SpeakerEditorItem key={speaker}>
+              <SpeakerEditorHeader>
+                <SpeakerAvatarLarge speaker={speaker}>
+                  {getSpeakerInitials(speakerMap[speaker])}
+                </SpeakerAvatarLarge>
+                <SpeakerEditorInfo>
+                  <div className="speaker-id">{speaker}</div>
+                  <div className="current-name">
+                    {originalSpeakerMap[speaker] || speaker}
+                  </div>
+                </SpeakerEditorInfo>
+              </SpeakerEditorHeader>
+              <SpeakerNameInput
+                type="text"
+                value={speakerMap[speaker] || ''}
+                onChange={(e) => onSpeakerNameChange(speaker, e.target.value)}
+                placeholder="Enter speaker name"
+                autoComplete="off"
+                spellCheck={false}
+                autoCorrect="off"
+                autoCapitalize="off"
+                data-form-type="other"
+              />
+            </SpeakerEditorItem>
+          ))}
+        </SpeakerEditorList>
+      </ModalBody>
+      
+      <ModalFooter>
+        {hasChanges && (
+          <ChangesIndicator>
+            <div className="indicator-dot"></div>
+            Unsaved changes
+          </ChangesIndicator>
+        )}
+        <ModalButton variant="secondary" onClick={onCancel}>
+          Cancel
+        </ModalButton>
+        <ModalButton 
+          variant="primary" 
+          onClick={onSave}
+          disabled={!hasChanges}
+          style={{ 
+            opacity: hasChanges ? 1 : 0.6,
+            cursor: hasChanges ? 'pointer' : 'not-allowed'
+          }}
+        >
+          <Save size={16} />
+          Save Changes
+        </ModalButton>
+      </ModalFooter>
+    </ModalContent>
+  </ModalOverlay>
+));
+
+SpeakerNameEditor.displayName = 'SpeakerNameEditor';
+
 const TranscriptPage = () => {
   const router = useRouter();
   const params = useParams();
@@ -582,6 +1148,9 @@ const TranscriptPage = () => {
   const [speakerMap, setSpeakerMap] = useState<SpeakerMap>({});
   const [originalSpeakerMap, setOriginalSpeakerMap] = useState<SpeakerMap>({});
   const [loadingTodos, setLoadingTodos] = useState(false);
+  const [editingItems, setEditingItems] = useState<Set<string>>(new Set());
+  const [hasUnsavedTodos, setHasUnsavedTodos] = useState(false);
+  const [savingTodos, setSavingTodos] = useState(false);
 
   useEffect(() => {
     if (fileId) {
@@ -589,28 +1158,35 @@ const TranscriptPage = () => {
     }
   }, [fileId]);
 
-  // Generate speaker map from transcript segments
+  // Generate speaker map from transcript segments with memoization
+  const memoizedSpeakerMap = useMemo(() => {
+    if (!transcriptData?.segments) return {};
+    
+    const uniqueSpeakers = new Set<string>();
+    const tempSpeakerMap: SpeakerMap = {};
+    
+    // Collect unique speakers
+    transcriptData.segments.forEach(segment => {
+      uniqueSpeakers.add(segment.speaker);
+    });
+    
+    // Create initial speaker map
+    uniqueSpeakers.forEach(speaker => {
+      // Find the first segment with this speaker to get the speaker_name
+      const segment = transcriptData.segments.find(seg => seg.speaker === speaker);
+      tempSpeakerMap[speaker] = segment?.speaker_name || speaker;
+    });
+    
+    return tempSpeakerMap;
+  }, [transcriptData?.segments]);
+
+  // Update speaker maps when memoized map changes
   useEffect(() => {
-    if (transcriptData?.segments) {
-      const uniqueSpeakers = new Set<string>();
-      const tempSpeakerMap: SpeakerMap = {};
-      
-      // Collect unique speakers
-      transcriptData.segments.forEach(segment => {
-        uniqueSpeakers.add(segment.speaker);
-      });
-      
-      // Create initial speaker map
-      uniqueSpeakers.forEach(speaker => {
-        // Find the first segment with this speaker to get the speaker_name
-        const segment = transcriptData.segments.find(seg => seg.speaker === speaker);
-        tempSpeakerMap[speaker] = segment?.speaker_name || speaker;
-      });
-      
-      setSpeakerMap(tempSpeakerMap);
-      setOriginalSpeakerMap({...tempSpeakerMap});
+    if (Object.keys(memoizedSpeakerMap).length > 0) {
+      setSpeakerMap(memoizedSpeakerMap);
+      setOriginalSpeakerMap({...memoizedSpeakerMap});
     }
-  }, [transcriptData]);
+  }, [memoizedSpeakerMap]);
 
   const fetchTranscriptData = async () => {
     try {
@@ -674,8 +1250,9 @@ const TranscriptPage = () => {
       if (response.ok) {
         const analysisData = await response.json();
         
-        if (analysisData.analysis?.analysis?.action_items) {
-          const todos = analysisData.analysis.analysis.action_items.map((item: any) => ({
+        // Fix: Correct the path to access action items
+        if (analysisData.analysis?.action_items) {
+          const todos = analysisData.analysis.action_items.map((item: any) => ({
             task: item.task || 'Unknown task',
             assignee: item.assignee,
             deadline: item.deadline,
@@ -730,12 +1307,27 @@ const TranscriptPage = () => {
     }
   };
 
-  const getSpeakerInitials = (speakerName: string): string => {
+  // Memoize the speaker name change handler to prevent recreation on every render
+  const handleSpeakerNameChange = React.useCallback((speaker: string, name: string) => {
+    setSpeakerMap(prev => ({
+      ...prev,
+      [speaker]: name
+    }));
+  }, []);
+
+  // Memoize the getSpeakerInitials function
+  const getSpeakerInitials = React.useCallback((speakerName: string): string => {
     if (speakerName && speakerName.includes('(')) {
       return speakerName.split('(')[0].trim().split(' ').map((n: string) => n[0]).join('');
     }
     return speakerName?.split(' ').map((n: string) => n[0]).join('') || 'S';
-  };
+  }, []);
+
+  // Check if there are any changes to show the changes indicator - memoized
+  const hasChanges = React.useMemo(() => 
+    Object.keys(speakerMap).some(key => speakerMap[key] !== originalSpeakerMap[key]),
+    [speakerMap, originalSpeakerMap]
+  );
 
   const handleUpdateSpeakerNames = async () => {
     try {
@@ -754,13 +1346,25 @@ const TranscriptPage = () => {
         throw new Error('Missing transcript ID');
       }
       
-      // For now, just update locally since we don't have speaker update endpoint yet
-      // In a real implementation, you would send to: `/api/transcripts/${fileId}/speakers`
+      // Send speaker updates to backend
+      const response = await fetch(`/api/transcripts/${fileId}/speakers`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          speaker_mapping: speakerMap 
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to update speakers: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('Speaker names updated successfully:', result);
       
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Update the local state
+      // Update the local state only after successful backend update
       if (transcriptData) {
         const updatedSegments = transcriptData.segments.map(segment => ({
           ...segment,
@@ -787,114 +1391,124 @@ const TranscriptPage = () => {
     setShowSpeakerEditor(false);
   };
 
-  const handleSpeakerNameChange = (speaker: string, name: string) => {
-    setSpeakerMap(prev => ({
-      ...prev,
-      [speaker]: name
-    }));
+  // Action item management functions
+  const generateItemId = () => `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+  const handleEditItem = (index: number) => {
+    const itemId = actionItems[index].id || generateItemId();
+    if (!actionItems[index].id) {
+      // Add ID to item if it doesn't have one
+      setActionItems(prev => prev.map((item, i) => 
+        i === index ? { ...item, id: itemId } : item
+      ));
+    }
+    setEditingItems(prev => new Set([...prev, itemId]));
   };
 
-  const SpeakerNameEditor = () => (
-    <DialogOverlay
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-    >
-      <DialogContent
-        initial={{ scale: 0.9, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.9, opacity: 0 }}
-      >
-        <DialogHeader>
-          <h2>
-            <UserPlus size={18} />
-            Edit Speaker Names
-          </h2>
-          <StyledActionButton variant="secondary" onClick={handleCancelSpeakerEdit}>
-            <X size={16} />
-          </StyledActionButton>
-        </DialogHeader>
-        
-        <p style={{ color: '#64748b', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
-          Edit speaker names to make the transcript more readable. These changes will be applied to all transcript segments.
-        </p>
-        
-        <SpeakerList>
-          {Object.keys(speakerMap).map(speaker => (
-            <SpeakerItem key={speaker}>
-              <SpeakerAvatar speaker={speaker}>
-                {getSpeakerInitials(speakerMap[speaker])}
-              </SpeakerAvatar>
-              <SpeakerLabel>{speaker}</SpeakerLabel>
-              <SpeakerInput
-                value={speakerMap[speaker]}
-                onChange={(e) => handleSpeakerNameChange(speaker, e.target.value)}
-                placeholder="Enter speaker name"
-              />
-            </SpeakerItem>
-          ))}
-        </SpeakerList>
-        
-        <DialogActions>
-          <StyledActionButton variant="secondary" onClick={handleCancelSpeakerEdit}>
-            Cancel
-          </StyledActionButton>
-          <StyledActionButton variant="primary" onClick={handleUpdateSpeakerNames}>
-            <Save size={16} />
-            Save Changes
-          </StyledActionButton>
-        </DialogActions>
-      </DialogContent>
-    </DialogOverlay>
+  const handleSaveItem = (index: number) => {
+    const item = actionItems[index];
+    if (item.id) {
+      setEditingItems(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(item.id!);
+        return newSet;
+      });
+    }
+    setHasUnsavedTodos(true);
+  };
+
+  const handleCancelEdit = (index: number) => {
+    const item = actionItems[index];
+    if (item.id) {
+      setEditingItems(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(item.id!);
+        return newSet;
+      });
+    }
+  };
+
+  const handleUpdateTask = (index: number, newTask: string) => {
+    setActionItems(prev => prev.map((item, i) => 
+      i === index ? { ...item, task: newTask } : item
+    ));
+    setHasUnsavedTodos(true);
+  };
+
+  const handleUpdatePriority = (index: number, newPriority: string) => {
+    setActionItems(prev => prev.map((item, i) => 
+      i === index ? { ...item, priority: newPriority } : item
+    ));
+    setHasUnsavedTodos(true);
+  };
+
+  const handleAddNewItem = () => {
+    const newItem: ActionItem = {
+      id: generateItemId(),
+      task: '',
+      priority: 'medium',
+      completed: false
+    };
+    setActionItems(prev => [...prev, newItem]);
+    setEditingItems(prev => new Set([...prev, newItem.id!]));
+    setHasUnsavedTodos(true);
+  };
+
+  const handleDeleteItem = (index: number) => {
+    setActionItems(prev => prev.filter((_, i) => i !== index));
+    setHasUnsavedTodos(true);
+  };
+
+  const handleSaveAllTodos = async () => {
+    if (!fileId) {
+      toast.error('Missing transcript ID');
+      return;
+    }
+
+    try {
+      setSavingTodos(true);
+      
+      // Save both speaker names and action items to backend/MinIO
+      const saveData = {
+        speaker_mapping: speakerMap,
+        action_items: actionItems.filter(item => item.task.trim() !== ''), // Remove empty items
+        updated_at: new Date().toISOString()
+      };
+
+      const response = await fetch(`/api/transcripts/${fileId}/save-edits`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(saveData),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to save changes: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('Changes saved successfully:', result);
+      
+      // Clear editing states
+      setEditingItems(new Set());
+      setHasUnsavedTodos(false);
+      setOriginalSpeakerMap({...speakerMap});
+      
+      toast.success('All changes saved successfully!');
+      
+    } catch (error) {
+      console.error('Error saving changes:', error);
+      toast.error('Failed to save changes');
+    } finally {
+      setSavingTodos(false);
+    }
+  };
+
+  // Check if there are any changes to show the changes indicator
+  const hasUnsavedChanges = Object.keys(speakerMap).some(
+    key => speakerMap[key] !== originalSpeakerMap[key]
   );
-
-  if (loading) {
-    return (
-      <TranscriptContainer>
-        <Header>
-          <HeaderLeft>
-            <BackButton onClick={() => router.push('/transcripts')}>
-              <ArrowLeft size={18} />
-            </BackButton>
-            <HeaderTitle>Loading...</HeaderTitle>
-          </HeaderLeft>
-        </Header>
-        <MainContent>
-          <Card>
-            <LoadingState>
-              <div className="spinner"></div>
-              <h3>Loading transcript...</h3>
-              <p>Processing your meeting data</p>
-            </LoadingState>
-          </Card>
-        </MainContent>
-      </TranscriptContainer>
-    );
-  }
-
-  if (error) {
-    return (
-      <TranscriptContainer>
-        <Header>
-          <HeaderLeft>
-            <BackButton onClick={() => router.push('/transcripts')}>
-              <ArrowLeft size={18} />
-            </BackButton>
-            <HeaderTitle>Error</HeaderTitle>
-          </HeaderLeft>
-        </Header>
-        <MainContent>
-          <Card>
-            <div style={{ textAlign: 'center', padding: '3rem', position: 'relative', zIndex: 1 }}>
-              <AlertTriangle size={48} color="#F87171" style={{ marginBottom: '1rem' }} />
-              <h3 style={{ color: '#FFFFFF', marginBottom: '0.5rem', fontFamily: 'Inter, sans-serif', fontWeight: 700 }}>Error Loading Transcript</h3>
-              <p style={{ color: '#8D8D99' }}>{error}</p>
-            </div>
-          </Card>
-        </MainContent>
-      </TranscriptContainer>
-    );
-  }
 
   return (
     <TranscriptContainer>
@@ -1018,30 +1632,90 @@ const TranscriptPage = () => {
                   <div className="spinner" style={{ width: '32px', height: '32px', border: '2px solid rgba(136, 80, 242, 0.2)', borderTop: '2px solid #8850F2', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 1rem' }}></div>
                   <p style={{ color: '#8D8D99', fontSize: '0.875rem' }}>Generating action items...</p>
                 </div>
-              ) : actionItems.length > 0 ? (
-                <ActionItemsList>
-                  {actionItems.map((item: ActionItem, index: number) => (
-                    <ActionItem key={index}>
-                      <div className="header">
-                        <PriorityBadge priority={item.priority}>
-                          {item.priority.charAt(0).toUpperCase() + item.priority.slice(1)}
-                        </PriorityBadge>
-                      </div>
-                      <div className="task">{item.task}</div>
-                      <div className="meta">
-                        {item.assignee && <span><strong>Assignee:</strong> {item.assignee}</span>}
-                        {item.deadline && <span><strong>Due:</strong> {item.deadline}</span>}
-                        {item.context && <span><strong>Context:</strong> {item.context}</span>}
-                        {item.category && <span><strong>Category:</strong> {item.category}</span>}
-                      </div>
-                    </ActionItem>
-                  ))}
-                </ActionItemsList>
               ) : (
-                <div style={{ textAlign: 'center', padding: '2rem' }}>
-                  <CheckSquare size={32} color="#8D8D99" style={{ marginBottom: '1rem' }} />
-                  <p style={{ color: '#8D8D99', fontSize: '0.875rem' }}>No action items found in this transcript</p>
-                </div>
+                <>
+                  <ActionItemsList>
+                    {actionItems.map((item: ActionItem, index: number) => {
+                      const isEditing = item.id && editingItems.has(item.id);
+                      return (
+                        <ActionItemCard key={item.id || index} isEditing={isEditing}>
+                          <ActionItemHeader>
+                            {isEditing ? (
+                              <PrioritySelector
+                                value={item.priority}
+                                onChange={(e) => handleUpdatePriority(index, e.target.value)}
+                              >
+                                <option value="low">Low</option>
+                                <option value="medium">Medium</option>
+                                <option value="high">High</option>
+                              </PrioritySelector>
+                            ) : (
+                              <PriorityBadge priority={item.priority}>
+                                {item.priority.charAt(0).toUpperCase() + item.priority.slice(1)}
+                              </PriorityBadge>
+                            )}
+                            <ActionItemActions>
+                              {isEditing ? (
+                                <>
+                                  <IconButton onClick={() => handleSaveItem(index)} title="Save">
+                                    <Save size={14} />
+                                  </IconButton>
+                                  <IconButton onClick={() => handleCancelEdit(index)} title="Cancel">
+                                    <X size={14} />
+                                  </IconButton>
+                                </>
+                              ) : (
+                                <>
+                                  <IconButton onClick={() => handleEditItem(index)} title="Edit">
+                                    <Edit size={14} />
+                                  </IconButton>
+                                  <IconButton onClick={() => handleDeleteItem(index)} title="Delete">
+                                    <X size={14} />
+                                  </IconButton>
+                                </>
+                              )}
+                            </ActionItemActions>
+                          </ActionItemHeader>
+                          
+                          {isEditing ? (
+                            <TaskInput
+                              value={item.task}
+                              onChange={(e) => handleUpdateTask(index, e.target.value)}
+                              placeholder="Enter action item description..."
+                              autoFocus
+                            />
+                          ) : (
+                            <TaskText>{item.task || 'Empty task'}</TaskText>
+                          )}
+                        </ActionItemCard>
+                      );
+                    })}
+                  </ActionItemsList>
+                  
+                  {actionItems.length === 0 && (
+                    <div style={{ textAlign: 'center', padding: '2rem', color: '#8D8D99' }}>
+                      <CheckSquare size={32} style={{ marginBottom: '1rem' }} />
+                      <p style={{ fontSize: '0.875rem', marginBottom: '1rem' }}>
+                        No action items found in this transcript
+                      </p>
+                    </div>
+                  )}
+                  
+                  <AddItemButton onClick={handleAddNewItem}>
+                    <CheckSquare size={16} />
+                    Add Action Item
+                  </AddItemButton>
+                  
+                  {(hasUnsavedTodos || hasUnsavedChanges) && (
+                    <SaveAllButton 
+                      onClick={handleSaveAllTodos}
+                      disabled={savingTodos}
+                    >
+                      <Save size={16} />
+                      {savingTodos ? 'Saving...' : 'Save All Results'}
+                    </SaveAllButton>
+                  )}
+                </>
               )}
             </Card>
           </Sidebar>
@@ -1049,7 +1723,17 @@ const TranscriptPage = () => {
       </MainContent>
 
 
-      {showSpeakerEditor && <SpeakerNameEditor />}
+      {showSpeakerEditor && (
+        <SpeakerNameEditor
+          speakerMap={speakerMap}
+          originalSpeakerMap={originalSpeakerMap}
+          onSpeakerNameChange={handleSpeakerNameChange}
+          onCancel={handleCancelSpeakerEdit}
+          onSave={handleUpdateSpeakerNames}
+          hasChanges={hasChanges}
+          getSpeakerInitials={getSpeakerInitials}
+        />
+      )}
     </TranscriptContainer>
   );
 };

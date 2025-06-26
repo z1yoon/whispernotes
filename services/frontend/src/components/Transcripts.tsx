@@ -167,7 +167,8 @@ const AuthButton = styled.button<{ $variant?: 'primary' | 'secondary' }>`
     background: linear-gradient(90deg, #8850F2 0%, #A855F7 100%);
     color: white;
     &:hover {
-      opacity: 0.9;
+      transform: translateY(-1px);
+      box-shadow: 0 8px 25px rgba(168, 85, 247, 0.4);
     }
   ` : `
     background: rgba(255, 255, 255, 0.1);
@@ -379,7 +380,7 @@ const TranscriptionHeader = styled.div`
   .file-avatar {
     width: 48px;
     height: 48px;
-    background: linear-gradient(135deg, #8850F2 0%, #A855F7 100%);
+    background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%);
     border-radius: 12px;
     display: flex;
     align-items: center;
@@ -407,8 +408,8 @@ const TranscriptionHeader = styled.div`
 
 const statusColors = {
   completed: { bg: 'rgba(34, 197, 94, 0.1)', color: '#4ADE80', border: 'rgba(34, 197, 94, 0.3)' },
-  processing: { bg: 'rgba(251, 191, 36, 0.1)', color: '#FCD34D', border: 'rgba(251, 191, 36, 0.3)' },
-  transcribing: { bg: 'rgba(251, 191, 36, 0.1)', color: '#FCD34D', border: 'rgba(251, 191, 36, 0.3)' },
+  processing: { bg: 'rgba(254, 240, 138, 0.1)', color: '#FDE047', border: 'rgba(254, 240, 138, 0.3)' },
+  transcribing: { bg: 'rgba(254, 240, 138, 0.1)', color: '#FDE047', border: 'rgba(254, 240, 138, 0.3)' },
   uploading: { bg: 'rgba(59, 130, 246, 0.1)', color: '#60A5FA', border: 'rgba(59, 130, 246, 0.3)' },
   failed: { bg: 'rgba(239, 68, 68, 0.1)', color: '#F87171', border: 'rgba(239, 68, 68, 0.3)' },
   default: { bg: 'rgba(107, 114, 128, 0.1)', color: '#9CA3AF', border: 'rgba(107, 114, 128, 0.3)' }
@@ -451,53 +452,109 @@ const TranscriptionDetails = styled.div`
   }
 `;
 
+const ViewButton = styled.button`
+  padding: 0.625rem 1rem;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #6D28D9 0%, #8B5CF6 100%);
+  color: white;
+  border: none;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  
+  svg {
+    color: #D8B4FE;
+    transition: color 0.2s ease;
+  }
+  
+  &:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 25px rgba(109, 40, 217, 0.4);
+    
+    svg {
+      color: #FFFFFF;
+    }
+  }
+  
+  &:active {
+    transform: translateY(0);
+  }
+`;
+
+const DownloadButton = styled.button`
+  padding: 0.625rem 1rem;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #4F46E5 0%, #6366F1 100%);
+  color: white;
+  border: none;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  
+  svg {
+    color: #C4B5FD;
+    transition: color 0.2s ease;
+  }
+  
+  &:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 25px rgba(79, 70, 229, 0.4);
+    
+    svg {
+      color: #FFFFFF;
+    }
+  }
+  
+  &:active {
+    transform: translateY(0);
+  }
+`;
+
+const DeleteButton = styled.button`
+  padding: 0.625rem 1rem;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #BE123C 0%, #F43F5E 100%);
+  color: white;
+  border: none;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  
+  svg {
+    color: #FDA4AF;
+    transition: color 0.2s ease;
+  }
+  
+  &:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 25px rgba(244, 63, 94, 0.4);
+    
+    svg {
+      color: #FFFFFF;
+    }
+  }
+  
+  &:active {
+    transform: translateY(0);
+  }
+`;
+
 const ActionButtons = styled.div`
   display: flex;
   gap: 1rem;
   justify-content: flex-end;
-
-  button {
-    padding: 0.75rem 1.5rem;
-    border-radius: 8px;
-    font-weight: 600;
-    font-size: 0.875rem;
-    border: none;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    transition: all 0.2s;
-
-    &.view {
-      background: linear-gradient(135deg, #8850F2 0%, #A855F7 100%);
-      color: white;
-
-      &:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 8px 25px rgba(136, 80, 242, 0.4);
-      }
-    }
-
-    &.download {
-      background: linear-gradient(135deg, #10B981 0%, #059669 100%);
-      color: white;
-
-      &:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 8px 25px rgba(16, 185, 129, 0.4);
-      }
-    }
-
-    &.delete {
-      background: linear-gradient(135deg, #EF4444 0%, #F87171 100%);
-      color: white;
-
-      &:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 8px 25px rgba(239, 68, 68, 0.4);
-      }
-    }
-  }
 `;
 
 const LoadingState = styled.div`
@@ -599,7 +656,7 @@ const ProgressBarContainer = styled.div`
 const ProgressBar = styled.div<{ $progress: number }>`
   height: 100%;
   width: ${props => props.$progress}%;
-  background: linear-gradient(90deg, #FCD34D 0%, #F59E0B 100%);
+  background: linear-gradient(90deg, #FDE047 0%, #FACC15 100%);
   border-radius: 3px;
   transition: width 0.3s ease;
 `;
@@ -607,8 +664,8 @@ const ProgressBar = styled.div<{ $progress: number }>`
 const ProcessingSpinner = styled.div`
   width: 12px;
   height: 12px;
-  border: 2px solid rgba(252, 211, 77, 0.3);
-  border-top-color: #FCD34D;
+  border: 2px solid rgba(253, 224, 71, 0.3);
+  border-top-color: #FDE047;
   border-radius: 50%;
   animation: spin 1s linear infinite;
   
@@ -838,6 +895,20 @@ const Transcripts = () => {
     return statusMessages[status as keyof typeof statusMessages] || statusMessages.default;
   };
 
+  // Helper function to get consistent, non-decreasing progress value
+  const getConsistentProgress = (sessionId: string, fallbackProgress: number): number => {
+    const realtimeProgress = getProgress(sessionId);
+    const dbProgress = fallbackProgress || 0;
+    
+    // If we have real-time progress, use the higher of the two values
+    if (realtimeProgress && typeof realtimeProgress.progress === 'number') {
+      return Math.max(realtimeProgress.progress, dbProgress);
+    }
+    
+    // Fall back to database progress
+    return dbProgress;
+  };
+
   // Don't render until mounted to avoid SSR issues
   if (!mounted) {
     return (
@@ -1029,27 +1100,24 @@ const Transcripts = () => {
 
                   {transcription.hasTranscript && (
                     <ActionButtons>
-                      <button 
-                        className="view"
+                      <ViewButton
                         onClick={() => handleViewTranscript(transcription)}
                       >
                         <Eye size={16} />
                         View Transcript
-                      </button>
-                      <button 
-                        className="download"
+                      </ViewButton>
+                      <DownloadButton 
                         onClick={() => handleDownloadTranscript(transcription)}
                       >
                         <Download size={16} />
                         Download
-                      </button>
-                      <button 
-                        className="delete"
+                      </DownloadButton>
+                      <DeleteButton 
                         onClick={() => handleDeleteTranscript(transcription)}
                       >
                         <Trash2 size={16} />
                         Delete
-                      </button>
+                      </DeleteButton>
                     </ActionButtons>
                   )}
 
@@ -1061,11 +1129,11 @@ const Transcripts = () => {
                           {getProgressText(transcription.sessionId, transcription.status, true)}
                         </div>
                         <div className="processing-percentage">
-                          {Math.round(getProgress(transcription.sessionId)?.progress || transcription.progress || 0)}%
+                          {Math.round(getConsistentProgress(transcription.sessionId, transcription.progress))}%
                         </div>
                       </ProcessingHeader>
                       <ProgressBarContainer>
-                        <ProgressBar $progress={getProgress(transcription.sessionId)?.progress || transcription.progress || 0} />
+                        <ProgressBar $progress={getConsistentProgress(transcription.sessionId, transcription.progress)} />
                       </ProgressBarContainer>
                       <StatusMessage>
                         {getProgressText(transcription.sessionId, transcription.status, false)}

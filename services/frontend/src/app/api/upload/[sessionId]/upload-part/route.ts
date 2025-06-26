@@ -29,7 +29,10 @@ export async function POST(req: NextRequest, context: { params: { sessionId: str
       return NextResponse.json({ message: 'Missing required fields: file, partNumber' }, { status: 400 });
     }
 
-    console.log(`API: Uploading part ${partNumber} for session ${sessionId}, size: ${file.size} bytes`);
+    // Only log errors and every 20th part to reduce spam
+    if (parseInt(partNumber) === 1 || parseInt(partNumber) % 20 === 0) {
+      console.log(`API: Uploading part ${partNumber} for session ${sessionId}`);
+    }
 
     // Create a new FormData to send to the file-uploader service
     const uploadFormData = new FormData();
@@ -50,7 +53,11 @@ export async function POST(req: NextRequest, context: { params: { sessionId: str
     }
 
     const result = await uploaderResponse.json();
-    console.log(`API: Upload part ${partNumber} response:`, result);
+    
+    // Only log every 20th part or errors
+    if (parseInt(partNumber) === 1 || parseInt(partNumber) % 20 === 0) {
+      console.log(`API: Upload part ${partNumber} response:`, result);
+    }
 
     return NextResponse.json(result);
 

@@ -11,7 +11,8 @@ import {
   Users,
   Minus,
   Plus,
-  Zap
+  Zap,
+  Loader
 } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 import { useNotification } from './NotificationProvider';
@@ -97,7 +98,7 @@ const DropZone = styled.div<{ $isDragActive: boolean; $isAuthenticated?: boolean
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 8px 24px rgba(168, 85, 247, 0.35);
+    box-shadow: 0 8px 24px rgba(136, 80, 242, 0.35);
     margin-bottom: 24px;
   }
 
@@ -245,8 +246,8 @@ const SpeakerButton = styled.button<{ disabled?: boolean }>`
   width: 28px;
   height: 28px;
   border-radius: 8px;
-  background: ${props => props.disabled ? 'rgba(255, 255, 255, 0.05)' : 'rgba(136, 80, 242, 0.2)'};
-  border: 1px solid ${props => props.disabled ? 'rgba(255, 255, 255, 0.1)' : 'rgba(136, 80, 242, 0.3)'};
+  background: ${props => props.disabled ? 'rgba(255, 255, 255, 0.05)' : 'rgba(168, 85, 247, 0.15)'};
+  border: 1px solid ${props => props.disabled ? 'rgba(255, 255, 255, 0.1)' : 'rgba(168, 85, 247, 0.3)'};
   color: ${props => props.disabled ? '#71717A' : '#A855F7'};
   display: flex;
   align-items: center;
@@ -255,8 +256,9 @@ const SpeakerButton = styled.button<{ disabled?: boolean }>`
   transition: all 0.2s ease;
   
   &:hover:not(:disabled) {
-    background: rgba(136, 80, 242, 0.3);
-    border-color: rgba(136, 80, 242, 0.4);
+    background: rgba(168, 85, 247, 0.2);
+    border-color: rgba(168, 85, 247, 0.4);
+    transform: translateY(-1px);
   }
 `;
 
@@ -289,7 +291,7 @@ const SpeakerNameInput = styled.input`
 
 const ProcessButton = styled(motion.button)<{ disabled?: boolean }>`
   width: 100%;
-  background: linear-gradient(135deg, #8850F2 0%, #A855F7 100%);
+  background: linear-gradient(90deg, #4F46E5 0%, #6366F1 100%);
   border: none;
   border-radius: 12px;
   padding: 1rem;
@@ -303,6 +305,11 @@ const ProcessButton = styled(motion.button)<{ disabled?: boolean }>`
   cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
   opacity: ${props => props.disabled ? 0.7 : 1};
   transition: all 0.3s ease;
+  
+  &:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 25px rgba(79, 70, 229, 0.4);
+  }
 `;
 
 const FileFormats = styled.div`
@@ -393,6 +400,41 @@ const AddMoreFilesButton = styled(motion.button)`
   &:hover {
     background: rgba(136, 80, 242, 0.15);
     border-color: rgba(136, 80, 242, 0.6);
+  }
+`;
+
+const UploadButton = styled.button<{ isDragActive?: boolean }>`
+  width: 100%;
+  padding: 1rem;
+  border-radius: 12px;
+  background: ${props => props.isDragActive 
+    ? 'linear-gradient(135deg, #7C3AED 0%, #A78BFA 100%)'
+    : 'linear-gradient(135deg, #5B21B6 0%, #7E22CE 100%)'};
+  color: white;
+  border: none;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  position: relative;
+  overflow: hidden;
+  
+  &:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 25px rgba(91, 33, 182, 0.4);
+  }
+  
+  &:active:not(:disabled) {
+    transform: translateY(0);
+  }
+  
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 `;
 

@@ -33,12 +33,12 @@ export function Header() {
         <nav className="flex items-center gap-4">
           {session ? (
             <div className="flex items-center gap-4">
-              <Link href="/transcripts" className="btn btn-secondary">
+              <Link href="/transcripts" className="px-4 py-2 rounded-md font-semibold text-white border border-white/20 bg-white/10 hover:bg-white/15 transition-colors">
                 My Transcripts
               </Link>
 
               {session.user?.role === 'admin' && (
-                <Link href="/admin" className="btn btn-secondary">
+                <Link href="/admin" className="px-4 py-2 rounded-md font-semibold text-white border border-white/20 bg-white/10 hover:bg-white/15 transition-colors">
                   Admin
                 </Link>
               )}

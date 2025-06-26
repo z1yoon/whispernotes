@@ -31,13 +31,25 @@ export async function GET(
     try {
       // Fetch LLM analysis from the LLM service
       const llmServiceUrl = process.env.LLM_SERVICE_URL || 'http://llm-service:8004';
-      const response = await fetch(`${llmServiceUrl}/analysis/${sessionId}`);
+      console.log(`Fetching analysis from: ${llmServiceUrl}/analysis/${sessionId}`);
+      
+      const response = await fetch(`${llmServiceUrl}/analysis/${sessionId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+      
+      console.log(`LLM service response status: ${response.status}`);
       
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`LLM service error: ${response.status} - ${errorText}`);
+        
         if (response.status === 404) {
           return NextResponse.json({ message: 'Analysis not found' }, { status: 404 });
         }
-        throw new Error('Failed to fetch analysis data');
+        throw new Error(`Failed to fetch analysis data: ${response.status} - ${errorText}`);
       }
 
       const analysisData = await response.json();

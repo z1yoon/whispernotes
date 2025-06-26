@@ -247,45 +247,35 @@ const PasswordToggle = styled.button`
 
 const LoginButton = styled(motion.button)`
   width: 100%;
-  padding: 1.5rem;
-  background: linear-gradient(135deg, #8850F2 0%, #A855F7 50%, #C084FC 100%);
+  padding: 0.875rem 1rem;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #5B21B6 0%, #7E22CE 100%);
   color: white;
   border: none;
-  border-radius: 16px;
-  font-size: 1.125rem;
+  font-size: 1rem;
   font-weight: 700;
   cursor: pointer;
+  transition: all 0.2s ease;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 0.75rem;
   font-family: 'Inter', sans-serif;
-  transition: all 0.3s ease;
-  position: relative;
-  overflow: hidden;
   
-  &::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(135deg, #A855F7 0%, #C084FC 50%, #DDD6FE 100%);
-    opacity: 0;
-    transition: opacity 0.3s ease;
+  &:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 25px rgba(91, 33, 182, 0.4);
   }
   
-  &:hover:not(:disabled)::before {
-    opacity: 1;
-  }
-  
-  &:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow: 0 12px 30px rgba(136, 80, 242, 0.5);
+  &:active {
+    transform: translateY(0);
   }
   
   &:disabled {
     opacity: 0.6;
     cursor: not-allowed;
     transform: none;
+    box-shadow: none;
   }
   
   span {

@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 import io
 import time
 import tempfile
+import sys
 
 from fastapi import FastAPI, HTTPException, Request, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,10 +20,14 @@ import redis
 import pika
 import httpx
 from starlette.responses import JSONResponse
+from tqdm import tqdm
 
-# Configure logging
+# Configure logging to be less verbose for multipart uploads
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Global progress bars storage
+active_progress_bars = {}
 
 # --- Configuration ---
 # Configuration - Get from environment without defaults
@@ -234,6 +239,29 @@ def publish_to_video_processor(session_id: str, object_name: str, filename: str)
     except Exception as e:
         logger.error(f"Failed to publish message for session {session_id} to RabbitMQ: {e}")
 
+# --- Helper Functions ---
+def get_or_create_progress_bar(session_id: str, total_parts: int, filename: str) -> tqdm:
+    """Get existing progress bar or create a new one for multipart upload"""
+    if session_id not in active_progress_bars:
+        # Create a new progress bar with cleaner format
+        active_progress_bars[session_id] = tqdm(
+            total=total_parts,
+            desc=f"📤 {filename[:25]}{'...' if len(filename) > 25 else ''}",
+            unit="part",
+            position=len(active_progress_bars),
+            leave=True,
+            ncols=80,
+            bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{rate_fmt}]'
+        )
+    return active_progress_bars[session_id]
+
+def cleanup_progress_bar(session_id: str):
+    """Clean up progress bar when upload is complete"""
+    if session_id in active_progress_bars:
+        pbar = active_progress_bars[session_id]
+        pbar.close()
+        del active_progress_bars[session_id]
+
 # --- API Endpoints ---
 @app.post("/api/v1/uploads/initialize", response_model=UploadInitializationResponse)
 async def initialize_upload(request: UploadInitializationRequest):
@@ -349,6 +377,7 @@ async def upload_part(session_id: str, part_number: int, file: UploadFile = File
     session_data = json.loads(session_data_raw)
     object_name = session_data.get("object_name")
     upload_id = session_data.get("upload_id")
+    filename = session_data.get("filename", "unknown.file")
     
     if not upload_id or not object_name:
         raise HTTPException(status_code=400, detail="Invalid upload session")
@@ -357,17 +386,13 @@ async def upload_part(session_id: str, part_number: int, file: UploadFile = File
         # Read the file content
         content = await file.read()
         file_size = len(content)
-        
-        # Log detailed part upload info
         part_size_mb = file_size / (1024 * 1024)
-        logger.info(f"📤 Part {part_number} upload started - Session: {session_id[:8]}, Size: {part_size_mb:.1f}MB")
         
         # Generate part key for storage
         part_key = f"{object_name}.part{part_number}"
         
         # Ensure bucket exists
         if not minio_client.bucket_exists(MINIO_BUCKET):
-            logger.info(f"Creating bucket {MINIO_BUCKET}")
             minio_client.make_bucket(MINIO_BUCKET)
         
         # Upload part to MinIO
@@ -385,13 +410,35 @@ async def upload_part(session_id: str, part_number: int, file: UploadFile = File
         session_data["parts"] = parts
         redis_client.set(f"upload_session:{session_id}", json.dumps(session_data), ex=86400)
         
-        # Calculate total uploaded parts for progress
-        total_parts = session_data.get("total_parts", 1)
+        # Calculate total uploaded parts for progress  
+        total_parts = session_data.get("total_parts")
+        if not total_parts:
+            # Estimate total parts from file size (5MB per part)
+            file_size = session_data.get("file_size", 0)
+            total_parts = max(1, (file_size + 5*1024*1024 - 1) // (5*1024*1024))
+            session_data["total_parts"] = total_parts
         
-        # Send detailed progress update
+        # Update and display progress bar instead of verbose logging
+        try:
+            pbar = get_or_create_progress_bar(session_id, total_parts, filename)
+            pbar.update(1)
+            pbar.set_postfix_str(f"{part_size_mb:.1f}MB")
+            
+            # If all parts are uploaded, mark as complete and cleanup
+            if len(parts) >= total_parts:
+                pbar.set_description(f"✅ {filename[:30]}{'...' if len(filename) > 30 else ''}")
+                pbar.set_postfix_str("Complete")
+                # Clean up after a short delay to let user see completion
+                import threading
+                threading.Timer(3.0, lambda: cleanup_progress_bar(session_id)).start()
+        except Exception as e:
+            # Silent fallback - no logging to avoid clutter
+            pass
+        
+        # Send progress update to other services (silent)
         try:
             progress_percentage = (len(parts) / total_parts) * 45 + 5  # 5-50% for upload
-            progress_message = f"Uploading parts to storage... {len(parts)}/{total_parts} ({part_size_mb:.1f}MB) ✓"
+            progress_message = f"Uploading... {len(parts)}/{total_parts} parts"
             
             async with httpx.AsyncClient(timeout=5.0) as client:
                 await client.post(
@@ -402,11 +449,9 @@ async def upload_part(session_id: str, part_number: int, file: UploadFile = File
                         "status": "uploading"
                     }
                 )
-            logger.info(f"📊 Progress update sent: {session_id[:8]} - {progress_percentage:.0f}% - {progress_message}")
         except Exception as e:
-            logger.warning(f"Failed to send progress update: {e}")
-        
-        logger.info(f"✅ Part {part_number} uploaded successfully - Session: {session_id[:8]}, ETag: {result.etag}")
+            # Silent - don't log progress update failures
+            pass
         
         return {
             "status": "success",
@@ -415,7 +460,7 @@ async def upload_part(session_id: str, part_number: int, file: UploadFile = File
             "size": file_size
         }
     except Exception as e:
-        logger.error(f"❌ Error uploading part {part_number} for session {session_id}: {e}", exc_info=True)
+        logger.error(f"❌ Error uploading part {part_number} for session {session_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to upload part: {str(e)}")
 
 
@@ -721,14 +766,14 @@ async def update_progress(session_id: str, update: ProgressUpdate):
             
             # Store updated transcription entry
             redis_client.setex(transcription_key, 48 * 3600, json.dumps(transcription_data))
-            logger.info(f"Updated transcription entry for session {session_id} with new status: {update.status}")
+            # Only log transcription updates for important status changes
+            if update.status in ['completed', 'failed', 'error']:
+                logger.info(f"Updated transcription entry for session {session_id} with new status: {update.status}")
         
-        logger.info(f"Updated progress for session {session_id}: {update.progress}% - {update.message}")
-        
-        # Only log specific progress stages you want to see
+        # Only log completion, errors, or final status - no verbose upload progress
         if any(keyword in update.message.lower() for keyword in [
-            'uploading part', 'multipart', 'video', 'whisper', 'transcrib', 'todo', 'completed', 'failed'
-        ]):
+            'completed', 'failed', 'error'
+        ]) or update.progress >= 100:
             logger.info(f"📊 {session_id[:8]}: {update.progress}% - {update.message}")
         
         return {"success": True}
@@ -766,7 +811,9 @@ async def update_progress_alt(request: Request):
             json.dumps(progress_data)
         )
         
-        logger.info(f"Updated progress via alt route for session {session_id}: {data.get('progress', 0)}% - {data.get('message', 'Processing...')}")
+        # Only log significant progress updates
+        if data.get('progress', 0) >= 100 or 'completed' in data.get('message', '').lower() or 'failed' in data.get('message', '').lower():
+            logger.info(f"📊 Alt route - {session_id[:8]}: {data.get('progress', 0)}% - {data.get('message', 'Processing...')}")
         return {"success": True}
     except Exception as e:
         logger.error(f"Failed to update progress via alt route: {e}")
@@ -1225,6 +1272,152 @@ async def create_immediate_transcription(transcription_data: dict):
         logger.error(f"Failed to create immediate transcription entry: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to create entry: {str(e)}")
 
+@app.post("/save-transcript-edits")
+async def save_transcript_edits(edit_data: dict):
+    """
+    Save transcript edits (speaker names and action items) to MinIO for long-term storage
+    """
+    if not redis_client:
+        raise HTTPException(status_code=503, detail="Redis service unavailable")
+    if not minio_client:
+        raise HTTPException(status_code=503, detail="MinIO service unavailable")
+    
+    try:
+        session_id = edit_data.get("session_id")
+        if not session_id:
+            raise HTTPException(status_code=400, detail="Missing session_id")
+        
+        user_id = edit_data.get("user_id")
+        speaker_mapping = edit_data.get("speaker_mapping")
+        action_items = edit_data.get("action_items", [])
+        updated_at = edit_data.get("updated_at", datetime.now().isoformat())
+        saved_by = edit_data.get("saved_by", "Unknown User")
+        
+        # Create the edit data structure
+        edit_record = {
+            "session_id": session_id,
+            "user_id": user_id,
+            "speaker_mapping": speaker_mapping,
+            "action_items": action_items,
+            "updated_at": updated_at,
+            "saved_by": saved_by,
+            "edit_type": "user_edits",
+            "version": "1.0"
+        }
+        
+        # Generate object name for MinIO storage
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        object_name = f"transcript_edits/{session_id}/edits_{timestamp}.json"
+        
+        # Convert to JSON and upload to MinIO
+        json_data = json.dumps(edit_record, indent=2)
+        json_bytes = json_data.encode('utf-8')
+        
+        # Ensure bucket exists
+        if not minio_client.bucket_exists(MINIO_BUCKET):
+            minio_client.make_bucket(MINIO_BUCKET)
+        
+        # Upload to MinIO
+        result = minio_client.put_object(
+            bucket_name=MINIO_BUCKET,
+            object_name=object_name,
+            data=io.BytesIO(json_bytes),
+            length=len(json_bytes),
+            content_type="application/json"
+        )
+        
+        # Also save to Redis for quick access
+        redis_key = f"transcript_edits:{session_id}"
+        redis_client.setex(
+            redis_key,
+            7 * 24 * 3600,  # 7 days TTL
+            json_data
+        )
+        
+        logger.info(f"Successfully saved transcript edits for session {session_id} to MinIO: {object_name}")
+        
+        return {
+            "status": "success",
+            "message": "Transcript edits saved successfully",
+            "minio_object": object_name,
+            "etag": result.etag,
+            "redis_key": redis_key,
+            "timestamp": updated_at
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to save transcript edits for session {session_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to save edits: {str(e)}")
+
+@app.get("/get-transcript-edits/{session_id}")
+async def get_transcript_edits(session_id: str):
+    """
+    Retrieve saved transcript edits from Redis or MinIO
+    """
+    if not redis_client:
+        raise HTTPException(status_code=503, detail="Redis service unavailable")
+    
+    try:
+        # First try Redis for quick access
+        redis_key = f"transcript_edits:{session_id}"
+        cached_data = redis_client.get(redis_key)
+        
+        if cached_data:
+            edit_record = json.loads(cached_data)
+            return {
+                "status": "success",
+                "source": "redis_cache",
+                "edits": edit_record
+            }
+        
+        # If not in Redis, try to find in MinIO
+        if minio_client:
+            try:
+                # List objects with the session prefix
+                objects = minio_client.list_objects(
+                    MINIO_BUCKET, 
+                    prefix=f"transcript_edits/{session_id}/",
+                    recursive=True
+                )
+                
+                # Get the most recent edit file
+                latest_object = None
+                for obj in objects:
+                    if obj.object_name.endswith('.json'):
+                        latest_object = obj.object_name
+                
+                if latest_object:
+                    # Download and return the latest edits
+                    response = minio_client.get_object(MINIO_BUCKET, latest_object)
+                    edit_data = json.loads(response.read().decode('utf-8'))
+                    
+                    # Cache back to Redis for future quick access
+                    redis_client.setex(
+                        redis_key,
+                        7 * 24 * 3600,  # 7 days TTL
+                        json.dumps(edit_data)
+                    )
+                    
+                    return {
+                        "status": "success",
+                        "source": "minio_storage",
+                        "minio_object": latest_object,
+                        "edits": edit_data
+                    }
+                    
+            except Exception as e:
+                logger.warning(f"Failed to retrieve edits from MinIO for session {session_id}: {e}")
+        
+        # No edits found
+        return {
+            "status": "not_found",
+            "message": "No saved edits found for this transcript"
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to retrieve transcript edits for session {session_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve edits: {str(e)}")
+        
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8002)

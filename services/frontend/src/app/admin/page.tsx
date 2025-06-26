@@ -137,7 +137,8 @@ const AuthButton = styled.button<{ $variant?: 'primary' | 'secondary' }>`
     background: linear-gradient(90deg, #8850F2 0%, #A855F7 100%);
     color: white;
     &:hover {
-      opacity: 0.9;
+      transform: translateY(-1px);
+      box-shadow: 0 8px 25px rgba(168, 85, 247, 0.4);
     }
   ` : `
     background: rgba(255, 255, 255, 0.1);
@@ -426,6 +427,14 @@ const StatusBadge = styled.span<{ $status: string }>`
           color: #F87171;
           border-color: rgba(239, 68, 68, 0.3);
         `;
+      case 'processing':
+      case 'transcribing':
+      case 'uploading':
+        return `
+          background: rgba(254, 240, 138, 0.1);
+          color: #FDE047;
+          border-color: rgba(254, 240, 138, 0.3);
+        `;
       default:
         return `
           background: rgba(107, 114, 128, 0.1);
@@ -549,22 +558,59 @@ const ActionButtons = styled.div`
     }
 
     &.view {
-      background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
+      background: linear-gradient(135deg, #6D28D9 0%, #8B5CF6 100%);
       color: white;
+      
+      svg {
+        color: #D8B4FE;
+        transition: color 0.2s ease;
+      }
 
       &:hover {
         transform: translateY(-1px);
-        box-shadow: 0 8px 25px rgba(59, 130, 246, 0.4);
+        box-shadow: 0 8px 25px rgba(109, 40, 217, 0.4);
+        
+        svg {
+          color: #FFFFFF;
+        }
+      }
+    }
+
+    &.download {
+      background: linear-gradient(135deg, #4F46E5 0%, #6366F1 100%);
+      color: white;
+      
+      svg {
+        color: #C4B5FD;
+        transition: color 0.2s ease;
+      }
+
+      &:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 8px 25px rgba(79, 70, 229, 0.4);
+        
+        svg {
+          color: #FFFFFF;
+        }
       }
     }
 
     &.admin-toggle {
-      background: linear-gradient(135deg, #8850F2 0%, #A855F7 100%);
+      background: linear-gradient(135deg, #C026D3 0%, #E879F9 100%);
       color: white;
+      
+      svg {
+        color: #F5D0FE;
+        transition: color 0.2s ease;
+      }
 
       &:hover {
         transform: translateY(-1px);
-        box-shadow: 0 8px 25px rgba(136, 80, 242, 0.4);
+        box-shadow: 0 8px 25px rgba(192, 38, 211, 0.4);
+        
+        svg {
+          color: #FFFFFF;
+        }
       }
     }
   }
@@ -633,9 +679,9 @@ const TabButton = styled.button<{ $active: boolean }>`
   cursor: pointer;
   
   ${props => props.$active ? `
-    background: linear-gradient(135deg, #8850F2 0%, #A855F7 100%);
+    background: linear-gradient(135deg, #7C3AED 0%, #A78BFA 100%);
     color: #FFFFFF;
-    border-color: #8850F2;
+    border-color: #7C3AED;
   ` : `
     background: rgba(20, 20, 24, 0.5);
     color: #8D8D99;
@@ -645,6 +691,66 @@ const TabButton = styled.button<{ $active: boolean }>`
       color: #FFFFFF;
     }
   `}
+`;
+
+const AdminButton = styled.button`
+  padding: 0.625rem 1rem;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #C026D3 0%, #E879F9 100%);
+  color: white;
+  border: none;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  
+  &:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 25px rgba(192, 38, 211, 0.4);
+  }
+  
+  &:active {
+    transform: translateY(0);
+  }
+  
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+`;
+
+const DangerButton = styled.button`
+  padding: 0.625rem 1rem;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #BE123C 0%, #F43F5E 100%);
+  color: white;
+  border: none;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  
+  &:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 25px rgba(244, 63, 94, 0.4);
+  }
+  
+  &:active {
+    transform: translateY(0);
+  }
+  
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
 `;
 
 // Modern TypeScript interfaces with better typing

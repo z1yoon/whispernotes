@@ -157,7 +157,7 @@ export const SubmitButton = styled(motion.button)`
 
   &:hover {
     transform: translateY(-1px);
-    box-shadow: 0 10px 30px rgba(136, 80, 242, 0.3);
+    box-shadow: 0 10px 30px rgba(168, 85, 247, 0.3);
   }
 
   &:disabled {

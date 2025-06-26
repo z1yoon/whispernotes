@@ -48,12 +48,18 @@ const TodoCheckbox = styled.div`
   width: 20px;
   height: 20px;
   border-radius: 4px;
-  border: 2px solid #A855F7;
+  border: 2px solid #8850F2;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #FFFFFF;
   cursor: pointer;
+  transition: all 0.2s ease;
+  
+  &:hover {
+    border-color: #A855F7;
+    box-shadow: 0 0 8px rgba(136, 80, 242, 0.3);
+  }
 `;
 
 const TodoText = styled.div`
@@ -99,10 +105,12 @@ const TodoInput = styled.input`
   padding: 0.75rem;
   color: #FFFFFF;
   font-size: 0.875rem;
+  transition: all 0.2s ease;
   
   &:focus {
     outline: none;
-    border-color: rgba(136, 80, 242, 0.4);
+    border-color: #8850F2;
+    box-shadow: 0 0 0 3px rgba(136, 80, 242, 0.15);
   }
   
   &::placeholder {
