@@ -25,15 +25,21 @@ app.add_middleware(
 )
 
 # Configuration
-REDIS_URL = os.getenv("REDIS_URL")
+REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
 
 # DeepSeek Configuration
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 DEEPSEEK_API_BASE = os.getenv("DEEPSEEK_API_BASE")
 DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL")
 
-# Initialize Redis client
-redis_client = redis.from_url(REDIS_URL, decode_responses=True)
+# Initialize Redis client with error handling
+try:
+    redis_client = redis.from_url(REDIS_URL, decode_responses=True)
+    redis_client.ping()  # Test connection
+    logger.info(f"✅ Redis connection established: {REDIS_URL}")
+except Exception as e:
+    logger.error(f"❌ Redis connection failed: {e}")
+    redis_client = None
 
 class LLMAnalyzer:
     def __init__(self):
@@ -508,13 +514,20 @@ async def process_transcript(transcript_data: dict):
         analyzer = LLMAnalyzer()
         analysis_results = await analyzer.analyze_transcript(analysis_input)
         
-        # Store results in Redis
-        redis_key = f"llm_analysis:{session_id}"
-        redis_client.setex(
-            redis_key,
-            24 * 3600,  # 24 hours
-            json.dumps(analysis_results)
-        )
+        # Store results in Redis (if available)
+        if redis_client:
+            try:
+                redis_key = f"llm_analysis:{session_id}"
+                redis_client.setex(
+                    redis_key,
+                    24 * 3600,  # 24 hours
+                    json.dumps(analysis_results)
+                )
+                logger.info(f"Analysis results stored in Redis for session: {session_id}")
+            except Exception as e:
+                logger.error(f"Failed to store analysis in Redis: {e}")
+        else:
+            logger.warning("Redis not available - analysis results not cached")
         
         logger.info(f"Analysis completed for session: {session_id}")
         return {
@@ -531,29 +544,41 @@ async def process_transcript(transcript_data: dict):
 async def get_analysis_results(session_id: str):
     """Get analysis results for a session"""
     try:
+        if not redis_client:
+            logger.error("Redis client not available")
+            raise HTTPException(status_code=503, detail="Analysis storage not available")
+        
         redis_key = f"llm_analysis:{session_id}"
         data = redis_client.get(redis_key)
         
         if not data:
+            logger.warning(f"No analysis data found for session: {session_id}")
             raise HTTPException(status_code=404, detail="Analysis results not found")
         
         analysis_results = json.loads(data)
+        logger.info(f"Retrieved analysis results for session: {session_id}")
         return analysis_results
         
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON decode error for session {session_id}: {e}")
         raise HTTPException(status_code=500, detail="Invalid analysis data")
+    except redis.RedisError as e:
+        logger.error(f"Redis error retrieving analysis for session {session_id}: {e}")
+        raise HTTPException(status_code=503, detail="Analysis storage temporarily unavailable")
     except Exception as e:
-        logger.error(f"Error retrieving analysis: {e}")
+        logger.error(f"Error retrieving analysis for session {session_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve analysis")
 
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    redis_status = "ok"
-    try:
-        redis_client.ping()
-    except Exception as e:
-        redis_status = f"error: {str(e)}"
+    redis_status = "not_available"
+    if redis_client:
+        try:
+            redis_client.ping()
+            redis_status = "ok"
+        except Exception as e:
+            redis_status = f"error: {str(e)}"
     
     return {
         "status": "ok",

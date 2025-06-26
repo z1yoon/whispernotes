@@ -17,7 +17,8 @@
       "Bash(docker logs:*)",
       "Bash(find:*)",
       "Bash(redis-cli:*)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(docker cp:*)"
     ],
     "deny": []
   }

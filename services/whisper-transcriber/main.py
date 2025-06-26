@@ -68,42 +68,63 @@ SAMPLE_RATE = 16000
 
 # Simplified model loading based on WhisperX best practices
 def load_whisper_model(model_name="base"):  # Changed default from "medium" to "base"
-    """Load WhisperX model following official guidelines"""
+    """Load WhisperX model with faster-whisper fallback"""
     if "whisper" not in models:
+        logger.info(f"Loading whisper model: {model_name} on {DEVICE}")
+        
+        # Try faster-whisper first (more reliable)
         try:
-            logger.info(f"Loading WhisperX model: {model_name} on {DEVICE}")
+            import faster_whisper
+            logger.info("Attempting to load faster-whisper model")
+            models["whisper"] = faster_whisper.WhisperModel(
+                model_name,
+                device=DEVICE,
+                compute_type=COMPUTE_TYPE
+            )
+            logger.info(f"✅ Successfully loaded faster-whisper {model_name} model")
+            models["model_type"] = "faster_whisper"
+            return models["whisper"]
             
-            # Use WhisperX recommended settings
+        except Exception as fw_error:
+            logger.warning(f"faster-whisper failed: {fw_error}")
+        
+        # Try WhisperX as fallback
+        try:
+            logger.info("Attempting to load WhisperX model as fallback")
             models["whisper"] = whisperx.load_model(
                 model_name, 
                 device=DEVICE, 
                 compute_type=COMPUTE_TYPE,
-                language=None  # Let WhisperX detect language
+                language=None,  # Let WhisperX detect language
+                vad_filter=False  # Disable VAD to avoid download issues
             )
-            logger.info(f"✅ Successfully loaded {model_name} model")
+            logger.info(f"✅ Successfully loaded WhisperX {model_name} model")
+            models["model_type"] = "whisperx"
+            return models["whisper"]
             
-        except Exception as e:
-            logger.error(f"❌ Failed to load model {model_name}: {e}")
-            
-            # Try fallback to base model only (no complex fallback chain)
-            if model_name != "base":
-                logger.info("Trying base model as fallback...")
-                try:
-                    models["whisper"] = whisperx.load_model(
-                        "base", 
-                        device=DEVICE, 
-                        compute_type="int8",  # Always use int8 for fallback
-                        language=None
-                    )
-                    logger.info("✅ Successfully loaded base model as fallback")
-                except Exception as fallback_error:
-                    logger.error(f"❌ Fallback model also failed: {fallback_error}")
-                    # Don't raise error, continue with mock processing
-                    logger.warning("Continuing without WhisperX model - using mock transcription")
-                    models["whisper"] = "mock_model"
-            else:
-                logger.warning("Using mock transcription model")
-                models["whisper"] = "mock_model"
+        except Exception as wx_error:
+            logger.warning(f"WhisperX also failed: {wx_error}")
+        
+        # Final fallback: try base model if not already tried
+        if model_name != "base":
+            logger.info("Trying base model as final fallback...")
+            try:
+                import faster_whisper
+                models["whisper"] = faster_whisper.WhisperModel(
+                    "base",
+                    device=DEVICE,
+                    compute_type="int8"
+                )
+                logger.info("✅ Successfully loaded faster-whisper base model as fallback")
+                models["model_type"] = "faster_whisper"
+                return models["whisper"]
+            except Exception as fallback_error:
+                logger.error(f"❌ Base model fallback also failed: {fallback_error}")
+        
+        # All methods failed, use mock
+        logger.warning("All model loading methods failed - using mock transcription")
+        models["whisper"] = "mock_model"
+        models["model_type"] = "mock"
                 
     return models["whisper"]
 
@@ -580,7 +601,7 @@ def load_diarization_model():
     return models["diarization"]
 
 def transcribe_audio(audio_path: str, model, language: str = None):
-    """Transcribe audio using WhisperX following official guidelines"""
+    """Transcribe audio using WhisperX or faster-whisper"""
     try:
         logger.info(f"Starting transcription for: {audio_path}")
         
@@ -598,32 +619,71 @@ def transcribe_audio(audio_path: str, model, language: str = None):
                 "language": language or "en"
             }
         
-        # Load audio using whisperx
-        audio = whisperx.load_audio(audio_path)
-        
         # Clear memory before processing
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
             gc.collect()
         
-        # Use WhisperX standard API with proper batch size
-        batch_size = BATCH_SIZE if DEVICE == "cuda" else max(1, BATCH_SIZE // 2)
-        logger.info(f"Transcribing with batch size: {batch_size}")
+        model_type = models.get("model_type", "whisperx")
         
-        # Transcribe following WhisperX pattern
-        result = model.transcribe(
-            audio, 
-            batch_size=batch_size,
-            language=language
-        )
-        
-        # Memory cleanup after transcription
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            gc.collect()
+        if model_type == "faster_whisper":
+            logger.info("Using faster-whisper for transcription")
             
-        logger.info("Transcription completed successfully")
-        return result
+            # Use faster-whisper directly
+            segments, info = model.transcribe(
+                audio_path,
+                language=language,
+                beam_size=5,
+                word_timestamps=True
+            )
+            
+            # Convert to WhisperX format
+            result_segments = []
+            for segment in segments:
+                result_segments.append({
+                    "start": segment.start,
+                    "end": segment.end, 
+                    "text": segment.text,
+                    "words": [
+                        {
+                            "word": word.word,
+                            "start": word.start,
+                            "end": word.end,
+                            "score": getattr(word, 'probability', 0.0)
+                        } for word in segment.words
+                    ] if segment.words else []
+                })
+            
+            return {
+                "segments": result_segments,
+                "language": info.language,
+                "language_probability": info.language_probability
+            }
+        
+        else:
+            logger.info("Using WhisperX for transcription")
+            
+            # Load audio using whisperx
+            audio = whisperx.load_audio(audio_path)
+            
+            # Use WhisperX standard API with proper batch size
+            batch_size = BATCH_SIZE if DEVICE == "cuda" else max(1, BATCH_SIZE // 2)
+            logger.info(f"Transcribing with batch size: {batch_size}")
+            
+            # Transcribe following WhisperX pattern
+            result = model.transcribe(
+                audio, 
+                batch_size=batch_size,
+                language=language
+            )
+            
+            # Memory cleanup after transcription
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                gc.collect()
+                
+            logger.info("Transcription completed successfully")
+            return result
         
     except Exception as e:
         logger.error(f"Transcription failed: {e}")
