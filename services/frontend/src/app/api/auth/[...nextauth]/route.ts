@@ -80,12 +80,14 @@ export const authOptions = {
       if (user) {
         token.accessToken = user.accessToken
         token.role = user.role
+        token.id = user.id  // Preserve user ID in token
       }
       return token
     },
     async session({ session, token }) {
       session.accessToken = token.accessToken
       session.user.role = token.role
+      session.user.id = token.id  // Set user ID in session
       return session
     }
   },

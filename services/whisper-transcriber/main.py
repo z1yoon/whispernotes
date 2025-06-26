@@ -916,9 +916,10 @@ def process_upload_message(ch, method, properties, body):
             ch.basic_ack(delivery_tag=method.delivery_tag)
             return
             
-        # Check if this is an audio file that can be directly transcribed
-        if original_filename and any(ext in original_filename.lower() for ext in ['.mp3', '.wav', '.m4a', '.flac', '.aac']):
-            logger.info(f"Processing audio file directly: {original_filename}")
+        # Check if this is a media file that can be transcribed (audio or video)
+        if original_filename and any(ext in original_filename.lower() for ext in ['.mp3', '.wav', '.m4a', '.flac', '.aac', '.mp4', '.avi', '.mov', '.mkv', '.webm']):
+            file_type = "audio" if any(ext in original_filename.lower() for ext in ['.mp3', '.wav', '.m4a', '.flac', '.aac']) else "video"
+            logger.info(f"Processing {file_type} file: {original_filename}")
             
             # Create download path
             temp_dir = "/tmp/whisper_temp"
@@ -957,10 +958,10 @@ def process_upload_message(ch, method, properties, body):
                 participant_count = metadata.get("participant_count", 2)
                 speaker_names = metadata.get("speaker_names")
             
-            # Start transcription directly
+            # Start transcription directly (WhisperX handles both audio and video)
             try:
                 asyncio.run(transcribe_async(download_path, session_id, participant_count, None, speaker_names))
-                logger.info(f"Transcription completed for audio file: {session_id}")
+                logger.info(f"Transcription completed for {file_type} file: {session_id}")
                 
                 # Clean up downloaded file
                 try:
@@ -969,11 +970,11 @@ def process_upload_message(ch, method, properties, body):
                     pass
                     
             except Exception as e:
-                logger.error(f"Error transcribing audio file {session_id}: {e}")
+                logger.error(f"Error transcribing {file_type} file {session_id}: {e}")
                 asyncio.run(send_progress_update(session_id, 0, f"Transcription failed: {str(e)}", "error"))
         else:
-            # This is a video file - let video-processor handle it
-            logger.info(f"Video file detected, letting video-processor handle: {original_filename}")
+            # Unknown file type
+            logger.warning(f"Unsupported file type: {original_filename}")
         
         # Acknowledge message
         ch.basic_ack(delivery_tag=method.delivery_tag)
