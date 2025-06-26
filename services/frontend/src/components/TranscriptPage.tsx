@@ -6,8 +6,6 @@ import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft,
-  Download,
-  Share2,
   Clock,
   Users,
   CheckSquare,
@@ -18,15 +16,11 @@ import {
   Edit,
   Save,
   X,
-  Settings,
   UserPlus
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 // TypeScript interfaces
-interface ActionButtonProps {
-  primary?: boolean;
-}
 
 interface SpeakerAvatarProps {
   speaker: string;
@@ -54,29 +48,31 @@ interface TranscriptSegment {
 }
 
 interface ActionItem {
-  id: number;
   task: string;
-  assignee: string;
-  deadline: string;
+  assignee?: string;
+  deadline?: string;
   priority: string;
-  source_time: string;
-  completed: boolean;
+  context?: string;
+  category?: string;
+  completed?: boolean;
 }
 
 interface SpeakerMap {
   [key: string]: string;
 }
 
-// Styled components with proper typing
+// Styled components following admin design patterns
 const TranscriptContainer = styled.div`
   min-height: 100vh;
-  background: #f8fafc;
+  background: linear-gradient(90deg, #09090A 0%, #181719 37%, #36343B 100%);
+  color: #FFFFFF;
 `;
 
 const Header = styled.div`
-  background: white;
-  border-bottom: 1px solid #e2e8f0;
-  padding: 1rem 2rem;
+  background: rgba(32, 32, 36, 0.9);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(136, 80, 242, 0.2);
+  padding: 1.5rem 2rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -92,24 +88,26 @@ const HeaderLeft = styled.div`
 `;
 
 const BackButton = styled.button`
-  background: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  color: #64748b;
+  background: rgba(32, 32, 36, 0.65);
+  border: 1px solid rgba(136, 80, 242, 0.3);
+  border-radius: 12px;
+  color: #FFFFFF;
   padding: 0.75rem;
   cursor: pointer;
   transition: all 0.2s ease;
+  backdrop-filter: blur(14px);
   
   &:hover {
-    background: #f8fafc;
-    color: #1e293b;
+    background: rgba(136, 80, 242, 0.2);
+    transform: translateY(-1px);
   }
 `;
 
 const HeaderTitle = styled.h1`
-  color: #1e293b;
+  color: #FFFFFF;
   font-size: 1.5rem;
-  font-weight: 600;
+  font-weight: 700;
+  font-family: 'Inter', sans-serif;
   margin: 0;
 `;
 
@@ -117,33 +115,6 @@ const HeaderActions = styled.div`
   display: flex;
   gap: 0.75rem;
   align-items: center;
-`;
-
-const ActionButton = styled.button<ActionButtonProps>`
-  background: ${props => props.primary ? 
-    'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 
-    'white'
-  };
-  border: 1px solid ${props => props.primary ? 
-    'transparent' : 
-    '#e2e8f0'
-  };
-  border-radius: 8px;
-  color: ${props => props.primary ? 'white' : '#64748b'};
-  padding: 0.75rem 1rem;
-  cursor: pointer;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  transition: all 0.2s ease;
-  
-  &:hover {
-    background: ${props => props.primary ? 
-      'linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%)' : 
-      '#f8fafc'
-    };
-  }
 `;
 
 const MainContent = styled.div`
@@ -175,10 +146,25 @@ const Sidebar = styled.div`
 `;
 
 const Card = styled(motion.div)`
-  background: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
+  background: rgba(32, 32, 36, 0.65);
+  border-radius: 24px;
+  backdrop-filter: blur(14px);
+  box-shadow: 0px 12px 40px rgba(0, 0, 0, 0.45);
   padding: 2rem;
+  position: relative;
+  border: 1px solid rgba(136, 80, 242, 0.2);
+  
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    padding: 2px;
+    border-radius: inherit;
+    background: linear-gradient(135deg, #8850F2 0%, #A855F7 30%, #B0E54F 100%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    opacity: 0.3;
+  }
 `;
 
 const CardHeader = styled.div`
@@ -186,11 +172,14 @@ const CardHeader = styled.div`
   align-items: center;
   justify-content: space-between;
   margin-bottom: 1.5rem;
+  position: relative;
+  z-index: 1;
   
   h3 {
-    color: #1e293b;
+    color: #FFFFFF;
     font-size: 1.25rem;
-    font-weight: 600;
+    font-weight: 700;
+    font-family: 'Inter', sans-serif;
     margin: 0;
     display: flex;
     align-items: center;
@@ -207,31 +196,36 @@ const MetadataGrid = styled.div`
 
 const MetadataItem = styled.div`
   text-align: center;
-  padding: 1rem;
-  background: #f8fafc;
-  border-radius: 8px;
+  padding: 1.5rem;
+  background: rgba(20, 20, 24, 0.5);
+  border-radius: 16px;
+  border: 1px solid rgba(136, 80, 242, 0.2);
+  position: relative;
+  z-index: 1;
   
   .icon {
-    width: 40px;
-    height: 40px;
-    border-radius: 8px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #8850F2 0%, #A855F7 100%);
     display: flex;
     align-items: center;
     justify-content: center;
-    margin: 0 auto 0.5rem;
+    margin: 0 auto 0.75rem;
   }
   
   .value {
-    color: #1e293b;
-    font-size: 1.125rem;
-    font-weight: 600;
-    margin: 0 0 0.25rem 0;
+    color: #FFFFFF;
+    font-size: 1.5rem;
+    font-weight: 700;
+    font-family: 'Inter', sans-serif;
+    margin: 0 0 0.5rem 0;
   }
   
   .label {
-    color: #64748b;
+    color: #8D8D99;
     font-size: 0.875rem;
+    font-weight: 600;
     margin: 0;
   }
 `;
@@ -239,24 +233,27 @@ const MetadataItem = styled.div`
 const TranscriptContent = styled.div`
   max-height: 600px;
   overflow-y: auto;
+  position: relative;
+  z-index: 1;
   
   &::-webkit-scrollbar {
-    width: 6px;
+    width: 8px;
   }
   
   &::-webkit-scrollbar-track {
-    background: #f1f5f9;
+    background: rgba(20, 20, 24, 0.3);
+    border-radius: 4px;
   }
   
   &::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
-    border-radius: 3px;
+    background: linear-gradient(135deg, #8850F2 0%, #A855F7 100%);
+    border-radius: 4px;
   }
 `;
 
 const TranscriptSegment = styled.div`
   padding: 1.5rem 0;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid rgba(136, 80, 242, 0.1);
   
   &:last-child {
     border-bottom: none;
@@ -291,21 +288,21 @@ const SpeakerDetails = styled.div`
   flex: 1;
   
   .name {
-    color: #1e293b;
-    font-weight: 600;
+    color: #FFFFFF;
+    font-weight: 700;
     font-size: 0.875rem;
     margin: 0 0 0.25rem 0;
   }
   
   .time {
-    color: #64748b;
+    color: #8D8D99;
     font-size: 0.75rem;
     margin: 0;
   }
 `;
 
 const TranscriptText = styled.p`
-  color: #374151;
+  color: #C4C4CC;
   line-height: 1.6;
   margin: 0;
   padding-left: 3rem;
@@ -319,23 +316,25 @@ const ActionItemsList = styled.div`
 `;
 
 const ActionItem = styled.div`
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 1rem;
+  background: rgba(20, 20, 24, 0.5);
+  border: 1px solid rgba(136, 80, 242, 0.2);
+  border-radius: 12px;
+  padding: 1.5rem;
+  position: relative;
+  z-index: 1;
   
   .header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.75rem;
   }
   
   .task {
-    color: #1e293b;
+    color: #FFFFFF;
     font-size: 0.875rem;
-    font-weight: 500;
-    margin: 0 0 0.5rem 0;
+    font-weight: 600;
+    margin: 0 0 0.75rem 0;
     line-height: 1.4;
   }
   
@@ -343,37 +342,39 @@ const ActionItem = styled.div`
     display: flex;
     gap: 1rem;
     font-size: 0.75rem;
-    color: #64748b;
+    color: #8D8D99;
+    flex-wrap: wrap;
   }
 `;
 
 const PriorityBadge = styled.span<PriorityBadgeProps>`
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
   font-size: 0.75rem;
-  font-weight: 600;
+  font-weight: 700;
+  border: 1px solid;
   background: ${props => {
     switch (props.priority?.toLowerCase()) {
-      case 'high': return '#fef2f2';
-      case 'medium': return '#fefce8';
-      case 'low': return '#f0fdf4';
-      default: return '#f8fafc';
+      case 'high': return 'rgba(239, 68, 68, 0.1)';
+      case 'medium': return 'rgba(251, 191, 36, 0.1)';
+      case 'low': return 'rgba(34, 197, 94, 0.1)';
+      default: return 'rgba(136, 80, 242, 0.1)';
     }
   }};
   color: ${props => {
     switch (props.priority?.toLowerCase()) {
-      case 'high': return '#dc2626';
-      case 'medium': return '#ca8a04';
-      case 'low': return '#16a34a';
-      default: return '#64748b';
+      case 'high': return '#F87171';
+      case 'medium': return '#FCD34D';
+      case 'low': return '#4ADE80';
+      default: return '#A855F7';
     }
   }};
-  border: 1px solid ${props => {
+  border-color: ${props => {
     switch (props.priority?.toLowerCase()) {
-      case 'high': return '#fecaca';
-      case 'medium': return '#fde047';
-      case 'low': return '#bbf7d0';
-      default: return '#e2e8f0';
+      case 'high': return 'rgba(239, 68, 68, 0.3)';
+      case 'medium': return 'rgba(251, 191, 36, 0.3)';
+      case 'low': return 'rgba(34, 197, 94, 0.3)';
+      default: return 'rgba(136, 80, 242, 0.3)';
     }
   }};
 `;
@@ -384,16 +385,24 @@ const LoadingState = styled.div`
   align-items: center;
   justify-content: center;
   padding: 3rem;
-  color: #64748b;
+  color: #8D8D99;
+  position: relative;
+  z-index: 1;
   
   .spinner {
     width: 48px;
     height: 48px;
-    border: 3px solid #e2e8f0;
-    border-top: 3px solid #667eea;
+    border: 3px solid rgba(136, 80, 242, 0.2);
+    border-top: 3px solid #8850F2;
     border-radius: 50%;
     animation: spin 1s linear infinite;
     margin-bottom: 1rem;
+  }
+  
+  h3 {
+    color: #FFFFFF;
+    font-weight: 700;
+    font-family: 'Inter', sans-serif;
   }
   
   @keyframes spin {
@@ -405,40 +414,18 @@ const LoadingState = styled.div`
 const CopyButton = styled.button`
   background: none;
   border: none;
-  color: #64748b;
+  color: #8D8D99;
   cursor: pointer;
-  padding: 0.25rem;
-  border-radius: 4px;
+  padding: 0.5rem;
+  border-radius: 8px;
   transition: all 0.2s;
   
   &:hover {
-    background: #f1f5f9;
-    color: #1e293b;
+    background: rgba(136, 80, 242, 0.2);
+    color: #FFFFFF;
   }
 `;
 
-const FloatingButton = styled(motion.button)`
-  position: fixed;
-  bottom: 2rem;
-  right: 2rem;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  width: 3.5rem;
-  height: 3.5rem;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-  cursor: pointer;
-  z-index: 100;
-  transition: all 0.2s ease;
-  
-  &:hover {
-    transform: scale(1.1);
-  }
-`;
 
 const DialogOverlay = styled(motion.div)`
   position: fixed;
@@ -525,10 +512,11 @@ const SpeakerInput = styled.input`
 `;
 
 const StyledActionButton = styled.button<{ variant?: 'primary' | 'secondary' }>`
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
+  padding: 0.75rem 1.5rem;
+  border-radius: 12px;
   font-size: 0.875rem;
-  font-weight: 500;
+  font-weight: 600;
+  font-family: 'Roboto', sans-serif;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -536,21 +524,23 @@ const StyledActionButton = styled.button<{ variant?: 'primary' | 'secondary' }>`
   transition: all 0.2s ease;
   
   ${props => props.variant === 'primary' ? `
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #8850F2 0%, #A855F7 100%);
     color: white;
     border: none;
     
     &:hover {
-      opacity: 0.9;
+      transform: translateY(-1px);
+      box-shadow: 0 8px 25px rgba(136, 80, 242, 0.4);
     }
   ` : `
-    background: white;
-    color: #64748b;
-    border: 1px solid #e2e8f0;
+    background: rgba(32, 32, 36, 0.65);
+    color: #FFFFFF;
+    border: 1px solid rgba(136, 80, 242, 0.3);
+    backdrop-filter: blur(14px);
     
     &:hover {
-      background: #f8fafc;
-      color: #1e293b;
+      background: rgba(136, 80, 242, 0.2);
+      transform: translateY(-1px);
     }
   `}
 `;
@@ -591,6 +581,7 @@ const TranscriptPage = () => {
   const [showSpeakerEditor, setShowSpeakerEditor] = useState(false);
   const [speakerMap, setSpeakerMap] = useState<SpeakerMap>({});
   const [originalSpeakerMap, setOriginalSpeakerMap] = useState<SpeakerMap>({});
+  const [loadingTodos, setLoadingTodos] = useState(false);
 
   useEffect(() => {
     if (fileId) {
@@ -642,14 +633,13 @@ const TranscriptPage = () => {
         return;
       }
       
-      // Format data for our UI if needed
+      // Format data for our UI
       const formattedData = {
         filename: data.filename || `Transcription ${fileId}`,
         duration: data.duration || 0,
         participant_count: data.participant_count || 
           (data.speaker_names ? data.speaker_names.length : 2),
         language: data.language || 'en',
-        // Map segments to our expected format if needed
         segments: data.segments.map((segment: any, index: number) => ({
           id: segment.id || index + 1,
           speaker: segment.speaker || `SPEAKER_${index % 2}`,
@@ -662,27 +652,8 @@ const TranscriptPage = () => {
       
       setTranscriptData(formattedData);
       
-      // For now, use default action items since we don't have LLM analysis endpoint yet
-      setActionItems([
-        {
-          id: 1,
-          task: "Review transcript for accuracy",
-          assignee: "Current User",
-          deadline: "Today",
-          priority: "Medium",
-          source_time: "0-10s",
-          completed: false
-        },
-        {
-          id: 2,
-          task: "Update speaker names if necessary",
-          assignee: "Current User",
-          deadline: "Today",
-          priority: "Low",
-          source_time: "entire transcript",
-          completed: false
-        }
-      ]);
+      // Fetch action items from LLM service
+      await fetchActionItems();
 
       setLoading(false);
     } catch (error) {
@@ -690,6 +661,45 @@ const TranscriptPage = () => {
       setError(error instanceof Error ? error.message : 'Failed to load transcript data');
       setLoading(false);
       toast.error('Failed to load transcript');
+    }
+  };
+  
+  const fetchActionItems = async () => {
+    try {
+      setLoadingTodos(true);
+      
+      // Fetch LLM analysis data that contains action items
+      const response = await fetch(`/api/analysis/${fileId}`);
+      
+      if (response.ok) {
+        const analysisData = await response.json();
+        
+        if (analysisData.analysis?.analysis?.action_items) {
+          const todos = analysisData.analysis.analysis.action_items.map((item: any) => ({
+            task: item.task || 'Unknown task',
+            assignee: item.assignee,
+            deadline: item.deadline,
+            priority: item.priority || 'Medium',
+            context: item.context,
+            category: item.category,
+            completed: false
+          }));
+          setActionItems(todos);
+        } else {
+          // No action items found, set empty array
+          setActionItems([]);
+        }
+      } else {
+        // If LLM analysis fails, show empty state
+        console.warn('LLM analysis not available for this transcript');
+        setActionItems([]);
+      }
+    } catch (error) {
+      console.error('Error fetching action items:', error);
+      // Don't show error toast for this - just show empty state
+      setActionItems([]);
+    } finally {
+      setLoadingTodos(false);
     }
   };
 
@@ -708,21 +718,6 @@ const TranscriptPage = () => {
     return `${minutes}m`;
   };
 
-  const handleDownload = () => {
-    toast.success('Download started');
-  };
-
-  const handleShare = () => {
-    if (navigator.share) {
-      navigator.share({
-        title: transcriptData?.filename || 'Meeting Transcript',
-        url: window.location.href
-      });
-    } else {
-      navigator.clipboard.writeText(window.location.href);
-      toast.success('Link copied to clipboard');
-    }
-  };
 
   const copySegmentText = async (text: string, segmentId: number) => {
     try {
@@ -890,10 +885,10 @@ const TranscriptPage = () => {
         </Header>
         <MainContent>
           <Card>
-            <div style={{ textAlign: 'center', padding: '3rem' }}>
-              <AlertTriangle size={48} color="#dc2626" style={{ marginBottom: '1rem' }} />
-              <h3 style={{ color: '#1e293b', marginBottom: '0.5rem' }}>Error Loading Transcript</h3>
-              <p style={{ color: '#64748b' }}>{error}</p>
+            <div style={{ textAlign: 'center', padding: '3rem', position: 'relative', zIndex: 1 }}>
+              <AlertTriangle size={48} color="#F87171" style={{ marginBottom: '1rem' }} />
+              <h3 style={{ color: '#FFFFFF', marginBottom: '0.5rem', fontFamily: 'Inter, sans-serif', fontWeight: 700 }}>Error Loading Transcript</h3>
+              <p style={{ color: '#8D8D99' }}>{error}</p>
             </div>
           </Card>
         </MainContent>
@@ -911,14 +906,7 @@ const TranscriptPage = () => {
           <HeaderTitle>{transcriptData?.filename || 'Transcript'}</HeaderTitle>
         </HeaderLeft>
         <HeaderActions>
-          <ActionButton onClick={handleShare}>
-            <Share2 size={16} />
-            Share
-          </ActionButton>
-          <ActionButton onClick={handleDownload} primary>
-            <Download size={16} />
-            Download
-          </ActionButton>
+          {/* Simplified - removed download and share buttons */}
         </HeaderActions>
       </Header>
 
@@ -1025,35 +1013,41 @@ const TranscriptPage = () => {
                 </h3>
               </CardHeader>
               
-              <ActionItemsList>
-                {actionItems?.map((item: ActionItem) => (
-                  <ActionItem key={item.id}>
-                    <div className="header">
-                      <PriorityBadge priority={item.priority}>
-                        {item.priority}
-                      </PriorityBadge>
-                    </div>
-                    <div className="task">{item.task}</div>
-                    <div className="meta">
-                      <span><strong>Assignee:</strong> {item.assignee}</span>
-                      <span><strong>Due:</strong> {item.deadline}</span>
-                      <span><strong>From:</strong> {item.source_time}</span>
-                    </div>
-                  </ActionItem>
-                ))}
-              </ActionItemsList>
+              {loadingTodos ? (
+                <div style={{ textAlign: 'center', padding: '2rem' }}>
+                  <div className="spinner" style={{ width: '32px', height: '32px', border: '2px solid rgba(136, 80, 242, 0.2)', borderTop: '2px solid #8850F2', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 1rem' }}></div>
+                  <p style={{ color: '#8D8D99', fontSize: '0.875rem' }}>Generating action items...</p>
+                </div>
+              ) : actionItems.length > 0 ? (
+                <ActionItemsList>
+                  {actionItems.map((item: ActionItem, index: number) => (
+                    <ActionItem key={index}>
+                      <div className="header">
+                        <PriorityBadge priority={item.priority}>
+                          {item.priority.charAt(0).toUpperCase() + item.priority.slice(1)}
+                        </PriorityBadge>
+                      </div>
+                      <div className="task">{item.task}</div>
+                      <div className="meta">
+                        {item.assignee && <span><strong>Assignee:</strong> {item.assignee}</span>}
+                        {item.deadline && <span><strong>Due:</strong> {item.deadline}</span>}
+                        {item.context && <span><strong>Context:</strong> {item.context}</span>}
+                        {item.category && <span><strong>Category:</strong> {item.category}</span>}
+                      </div>
+                    </ActionItem>
+                  ))}
+                </ActionItemsList>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '2rem' }}>
+                  <CheckSquare size={32} color="#8D8D99" style={{ marginBottom: '1rem' }} />
+                  <p style={{ color: '#8D8D99', fontSize: '0.875rem' }}>No action items found in this transcript</p>
+                </div>
+              )}
             </Card>
           </Sidebar>
         </ContentGrid>
       </MainContent>
 
-      <FloatingButton
-        onClick={() => setShowSpeakerEditor(true)}
-        whileHover={{ scale: 1.1 }}
-        whileTap={{ scale: 0.9 }}
-      >
-        <Settings size={20} />
-      </FloatingButton>
 
       {showSpeakerEditor && <SpeakerNameEditor />}
     </TranscriptContainer>
