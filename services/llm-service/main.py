@@ -192,12 +192,14 @@ Even from casual conversations, you can find valuable actions like:
 - "Schedule time to discuss [topic] further"
 - "Document the [decision/idea] for future reference"
 
-## JSON format (MUST return valid JSON):
+## Output format (MUST return valid JSON):
+Return a simple JSON array where each todo item is a single paragraph combining the task and context naturally. No titles or structured formatting needed.
+
 ```json
 [
     {{
-        "task": "Clear, actionable task description",
-        "context": "Why this is valuable based on the conversation"
+        "task": "Clear, actionable task in plain paragraph format including relevant context from the conversation",
+        "context": ""
     }}
 ]
 ```

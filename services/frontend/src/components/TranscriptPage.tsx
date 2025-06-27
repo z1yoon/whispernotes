@@ -21,6 +21,7 @@ import {
   Plus
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useHttpClient } from '../lib/http-client';
 
 // TypeScript interfaces
 
@@ -1263,6 +1264,7 @@ const TranscriptPage = () => {
   const router = useRouter();
   const params = useParams();
   const fileId = params?.fileId;
+  const httpClient = useHttpClient();
   const [transcriptData, setTranscriptData] = useState<TranscriptData | null>(null);
   const [actionItems, setActionItems] = useState<ActionItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1317,7 +1319,7 @@ const TranscriptPage = () => {
       setLoading(true);
       
       // Fetch transcription data from API
-      const response = await fetch(`/api/transcripts/${fileId}`);
+      const response = await httpClient.get(`/api/transcripts/${fileId}`);
       
       if (!response.ok) {
         const errorData = await response.json();
@@ -1369,7 +1371,7 @@ const TranscriptPage = () => {
       setLoadingTodos(true);
       
       // Fetch LLM analysis data that contains action items
-      const response = await fetch(`/api/analysis/${fileId}`);
+      const response = await httpClient.get(`/api/analysis/${fileId}`);
       
       if (response.ok) {
         const analysisData = await response.json();
@@ -1471,7 +1473,7 @@ const TranscriptPage = () => {
       }
       
       // Send speaker updates to backend
-      const response = await fetch(`/api/transcripts/${fileId}/speakers`, {
+      const response = await httpClient.request(`/api/transcripts/${fileId}/speakers`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -1653,7 +1655,7 @@ const TranscriptPage = () => {
         updated_at: new Date().toISOString()
       };
 
-      const response = await fetch(`/api/transcripts/${fileId}/save-edits`, {
+      const response = await httpClient.request(`/api/transcripts/${fileId}/save-edits`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 import { useNotification } from './NotificationProvider';
+import { useHttpClient } from '../lib/http-client';
 import axios from 'axios';
 
 // TypeScript interfaces
@@ -452,6 +453,7 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
   const [uploadSessionId, setUploadSessionId] = useState<string | null>(null);
   const fileIdCounter = useRef(0);
   const notification = useNotification();
+  const httpClient = useHttpClient();
   
   const [options, setOptions] = useState<ProcessingOptions>({
     speakerDiarization: true,
@@ -568,16 +570,10 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
     
     // Step 1: Initialize upload
     console.log('Initializing upload for file:', file.name);
-    const initResponse = await fetch('/api/upload/initialize', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        filename: file.name,
-        file_size: file.size,
-        num_speakers: options.numberOfSpeakers,
-      }),
+    const initResponse = await httpClient.post('/api/upload/initialize', {
+      filename: file.name,
+      file_size: file.size,
+      num_speakers: options.numberOfSpeakers,
     });
     
     if (!initResponse.ok) {
@@ -618,7 +614,7 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
       formData.append('file', file);
       
       // Upload directly to our API which forwards to file-uploader service
-      const uploadResponse = await fetch(`/api/upload/${sessionId}/direct-upload`, {
+      const uploadResponse = await httpClient.request(`/api/upload/${sessionId}/direct-upload`, {
         method: 'POST',
         body: formData,
       });
@@ -653,18 +649,12 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
   // Helper function to publish progress updates to Redis
   const publishProgress = async (sessionId: string, progress: number, message: string, stage: string) => {
     try {
-      await fetch('/api/upload/progress', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          session_id: sessionId,
-          progress,
-          status: stage,
-          stage,
-          message
-        })
+      await httpClient.post('/api/upload/progress', {
+        session_id: sessionId,
+        progress,
+        status: stage,
+        stage,
+        message
       });
     } catch (error) {
       console.error('Failed to publish progress:', error);
@@ -710,7 +700,7 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
         
         console.log(`Uploading part ${partNumber}/${totalParts}, size: ${chunk.size} bytes`);
         
-        const response = await fetch(`/api/upload/${sessionId}/upload-part`, {
+        const response = await httpClient.request(`/api/upload/${sessionId}/upload-part`, {
           method: 'POST',
           body: formData
         });
@@ -737,13 +727,7 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
       await publishProgress(sessionId, 45, finalizingMessage, 'uploading');
       setProcessingStatus(finalizingMessage);
       
-      const completeResponse = await fetch(`/api/upload/${sessionId}/complete-upload`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ parts })
-      });
+      const completeResponse = await httpClient.post(`/api/upload/${sessionId}/complete-upload`, { parts });
       
       if (!completeResponse.ok) {
         const errorText = await completeResponse.text();

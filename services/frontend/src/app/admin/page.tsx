@@ -28,6 +28,7 @@ import {
   Eye
 } from 'lucide-react'
 import { useNotification } from '@/components/NotificationProvider'
+import { useHttpClient } from '@/lib/http-client'
 import Link from 'next/link'
 
 // Modern styled components with better organization
@@ -855,11 +856,12 @@ const useAdminData = () => {
   const [isLoadingTranscripts, setIsLoadingTranscripts] = useState(false)
 
   const notification = useNotification()
+  const httpClient = useHttpClient()
 
   const loadPendingUsers = async () => {
     try {
       setIsLoading(true)
-      const response = await fetch('/api/admin/access-requests')
+      const response = await httpClient.get('/api/admin/access-requests')
       
       if (!response.ok) throw new Error('Failed to fetch access requests')
       
@@ -877,7 +879,7 @@ const useAdminData = () => {
   const loadExistingUsers = async () => {
     try {
       setIsLoadingUsers(true)
-      const response = await fetch('/api/admin/users')
+      const response = await httpClient.get('/api/admin/users')
       
       if (!response.ok) throw new Error('Failed to fetch users')
       
@@ -895,7 +897,7 @@ const useAdminData = () => {
   const loadAllTranscripts = async () => {
     try {
       setIsLoadingTranscripts(true)
-      const response = await fetch('/api/admin/transcripts')
+      const response = await httpClient.get('/api/admin/transcripts')
       
       if (!response.ok) throw new Error('Failed to fetch transcripts')
       
@@ -928,14 +930,11 @@ const useAdminData = () => {
 // Modern unified action handler
 const useAdminActions = (reloadData: () => void) => {
   const notification = useNotification()
+  const httpClient = useHttpClient()
 
   const handleAccessRequest = async (requestId: number, action: 'approve' | 'reject') => {
     try {
-      const response = await fetch('/api/admin/access-requests', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, requestId })
-      })
+      const response = await httpClient.post('/api/admin/access-requests', { action, requestId })
       
       if (!response.ok) {
         const errorData = await response.json()
@@ -952,11 +951,7 @@ const useAdminActions = (reloadData: () => void) => {
 
   const handleToggleAdmin = async (userId: string, currentAdminStatus: boolean) => {
     try {
-      const response = await fetch('/api/admin/toggle-admin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, makeAdmin: !currentAdminStatus })
-      })
+      const response = await httpClient.post('/api/admin/toggle-admin', { userId, makeAdmin: !currentAdminStatus })
       
       if (!response.ok) {
         const errorData = await response.json()
@@ -978,7 +973,7 @@ const useAdminActions = (reloadData: () => void) => {
     }
     
     try {
-      const response = await fetch('/api/admin/delete-user', {
+      const response = await httpClient.request('/api/admin/delete-user', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId })

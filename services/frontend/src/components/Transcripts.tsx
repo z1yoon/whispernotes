@@ -25,6 +25,7 @@ import {
 import { useSession, signOut } from 'next-auth/react';
 import { useNotification } from './NotificationProvider';
 import { useProgressUpdates } from '../hooks/useProgressUpdates';
+import { useHttpClient } from '../lib/http-client';
 
 // TypeScript interfaces
 interface Transcription {
@@ -706,6 +707,7 @@ const Transcripts = () => {
   const router = useRouter();
   const { data: session } = useSession();
   const notification = useNotification();
+  const httpClient = useHttpClient();
   
   const [transcriptions, setTranscriptions] = useState<Transcription[]>([]);
   const [stats, setStats] = useState<TranscriptStats>({
@@ -749,7 +751,7 @@ const Transcripts = () => {
 
   const loadTranscriptions = async () => {
     try {
-      const response = await fetch('/api/transcripts');
+      const response = await httpClient.get('/api/transcripts');
       
       if (!response.ok) {
         throw new Error('Failed to fetch transcripts');
@@ -840,9 +842,7 @@ const Transcripts = () => {
     }
 
     try {
-      const response = await fetch(`/api/transcripts/${transcription.sessionId}`, {
-        method: 'DELETE',
-      });
+      const response = await httpClient.delete(`/api/transcripts/${transcription.sessionId}`);
 
       if (!response.ok) {
         throw new Error('Failed to delete transcript');
