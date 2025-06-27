@@ -29,6 +29,7 @@ import {
 } from 'lucide-react'
 import { useNotification } from '@/components/NotificationProvider'
 import { useHttpClient } from '@/lib/http-client'
+import { formatSingaporeDate } from '@/lib/date-utils'
 import Link from 'next/link'
 
 // Modern styled components with better organization
@@ -1034,17 +1035,8 @@ const formatDuration = (seconds: number): string => {
   return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`
 }
 
-const formatDate = (dateString: string): string => {
-  return new Date(dateString).toLocaleDateString('en-SG', {
-    timeZone: 'Asia/Singapore',
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false // Use 24-hour format for consistency
-  })
-}
+// Use centralized Singapore date formatting
+const formatDate = formatSingaporeDate;
 
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<TabType>('requests')

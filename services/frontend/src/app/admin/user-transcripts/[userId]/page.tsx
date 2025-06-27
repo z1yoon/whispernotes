@@ -20,6 +20,7 @@ import {
   Filter
 } from 'lucide-react'
 import { useNotification } from '@/components/NotificationProvider'
+import { formatSingaporeDate } from '@/lib/date-utils'
 import Link from 'next/link'
 
 // Reuse styled components from admin page
@@ -542,17 +543,8 @@ export default function UserTranscriptsPage() {
     return `${minutes}m`;
   }
 
-  const formatDate = (dateString: string): string => {
-    return new Date(dateString).toLocaleDateString('en-SG', {
-      timeZone: 'Asia/Singapore',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false // Use 24-hour format for consistency
-    });
-  }
+  // Use centralized Singapore date formatting
+  const formatDate = formatSingaporeDate;
 
   // Filter transcripts
   const filteredTranscripts = transcripts.filter(transcript => {

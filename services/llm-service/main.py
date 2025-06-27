@@ -193,12 +193,12 @@ Even from casual conversations, you can find valuable actions like:
 - "Document the [decision/idea] for future reference"
 
 ## Output format (MUST return valid JSON):
-Return a simple JSON array where each todo item is a single paragraph combining the task and context naturally. No titles or structured formatting needed.
+Return a simple JSON array where each todo item is a single paragraph that combines the task and context naturally into one flowing sentence. Do not use structured formatting or separate context fields.
 
 ```json
 [
     {{
-        "task": "Clear, actionable task in plain paragraph format including relevant context from the conversation",
+        "task": "Write the entire actionable task as a single paragraph that naturally includes all relevant context and details from the conversation without breaking it into separate fields or sections",
         "context": ""
     }}
 ]

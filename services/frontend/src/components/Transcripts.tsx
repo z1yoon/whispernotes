@@ -26,6 +26,7 @@ import { useSession, signOut } from 'next-auth/react';
 import { useNotification } from './NotificationProvider';
 import { useProgressUpdates } from '../hooks/useProgressUpdates';
 import { useHttpClient } from '../lib/http-client';
+import { formatSingaporeDate } from '../lib/date-utils';
 
 // TypeScript interfaces
 interface Transcription {
@@ -791,19 +792,8 @@ const Transcripts = () => {
     return `${minutes}m`;
   };
 
-  const formatDate = (dateString: string): string => {
-    // Use Singapore timezone (UTC+8)
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-SG', {
-      timeZone: 'Asia/Singapore',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false // Use 24-hour format
-    });
-  };
+  // Use centralized Singapore date formatting
+  const formatDate = formatSingaporeDate;
 
   const handleViewTranscript = (transcription: Transcription) => {
     if (transcription.hasTranscript) {
