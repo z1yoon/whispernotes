@@ -2,7 +2,7 @@ import os
 import uuid
 import json
 import logging
-from datetime import timedelta, datetime
+from datetime import timedelta, datetime, timezone
 from urllib.parse import urlparse
 from typing import Optional
 from contextlib import asynccontextmanager
@@ -754,14 +754,14 @@ async def update_progress(session_id: str, update: ProgressUpdate):
                 "status": update.status,
                 "sessionStatus": update.status,
                 "progress": update.progress,
-                "updated_at": datetime.now().isoformat()
+                "updated_at": datetime.now(timezone(timedelta(hours=8))).isoformat()
             })
             
-            # If completed, mark as completed
+            # If completed, mark as completed (use Singapore time consistently)
             if update.status == "completed" or update.progress >= 100:
                 transcription_data.update({
-                    "completedAt": datetime.now().isoformat(),
-                    "completed_at": datetime.now().isoformat()
+                    "completedAt": datetime.now(timezone(timedelta(hours=8))).isoformat(),
+                    "completed_at": datetime.now(timezone(timedelta(hours=8))).isoformat()
                 })
             
             # Store updated transcription entry

@@ -14,7 +14,7 @@ import pika
 import socket
 import urllib.request
 import ssl
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Optional, Union
 from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Form, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -1167,8 +1167,8 @@ async def transcribe_async(audio_path: str, session_id: str, participant_count: 
             "progress": 100,
             "hasTranscript": True,
             "transcriptData": formatted_result,
-            "createdAt": datetime.utcnow().isoformat(),
-            "completedAt": datetime.utcnow().isoformat(),
+            "createdAt": datetime.now(timezone(timedelta(hours=8))).isoformat(),
+            "completedAt": datetime.now(timezone(timedelta(hours=8))).isoformat(),
             "duration": duration,
             "segmentCount": len(formatted_result.get("diarized_segments", [])),
             "language": language,
@@ -1179,7 +1179,7 @@ async def transcribe_async(audio_path: str, session_id: str, participant_count: 
             "file_size": 0,  # Will be updated from upload metadata
             "speaker_count": participant_count,
             "transcript": formatted_result.get("segments", []),
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone(timedelta(hours=8))).isoformat(),
             "completed_at": datetime.utcnow().isoformat()
         }
         
@@ -1324,7 +1324,7 @@ async def transcribe_audio_endpoint(
             "progress": 65,
             "hasTranscript": False,
             "transcriptData": None,
-            "createdAt": datetime.utcnow().isoformat(),
+            "createdAt": datetime.now(timezone(timedelta(hours=8))).isoformat(),
             "completedAt": None,
             "duration": 0,
             "segmentCount": 0,
@@ -1336,7 +1336,7 @@ async def transcribe_audio_endpoint(
             "file_size": 0,
             "speaker_count": participant_count,
             "transcript": [],
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone(timedelta(hours=8))).isoformat(),
             "completed_at": None
         }
         

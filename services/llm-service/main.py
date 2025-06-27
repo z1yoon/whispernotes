@@ -5,7 +5,7 @@ import redis
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any
 import logging
 
@@ -60,7 +60,7 @@ class LLMAnalyzer:
             action_items = await self._extract_action_items(full_transcript, speakers)
             
             return {
-                "analysis_completed_at": datetime.now().isoformat(),
+                "analysis_completed_at": datetime.now(timezone(timedelta(hours=8))).isoformat(),
                 "transcript_duration": duration,
                 "total_speakers": len(speakers),
                 "analysis": {
@@ -69,7 +69,7 @@ class LLMAnalyzer:
                 "metadata": {
                     "model_used": DEEPSEEK_MODEL,
                     "api_base": DEEPSEEK_API_BASE,
-                    "processing_time": datetime.now().isoformat()
+                    "processing_time": datetime.now(timezone(timedelta(hours=8))).isoformat()
                 }
             }
             
@@ -491,7 +491,7 @@ async def health_check():
         "status": "ok",
         "service": "llm-analysis",
         "version": "1.0.0",
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": datetime.now(timezone(timedelta(hours=8))).isoformat(),
         "dependencies": {
             "redis": redis_status,
             "deepseek_api": "configured" if DEEPSEEK_API_KEY else "not configured"
