@@ -16,7 +16,9 @@ import {
   Edit,
   Save,
   X,
-  UserPlus
+  UserPlus,
+  Download,
+  Plus
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -49,13 +51,14 @@ interface TranscriptSegment {
 
 interface ActionItem {
   task: string;
-  assignee?: string;
-  deadline?: string;
-  priority: string;
   context?: string;
-  category?: string;
   completed?: boolean;
   id?: string; // Add unique ID for editing
+  // Enhanced modern productivity fields
+  priority?: string;
+  category?: string;
+  estimated_effort?: string;
+  stakeholders?: string[];
 }
 
 interface SpeakerMap {
@@ -89,18 +92,25 @@ const HeaderLeft = styled.div`
 `;
 
 const BackButton = styled.button`
-  background: rgba(32, 32, 36, 0.65);
-  border: 1px solid rgba(136, 80, 242, 0.3);
+  background: linear-gradient(135deg, #7C3AED 0%, #9333EA 50%, #8B5CF6 100%);
+  border: 2px solid rgba(255, 255, 255, 0.3);
   border-radius: 12px;
   color: #FFFFFF;
   padding: 0.75rem;
   cursor: pointer;
   transition: all 0.2s ease;
   backdrop-filter: blur(14px);
+  box-shadow: 0 8px 32px rgba(124, 58, 237, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
   
   &:hover {
-    background: rgba(136, 80, 242, 0.2);
-    transform: translateY(-1px);
+    background: linear-gradient(135deg, #6D28D9 0%, #7C3AED 50%, #8B5CF6 100%);
+    border-color: rgba(255, 255, 255, 0.5);
+    transform: translateY(-2px);
+    box-shadow: 0 12px 40px rgba(124, 58, 237, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  }
+
+  &:active {
+    transform: translateY(0);
   }
 `;
 
@@ -153,7 +163,7 @@ const Card = styled(motion.div)`
   box-shadow: 0px 12px 40px rgba(0, 0, 0, 0.45);
   padding: 2rem;
   position: relative;
-  border: 1px solid rgba(136, 80, 242, 0.2);
+  border: 1px solid rgba(136, 80, 242, 0.3);
   
   &::after {
     content: '';
@@ -164,7 +174,7 @@ const Card = styled(motion.div)`
     background: linear-gradient(135deg, #8850F2 0%, #A855F7 30%, #B0E54F 100%);
     -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
     mask-composite: exclude;
-    opacity: 0.3;
+    opacity: 0.4;
   }
 `;
 
@@ -200,7 +210,7 @@ const MetadataItem = styled.div`
   padding: 1.5rem;
   background: rgba(20, 20, 24, 0.5);
   border-radius: 16px;
-  border: 1px solid rgba(136, 80, 242, 0.2);
+  border: 1px solid rgba(136, 80, 242, 0.3);
   position: relative;
   z-index: 1;
   
@@ -208,11 +218,14 @@ const MetadataItem = styled.div`
     width: 48px;
     height: 48px;
     border-radius: 12px;
-    background: linear-gradient(135deg, #8850F2 0%, #A855F7 100%);
+    background: linear-gradient(135deg, #7C3AED 0%, #9333EA 50%, #8B5CF6 100%);
+    border: 2px solid rgba(255, 255, 255, 0.4);
+    box-shadow: 0 8px 24px rgba(124, 58, 237, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.3);
     display: flex;
     align-items: center;
     justify-content: center;
     margin: 0 auto 0.75rem;
+    color: #FFFFFF;
   }
   
   .value {
@@ -247,7 +260,7 @@ const TranscriptContent = styled.div`
   }
   
   &::-webkit-scrollbar-thumb {
-    background: linear-gradient(135deg, #8850F2 0%, #A855F7 100%);
+    background: linear-gradient(135deg, #374151 0%, #4B5563 100%);
     border-radius: 4px;
   }
 `;
@@ -269,33 +282,37 @@ const SpeakerInfo = styled.div`
 `;
 
 const SpeakerAvatar = styled.div<SpeakerAvatarProps>`
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
   background: ${props => {
-    // More distinguishable color palette in purple family
-    const gradients = [
-      'linear-gradient(135deg, #8850F2 0%, #A855F7 100%)', // Violet purple
-      'linear-gradient(135deg, #4F46E5 0%, #6366F1 100%)', // Indigo
-      'linear-gradient(135deg, #D946EF 0%, #F0ABFC 100%)', // Fuchsia
-      'linear-gradient(135deg, #6D28D9 0%, #8B5CF6 100%)', // Purple
-      'linear-gradient(135deg, #2563EB 0%, #60A5FA 100%)', // Blue
-      'linear-gradient(135deg, #C026D3 0%, #E879F9 100%)', // Pink
-      'linear-gradient(135deg, #5B21B6 0%, #7E22CE 100%)', // Deep purple
-      'linear-gradient(135deg, #1D4ED8 0%, #3B82F6 100%)', // Royal blue
-      'linear-gradient(135deg, #86198F 0%, #BE185D 100%)', // Magenta to pink
-      'linear-gradient(135deg, #7C3AED 0%, #A78BFA 100%)', // Violet
+    // Vivid sparkling gradient color palette
+    const colors = [
+      'linear-gradient(135deg, #A855F7 0%, #D946EF 100%)', // Primary Purple
+      'linear-gradient(135deg, #10B981 0%, #34D399 100%)', // Success Green
+      'linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%)', // Warning Orange
+      'linear-gradient(135deg, #EF4444 0%, #F87171 100%)', // Error Red
+      'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)', // Indigo
+      'linear-gradient(135deg, #EC4899 0%, #F472B6 100%)', // Pink
+      'linear-gradient(135deg, #06B6D4 0%, #22D3EE 100%)', // Cyan
+      'linear-gradient(135deg, #8B5CF6 0%, #A78BFA 100%)', // Violet
+      'linear-gradient(135deg, #F97316 0%, #FB923C 100%)', // Orange
+      'linear-gradient(135deg, #84CC16 0%, #A3E635 100%)', // Lime
+      'linear-gradient(135deg, #0EA5E9 0%, #38BDF8 100%)', // Sky
+      'linear-gradient(135deg, #7C3AED 0%, #A855F7 100%)', // Purple
     ];
     const speakerNum = parseInt(props.speaker.replace('SPEAKER_', '')) || 0;
-    return gradients[speakerNum % gradients.length];
+    return colors[speakerNum % colors.length];
   }};
+  border: 2px solid rgba(255, 255, 255, 0.4);
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
   font-size: 0.875rem;
-  font-weight: 600;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  font-weight: 700;
+  box-shadow: 0 8px 24px rgba(168, 85, 247, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 `;
 
 const SpeakerDetails = styled.div`
@@ -331,7 +348,7 @@ const ActionItemsList = styled.div`
 
 const ActionItemCard = styled.div<{ isEditing?: boolean }>`
   background: rgba(20, 20, 24, 0.5);
-  border: 1px solid ${props => props.isEditing ? 'rgba(136, 80, 242, 0.4)' : 'rgba(136, 80, 242, 0.2)'};
+  border: 1px solid ${props => props.isEditing ? 'rgba(136, 80, 242, 0.5)' : 'rgba(136, 80, 242, 0.3)'};
   border-radius: 12px;
   padding: 1rem;
   position: relative;
@@ -339,8 +356,13 @@ const ActionItemCard = styled.div<{ isEditing?: boolean }>`
   transition: all 0.2s ease;
   
   &:hover {
-    border-color: rgba(136, 80, 242, 0.3);
+    border-color: rgba(136, 80, 242, 0.4);
     background: rgba(20, 20, 24, 0.7);
+  }
+  
+  /* Ensure button interactions work */
+  * {
+    pointer-events: auto;
   }
 `;
 
@@ -353,8 +375,8 @@ const ActionItemHeader = styled.div`
 `;
 
 const PrioritySelector = styled.select`
-  background: rgba(30, 30, 34, 0.8);
-  border: 1px solid rgba(136, 80, 242, 0.3);
+  background: rgba(20, 20, 24, 0.8);
+  border: 1px solid rgba(136, 80, 242, 0.4);
   border-radius: 8px;
   color: #FFFFFF;
   padding: 0.5rem 0.75rem;
@@ -375,8 +397,8 @@ const PrioritySelector = styled.select`
 
 const TaskInput = styled.textarea`
   width: 100%;
-  background: rgba(30, 30, 34, 0.8);
-  border: 1px solid rgba(136, 80, 242, 0.3);
+  background: rgba(20, 20, 24, 0.8);
+  border: 1px solid rgba(136, 80, 242, 0.4);
   border-radius: 8px;
   color: #FFFFFF;
   padding: 0.75rem;
@@ -388,7 +410,7 @@ const TaskInput = styled.textarea`
   &:focus {
     outline: none;
     border-color: #8850F2;
-    box-shadow: 0 0 0 2px rgba(136, 80, 242, 0.15);
+    box-shadow: 0 0 0 2px rgba(136, 80, 242, 0.2);
   }
   
   &::placeholder {
@@ -404,17 +426,30 @@ const TaskText = styled.div`
   margin: 0;
 `;
 
+const ContextText = styled.div`
+  color: #8D8D99;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  margin-top: 0.5rem;
+  font-style: italic;
+`;
+
 const ActionItemActions = styled.div`
   display: flex;
   gap: 0.5rem;
   align-items: center;
+  z-index: 20;
+  position: relative;
 `;
 
-const IconButton = styled.button`
-  background: rgba(136, 80, 242, 0.1);
-  border: 1px solid rgba(136, 80, 242, 0.2);
-  border-radius: 6px;
-  color: #A855F7;
+const IconButton = styled.button<{ variant?: 'delete' | 'edit' }>`
+  background: ${props => props.variant === 'delete' 
+    ? 'linear-gradient(135deg, #EF4444 0%, #F87171 100%)'
+    : 'linear-gradient(135deg, #7C3AED 0%, #9333EA 50%, #8B5CF6 100%)'
+  };
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  color: #FFFFFF;
   padding: 0.5rem;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -422,62 +457,43 @@ const IconButton = styled.button`
   align-items: center;
   justify-content: center;
   position: relative;
-  z-index: 10;
-  pointer-events: auto;
+  z-index: 50;
+  pointer-events: auto !important;
+  box-shadow: ${props => props.variant === 'delete'
+    ? '0 4px 16px rgba(239, 68, 68, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3)'
+    : '0 4px 16px rgba(124, 58, 237, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3)'
+  };
   
   &:hover {
-    background: rgba(136, 80, 242, 0.2);
-    border-color: rgba(136, 80, 242, 0.3);
+    background: ${props => props.variant === 'delete'
+      ? 'linear-gradient(135deg, #DC2626 0%, #EF4444 100%)'
+      : 'linear-gradient(135deg, #6D28D9 0%, #7C3AED 50%, #8B5CF6 100%)'
+    };
+    border-color: rgba(255, 255, 255, 0.5);
     transform: scale(1.05);
+    box-shadow: ${props => props.variant === 'delete'
+      ? '0 6px 20px rgba(239, 68, 68, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.4)'
+      : '0 6px 20px rgba(124, 58, 237, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.4)'
+    };
   }
 
   &:active {
     transform: scale(0.95);
   }
+
+  &:focus {
+    outline: 2px solid rgba(255, 255, 255, 0.5);
+    outline-offset: 2px;
+  }
 `;
 
-const SaveAllButton = styled.button`
-  width: 100%;
-  background: linear-gradient(135deg, #8850F2 0%, #A855F7 100%);
-  border: none;
-  border-radius: 12px;
-  color: white;
-  padding: 0.875rem 1rem;
-  font-size: 0.875rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  margin-top: 1rem;
-  box-shadow: 0 4px 12px rgba(136, 80, 242, 0.25);
-  
-  &:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 6px 20px rgba(136, 80, 242, 0.4);
-    background: linear-gradient(135deg, #9333EA 0%, #B548F7 100%);
-  }
-  
-  &:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-    transform: none;
-    box-shadow: 0 4px 12px rgba(136, 80, 242, 0.25);
-  }
-
-  &:active {
-    transform: translateY(0);
-  }
-`;
 
 const AddItemButton = styled.button`
   width: 100%;
-  background: rgba(136, 80, 242, 0.1);
-  border: 2px dashed rgba(136, 80, 242, 0.3);
+  background: rgba(32, 32, 36, 0.65);
+  border: 1px solid rgba(136, 80, 242, 0.3);
   border-radius: 12px;
-  color: #A855F7;
+  color: #FFFFFF;
   padding: 1rem;
   font-size: 0.875rem;
   font-weight: 600;
@@ -487,11 +503,47 @@ const AddItemButton = styled.button`
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
+  z-index: 10;
+  position: relative;
+  pointer-events: auto !important;
   
   &:hover {
-    background: rgba(136, 80, 242, 0.15);
-    border-color: rgba(136, 80, 242, 0.4);
+    background: rgba(136, 80, 242, 0.2);
     transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+
+  &:focus {
+    outline: 2px solid rgba(255, 255, 255, 0.5);
+    outline-offset: 2px;
+  }
+`;
+
+const DownloadButton = styled.button`
+  background: linear-gradient(135deg, #7C3AED 0%, #9333EA 50%, #8B5CF6 100%);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 12px;
+  color: #FFFFFF;
+  padding: 0.75rem 1.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  box-shadow: 0 8px 24px rgba(124, 58, 237, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  
+  &:hover {
+    background: linear-gradient(135deg, #6D28D9 0%, #7C3AED 50%, #8B5CF6 100%);
+    border-color: rgba(255, 255, 255, 0.5);
+    transform: translateY(-2px);
+    box-shadow: 0 12px 32px rgba(124, 58, 237, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.4);
   }
 
   &:active {
@@ -531,17 +583,20 @@ const LoadingState = styled.div`
 `;
 
 const CopyButton = styled.button`
-  background: none;
-  border: none;
-  color: #8D8D99;
+  background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  color: #FFFFFF;
   cursor: pointer;
   padding: 0.5rem;
   border-radius: 8px;
   transition: all 0.2s;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
   
   &:hover {
-    background: rgba(136, 80, 242, 0.2);
-    color: #FFFFFF;
+    background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
+    border-color: rgba(255, 255, 255, 0.4);
+    transform: scale(1.05);
+    box-shadow: 0 6px 16px rgba(99, 102, 241, 0.5);
   }
 `;
 
@@ -643,13 +698,13 @@ const StyledActionButton = styled.button<{ variant?: 'primary' | 'secondary' }>`
   transition: all 0.2s ease;
   
   ${props => props.variant === 'primary' ? `
-    background: linear-gradient(135deg, #6D28D9 0%, #8B5CF6 100%);
-    color: white;
-    border: none;
+    background: rgba(32, 32, 36, 0.65);
+    color: #FFFFFF;
+    border: 1px solid rgba(136, 80, 242, 0.3);
     
     &:hover {
+      background: rgba(136, 80, 242, 0.2);
       transform: translateY(-1px);
-      box-shadow: 0 8px 25px rgba(109, 40, 217, 0.4);
     }
   ` : `
     background: rgba(32, 32, 36, 0.65);
@@ -721,7 +776,7 @@ const ModalContent = styled(motion.div)`
     inset: 0;
     padding: 2px;
     border-radius: inherit;
-    background: linear-gradient(135deg, #8850F2 0%, #A855F7 30%, #B0E54F 100%);
+    background: linear-gradient(135deg, #374151 0%, #4B5563 30%, #06B6D4 100%);
     -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
     -webkit-mask-composite: xor;
             mask-composite: exclude;
@@ -837,16 +892,16 @@ const SpeakerAvatarLarge = styled.div<SpeakerAvatarProps>`
   background: ${props => {
     // More distinguishable color palette in purple family
     const gradients = [
-      'linear-gradient(135deg, #8850F2 0%, #A855F7 100%)', // Violet purple
-      'linear-gradient(135deg, #4F46E5 0%, #6366F1 100%)', // Indigo
-      'linear-gradient(135deg, #D946EF 0%, #F0ABFC 100%)', // Fuchsia
-      'linear-gradient(135deg, #6D28D9 0%, #8B5CF6 100%)', // Purple
-      'linear-gradient(135deg, #2563EB 0%, #60A5FA 100%)', // Blue
-      'linear-gradient(135deg, #C026D3 0%, #E879F9 100%)', // Pink
-      'linear-gradient(135deg, #5B21B6 0%, #7E22CE 100%)', // Deep purple
-      'linear-gradient(135deg, #1D4ED8 0%, #3B82F6 100%)', // Royal blue
-      'linear-gradient(135deg, #86198F 0%, #BE185D 100%)', // Magenta to pink
-      'linear-gradient(135deg, #7C3AED 0%, #A78BFA 100%)', // Violet
+      'linear-gradient(135deg, #374151 0%, #4B5563 100%)', // Modern gray
+      'linear-gradient(135deg, #1F2937 0%, #374151 100%)', // Dark gray
+      'linear-gradient(135deg, #0EA5E9 0%, #06B6D4 100%)', // Cyan
+      'linear-gradient(135deg, #475569 0%, #64748B 100%)', // Slate
+      'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)', // Deep slate
+      'linear-gradient(135deg, #6B7280 0%, #9CA3AF 100%)', // Cool gray
+      'linear-gradient(135deg, #111827 0%, #1F2937 100%)', // Very dark gray
+      'linear-gradient(135deg, #059669 0%, #10B981 100%)', // Emerald
+      'linear-gradient(135deg, #DC2626 0%, #EF4444 100%)', // Red
+      'linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%)', // Amber
     ];
     const speakerNum = parseInt(props.speaker.replace('SPEAKER_', '')) || 0;
     return gradients[speakerNum % gradients.length];
@@ -933,13 +988,13 @@ const ModalButton = styled.button<{ variant?: 'primary' | 'secondary' }>`
   justify-content: center;
   
   ${props => props.variant === 'primary' ? `
-    background: linear-gradient(135deg, #5B21B6 0%, #7E22CE 100%);
+    background: linear-gradient(135deg, #7C3AED 0%, #9333EA 50%, #8B5CF6 100%);
     color: white;
     border: none;
     
     &:hover {
       transform: translateY(-1px);
-      box-shadow: 0 8px 25px rgba(91, 33, 182, 0.4);
+      box-shadow: 0 8px 25px rgba(124, 58, 237, 0.4);
     }
 
     &:active {
@@ -994,26 +1049,87 @@ const PriorityBadge = styled.span<{ priority: string }>`
   font-size: 0.75rem;
   font-weight: 600;
   border: 1px solid;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
   
   ${props => {
-    switch (props.priority) {
-      case 'high':
+    const priority = props.priority;
+    // Handle emoji-based priorities from modern prompt
+    if (priority.includes('🔥') || priority === 'critical' || priority === 'high') {
+      return `
+        background: rgba(239, 68, 68, 0.1);
+        color: #F87171;
+        border-color: rgba(239, 68, 68, 0.3);
+      `;
+    } else if (priority.includes('⚡') || priority === 'important') {
+      return `
+        background: rgba(251, 191, 36, 0.1);
+        color: #FCD34D;
+        border-color: rgba(251, 191, 36, 0.3);
+      `;
+    } else if (priority.includes('📋') || priority === 'medium') {
+      return `
+        background: rgba(136, 80, 242, 0.1);
+        color: #8850F2;
+        border-color: rgba(136, 80, 242, 0.3);
+      `;
+    } else if (priority.includes('💡') || priority === 'low') {
+      return `
+        background: rgba(34, 197, 94, 0.1);
+        color: #4ADE80;
+        border-color: rgba(34, 197, 94, 0.3);
+      `;
+    } else {
+      return `
+        background: rgba(107, 114, 128, 0.1);
+        color: #9CA3AF;
+        border-color: rgba(107, 114, 128, 0.3);
+      `;
+    }
+  }}
+`;
+
+const CategoryBadge = styled.span<{ category: string }>`
+  padding: 0.25rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  border: 1px solid;
+  
+  ${props => {
+    switch (props.category) {
+      case 'action':
         return `
-          background: rgba(239, 68, 68, 0.1);
-          color: #F87171;
-          border-color: rgba(239, 68, 68, 0.3);
+          background: rgba(16, 185, 129, 0.1);
+          color: #10B981;
+          border-color: rgba(16, 185, 129, 0.3);
         `;
-      case 'medium':
+      case 'follow-up':
         return `
-          background: rgba(251, 191, 36, 0.1);
-          color: #FCD34D;
-          border-color: rgba(251, 191, 36, 0.3);
+          background: rgba(59, 130, 246, 0.1);
+          color: #3B82F6;
+          border-color: rgba(59, 130, 246, 0.3);
         `;
-      case 'low':
+      case 'decision':
         return `
-          background: rgba(34, 197, 94, 0.1);
-          color: #4ADE80;
-          border-color: rgba(34, 197, 94, 0.3);
+          background: rgba(168, 85, 247, 0.1);
+          color: #A855F7;
+          border-color: rgba(168, 85, 247, 0.3);
+        `;
+      case 'research':
+        return `
+          background: rgba(245, 158, 11, 0.1);
+          color: #F59E0B;
+          border-color: rgba(245, 158, 11, 0.3);
+        `;
+      case 'communication':
+        return `
+          background: rgba(236, 72, 153, 0.1);
+          color: #EC4899;
+          border-color: rgba(236, 72, 153, 0.3);
         `;
       default:
         return `
@@ -1023,6 +1139,14 @@ const PriorityBadge = styled.span<{ priority: string }>`
         `;
     }
   }}
+`;
+
+const TaskMetadata = styled.div`
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0.5rem 0;
+  flex-wrap: wrap;
 `;
 
 // Move SpeakerNameEditor outside the main component to prevent re-creation on every render
@@ -1395,6 +1519,7 @@ const TranscriptPage = () => {
   const generateItemId = () => `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
   const handleEditItem = (index: number) => {
+    console.log('Edit item clicked for index:', index);
     const itemId = actionItems[index].id || generateItemId();
     if (!actionItems[index].id) {
       // Add ID to item if it doesn't have one
@@ -1406,6 +1531,7 @@ const TranscriptPage = () => {
   };
 
   const handleSaveItem = (index: number) => {
+    console.log('Save item clicked for index:', index);
     const item = actionItems[index];
     if (item.id) {
       setEditingItems(prev => {
@@ -1418,6 +1544,7 @@ const TranscriptPage = () => {
   };
 
   const handleCancelEdit = (index: number) => {
+    console.log('Cancel edit clicked for index:', index);
     const item = actionItems[index];
     if (item.id) {
       setEditingItems(prev => {
@@ -1435,18 +1562,66 @@ const TranscriptPage = () => {
     setHasUnsavedTodos(true);
   };
 
-  const handleUpdatePriority = (index: number, newPriority: string) => {
+  const handleUpdateContext = (index: number, newContext: string) => {
     setActionItems(prev => prev.map((item, i) => 
-      i === index ? { ...item, priority: newPriority } : item
+      i === index ? { ...item, context: newContext } : item
     ));
     setHasUnsavedTodos(true);
   };
 
+  const handleDownloadResults = () => {
+    if (!transcriptData || !fileId) {
+      toast.error('No data available to download');
+      return;
+    }
+
+    // Create comprehensive download data
+    const downloadData = {
+      metadata: {
+        filename: transcriptData.filename,
+        duration: transcriptData.duration,
+        participant_count: transcriptData.participant_count,
+        language: transcriptData.language,
+        downloaded_at: new Date().toISOString()
+      },
+      speakers: Object.entries(speakerMap).map(([originalName, displayName]) => ({
+        original_name: originalName,
+        display_name: displayName
+      })),
+      transcript: transcriptData.segments.map(segment => ({
+        speaker: segment.speaker_name,
+        start_time: segment.start,
+        end_time: segment.end,
+        text: segment.text
+      })),
+      action_items: actionItems.map((item, index) => ({
+        id: index + 1,
+        task: item.task,
+        context: item.context || '',
+        completed: item.completed || false
+      }))
+    };
+
+    // Create and download JSON file
+    const jsonString = JSON.stringify(downloadData, null, 2);
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${transcriptData.filename.replace(/\.[^/.]+$/, '')}_complete_results.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    toast.success('Results downloaded successfully!');
+  };
+
   const handleAddNewItem = () => {
+    console.log('Add new item clicked');
     const newItem: ActionItem = {
       id: generateItemId(),
       task: '',
-      priority: 'medium',
       completed: false
     };
     setActionItems(prev => [...prev, newItem]);
@@ -1455,8 +1630,11 @@ const TranscriptPage = () => {
   };
 
   const handleDeleteItem = (index: number) => {
-    setActionItems(prev => prev.filter((_, i) => i !== index));
-    setHasUnsavedTodos(true);
+    console.log('Delete item clicked for index:', index);
+    if (window.confirm('Are you sure you want to delete this action item?')) {
+      setActionItems(prev => prev.filter((_, i) => i !== index));
+      setHasUnsavedTodos(true);
+    }
   };
 
   const handleSaveAllTodos = async () => {
@@ -1505,10 +1683,38 @@ const TranscriptPage = () => {
     }
   };
 
+  // Auto-save functionality
+  const handleAutoSave = async () => {
+    if (hasUnsavedTodos || hasUnsavedChanges) {
+      await handleSaveAllTodos();
+    }
+  };
+
+  // Auto-save when leaving editing mode
+  useEffect(() => {
+    const handleAutoSaveOnEdit = () => {
+      if (editingItems.size === 0 && hasUnsavedTodos) {
+        handleAutoSave();
+      }
+    };
+    handleAutoSaveOnEdit();
+  }, [editingItems.size, hasUnsavedTodos]);
+
   // Check if there are any changes to show the changes indicator
   const hasUnsavedChanges = Object.keys(speakerMap).some(
     key => speakerMap[key] !== originalSpeakerMap[key]
   );
+
+  // Auto-save when speaker changes
+  useEffect(() => {
+    if (hasUnsavedChanges) {
+      const timeoutId = setTimeout(() => {
+        handleAutoSave();
+      }, 2000); // Auto-save after 2 seconds of inactivity
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [hasUnsavedChanges]);
 
   return (
     <TranscriptContainer>
@@ -1520,7 +1726,10 @@ const TranscriptPage = () => {
           <HeaderTitle>{transcriptData?.filename || 'Transcript'}</HeaderTitle>
         </HeaderLeft>
         <HeaderActions>
-          {/* Simplified - removed download and share buttons */}
+          <DownloadButton onClick={handleDownloadResults}>
+            <Download size={16} />
+            Download Results
+          </DownloadButton>
         </HeaderActions>
       </Header>
 
@@ -1640,36 +1849,55 @@ const TranscriptPage = () => {
                       return (
                         <ActionItemCard key={item.id || index} isEditing={isEditing}>
                           <ActionItemHeader>
-                            {isEditing ? (
-                              <PrioritySelector
-                                value={item.priority}
-                                onChange={(e) => handleUpdatePriority(index, e.target.value)}
-                              >
-                                <option value="low">Low</option>
-                                <option value="medium">Medium</option>
-                                <option value="high">High</option>
-                              </PrioritySelector>
-                            ) : (
-                              <PriorityBadge priority={item.priority}>
-                                {item.priority.charAt(0).toUpperCase() + item.priority.slice(1)}
-                              </PriorityBadge>
-                            )}
                             <ActionItemActions>
                               {isEditing ? (
                                 <>
-                                  <IconButton onClick={() => handleSaveItem(index)} title="Save">
+                                  <IconButton 
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      handleSaveItem(index);
+                                    }} 
+                                    title="Save"
+                                    type="button"
+                                  >
                                     <Save size={14} />
                                   </IconButton>
-                                  <IconButton onClick={() => handleCancelEdit(index)} title="Cancel">
+                                  <IconButton 
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      handleCancelEdit(index);
+                                    }} 
+                                    title="Cancel"
+                                    type="button"
+                                  >
                                     <X size={14} />
                                   </IconButton>
                                 </>
                               ) : (
                                 <>
-                                  <IconButton onClick={() => handleEditItem(index)} title="Edit">
+                                  <IconButton 
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      handleEditItem(index);
+                                    }} 
+                                    title="Edit"
+                                    type="button"
+                                  >
                                     <Edit size={14} />
                                   </IconButton>
-                                  <IconButton onClick={() => handleDeleteItem(index)} title="Delete">
+                                  <IconButton 
+                                    variant="delete"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      handleDeleteItem(index);
+                                    }} 
+                                    title="Delete"
+                                    type="button"
+                                  >
                                     <X size={14} />
                                   </IconButton>
                                 </>
@@ -1678,14 +1906,27 @@ const TranscriptPage = () => {
                           </ActionItemHeader>
                           
                           {isEditing ? (
-                            <TaskInput
-                              value={item.task}
-                              onChange={(e) => handleUpdateTask(index, e.target.value)}
-                              placeholder="Enter action item description..."
-                              autoFocus
-                            />
+                            <>
+                              <TaskInput
+                                value={item.task}
+                                onChange={(e) => handleUpdateTask(index, e.target.value)}
+                                placeholder="What needs to be done?"
+                                autoFocus
+                              />
+                              <TaskInput
+                                value={item.context || ''}
+                                onChange={(e) => handleUpdateContext(index, e.target.value)}
+                                placeholder="Context or additional details..."
+                                style={{ marginTop: '0.5rem', fontSize: '0.8rem' }}
+                              />
+                            </>
                           ) : (
-                            <TaskText>{item.task || 'Empty task'}</TaskText>
+                            <>
+                              <TaskText>{item.task || 'Empty task'}</TaskText>
+                              {item.context && (
+                                <ContextText>{item.context}</ContextText>
+                              )}
+                            </>
                           )}
                         </ActionItemCard>
                       );
@@ -1701,20 +1942,18 @@ const TranscriptPage = () => {
                     </div>
                   )}
                   
-                  <AddItemButton onClick={handleAddNewItem}>
-                    <CheckSquare size={16} />
+                  <AddItemButton 
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleAddNewItem();
+                    }}
+                    type="button"
+                  >
+                    <Plus size={16} />
                     Add Action Item
                   </AddItemButton>
                   
-                  {(hasUnsavedTodos || hasUnsavedChanges) && (
-                    <SaveAllButton 
-                      onClick={handleSaveAllTodos}
-                      disabled={savingTodos}
-                    >
-                      <Save size={16} />
-                      {savingTodos ? 'Saving...' : 'Save All Results'}
-                    </SaveAllButton>
-                  )}
                 </>
               )}
             </Card>

@@ -61,20 +61,16 @@ const AuthButton = styled.a<{ $variant?: 'primary' | 'secondary'; $isButton?: bo
   align-items: center;
   gap: 0.5rem;
   border: none;
-  background: none;
+  background: rgba(255, 255, 255, 0.1);
   
-  ${props => props.$variant === 'primary' ? `
-    background: linear-gradient(90deg, #8850F2 0%, #A855F7 100%);
-    color: white;
-    &:hover {
-      opacity: 0.9;
-    }
-  ` : `
-    background: rgba(255, 255, 255, 0.1);
-    &:hover {
-      background: rgba(255, 255, 255, 0.15);
-    }
-  `}
+  &:hover {
+    background: rgba(255, 255, 255, 0.15);
+    transform: translateY(-1px);
+  }
+  
+  &:active {
+    transform: translateY(0);
+  }
 `;
 
 const MainContent = styled.div`

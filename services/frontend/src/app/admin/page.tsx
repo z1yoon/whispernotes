@@ -56,21 +56,24 @@ const HeaderLeft = styled.div`
 `;
 
 const BackButton = styled.button`
-  background: rgba(136, 80, 242, 0.1);
-  border: 1px solid rgba(136, 80, 242, 0.2);
-  color: #C4C4CC;
+  background: linear-gradient(135deg, #7C3AED 0%, #9333EA 50%, #8B5CF6 100%);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  color: #FFFFFF;
   padding: 0.75rem;
-  border-radius: 8px;
+  border-radius: 12px;
   cursor: pointer;
   transition: all 0.3s ease;
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 6px 20px rgba(124, 58, 237, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
   
   &:hover {
-    background: rgba(136, 80, 242, 0.2);
-    border-color: rgba(136, 80, 242, 0.3);
-    color: #FFFFFF;
+    background: linear-gradient(135deg, #6D28D9 0%, #7C3AED 50%, #8B5CF6 100%);
+    border-color: rgba(255, 255, 255, 0.5);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 28px rgba(124, 58, 237, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.4);
   }
 `;
 
@@ -103,10 +106,10 @@ const UsernameButton = styled.button`
   font-weight: 600;
   color: #FFFFFF;
   background: rgba(255, 255, 255, 0.1);
+  border: none;
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  border: none;
   cursor: pointer;
   transition: all 0.2s ease;
   
@@ -132,20 +135,16 @@ const AuthButton = styled.button<{ $variant?: 'primary' | 'secondary' }>`
   align-items: center;
   gap: 0.5rem;
   border: none;
+  background: rgba(255, 255, 255, 0.1);
   
-  ${props => props.$variant === 'primary' ? `
-    background: linear-gradient(90deg, #8850F2 0%, #A855F7 100%);
-    color: white;
-    &:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 8px 25px rgba(168, 85, 247, 0.4);
-    }
-  ` : `
-    background: rgba(255, 255, 255, 0.1);
-    &:hover {
-      background: rgba(255, 255, 255, 0.15);
-    }
-  `}
+  &:hover {
+    background: rgba(255, 255, 255, 0.15);
+    transform: translateY(-1px);
+  }
+  
+  &:active {
+    transform: translateY(0);
+  }
 `;
 
 const MainContent = styled.div`
@@ -351,13 +350,16 @@ const UserHeader = styled.div`
   .user-avatar {
     width: 48px;
     height: 48px;
-    background: linear-gradient(135deg, #8850F2 0%, #A855F7 100%);
+    background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 50%, #A855F7 100%);
+    border: 2px solid rgba(255, 255, 255, 0.4);
     border-radius: 12px;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: white;
+    color: #FFFFFF;
     flex-shrink: 0;
+    box-shadow: 0 8px 24px rgba(99, 102, 241, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
   }
 
   .user-info {
@@ -528,88 +530,118 @@ const ActionButtons = styled.div`
     white-space: nowrap;
 
     &.approve {
-      background: linear-gradient(135deg, #10B981 0%, #059669 100%);
-      color: white;
+      background: linear-gradient(135deg, #7C3AED 0%, #9333EA 50%, #8B5CF6 100%);
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      color: #FFFFFF;
+      box-shadow: 0 6px 20px rgba(124, 58, 237, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 
       &:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 8px 25px rgba(16, 185, 129, 0.4);
+        background: linear-gradient(135deg, #6D28D9 0%, #7C3AED 50%, #8B5CF6 100%);
+        border-color: rgba(255, 255, 255, 0.5);
+        transform: translateY(-2px);
+        box-shadow: 0 8px 28px rgba(124, 58, 237, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.4);
       }
     }
 
     &.reject {
-      background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
-      color: white;
+      background: linear-gradient(135deg, #7C3AED 0%, #9333EA 50%, #8B5CF6 100%);
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      color: #FFFFFF;
+      box-shadow: 0 6px 20px rgba(124, 58, 237, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 
       &:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 8px 25px rgba(239, 68, 68, 0.4);
+        background: linear-gradient(135deg, #6D28D9 0%, #7C3AED 50%, #8B5CF6 100%);
+        border-color: rgba(255, 255, 255, 0.5);
+        transform: translateY(-2px);
+        box-shadow: 0 8px 28px rgba(124, 58, 237, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.4);
       }
     }
 
     &.delete {
-      background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
-      color: white;
+      background: linear-gradient(135deg, #EF4444 0%, #F87171 100%);
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      color: #FFFFFF;
+      box-shadow: 0 6px 20px rgba(239, 68, 68, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 
       &:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 8px 25px rgba(239, 68, 68, 0.4);
+        background: linear-gradient(135deg, #DC2626 0%, #EF4444 100%);
+        border-color: rgba(255, 255, 255, 0.5);
+        transform: translateY(-2px);
+        box-shadow: 0 8px 28px rgba(239, 68, 68, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.4);
       }
     }
 
     &.view {
-      background: linear-gradient(135deg, #6D28D9 0%, #8B5CF6 100%);
-      color: white;
+      background: linear-gradient(135deg, #7C3AED 0%, #9333EA 50%, #8B5CF6 100%);
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      color: #FFFFFF;
+      box-shadow: 0 6px 20px rgba(124, 58, 237, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
       
       svg {
-        color: #D8B4FE;
-        transition: color 0.2s ease;
+        color: #FFFFFF;
+        transition: all 0.2s ease;
       }
 
       &:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 8px 25px rgba(109, 40, 217, 0.4);
+        background: linear-gradient(135deg, #6D28D9 0%, #7C3AED 50%, #8B5CF6 100%);
+        border-color: rgba(255, 255, 255, 0.5);
+        transform: translateY(-2px);
+        box-shadow: 0 8px 28px rgba(124, 58, 237, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.4);
         
         svg {
-          color: #FFFFFF;
+          transform: scale(1.1);
         }
       }
     }
 
     &.download {
-      background: linear-gradient(135deg, #4F46E5 0%, #6366F1 100%);
-      color: white;
+      background: linear-gradient(135deg, #7C3AED 0%, #9333EA 50%, #8B5CF6 100%);
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      color: #FFFFFF;
+      box-shadow: 0 6px 20px rgba(124, 58, 237, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
       
       svg {
-        color: #C4B5FD;
-        transition: color 0.2s ease;
+        color: #FFFFFF;
+        transition: all 0.2s ease;
       }
 
       &:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 8px 25px rgba(79, 70, 229, 0.4);
+        background: linear-gradient(135deg, #6D28D9 0%, #7C3AED 50%, #8B5CF6 100%);
+        border-color: rgba(255, 255, 255, 0.5);
+        transform: translateY(-2px);
+        box-shadow: 0 8px 28px rgba(124, 58, 237, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.4);
         
         svg {
-          color: #FFFFFF;
+          transform: scale(1.1);
         }
       }
     }
 
     &.admin-toggle {
-      background: linear-gradient(135deg, #C026D3 0%, #E879F9 100%);
-      color: white;
+      background: linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%);
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      color: #FFFFFF;
+      box-shadow: 0 6px 20px rgba(245, 158, 11, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
       
       svg {
-        color: #F5D0FE;
-        transition: color 0.2s ease;
+        color: #FFFFFF;
+        transition: all 0.2s ease;
       }
 
       &:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 8px 25px rgba(192, 38, 211, 0.4);
+        background: linear-gradient(135deg, #D97706 0%, #F59E0B 100%);
+        border-color: rgba(255, 255, 255, 0.5);
+        transform: translateY(-2px);
+        box-shadow: 0 8px 28px rgba(245, 158, 11, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.4);
         
         svg {
-          color: #FFFFFF;
+          transform: scale(1.1);
         }
       }
     }
@@ -696,7 +728,7 @@ const TabButton = styled.button<{ $active: boolean }>`
 const AdminButton = styled.button`
   padding: 0.625rem 1rem;
   border-radius: 8px;
-  background: linear-gradient(135deg, #C026D3 0%, #E879F9 100%);
+  background: linear-gradient(135deg, #8850F2 0%, #A855F7 100%);
   color: white;
   border: none;
   font-size: 0.875rem;
@@ -710,7 +742,7 @@ const AdminButton = styled.button`
   
   &:hover {
     transform: translateY(-1px);
-    box-shadow: 0 8px 25px rgba(192, 38, 211, 0.4);
+    box-shadow: 0 8px 25px rgba(136, 80, 242, 0.4);
   }
   
   &:active {
@@ -726,9 +758,9 @@ const AdminButton = styled.button`
 const DangerButton = styled.button`
   padding: 0.625rem 1rem;
   border-radius: 8px;
-  background: linear-gradient(135deg, #BE123C 0%, #F43F5E 100%);
+  background: linear-gradient(135deg, #7C3AED 0%, #9333EA 50%, #8B5CF6 100%);
   color: white;
-  border: none;
+  border: 2px solid rgba(255, 255, 255, 0.3);
   font-size: 0.875rem;
   font-weight: 600;
   cursor: pointer;
@@ -737,10 +769,14 @@ const DangerButton = styled.button`
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
+  box-shadow: 0 4px 16px rgba(124, 58, 237, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
   
   &:hover {
+    background: linear-gradient(135deg, #6D28D9 0%, #7C3AED 50%, #8B5CF6 100%);
+    border-color: rgba(255, 255, 255, 0.5);
     transform: translateY(-1px);
-    box-shadow: 0 8px 25px rgba(244, 63, 94, 0.4);
+    box-shadow: 0 8px 25px rgba(124, 58, 237, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.4);
   }
   
   &:active {
@@ -1004,12 +1040,14 @@ const formatDuration = (seconds: number): string => {
 }
 
 const formatDate = (dateString: string): string => {
-  return new Date(dateString).toLocaleDateString('en-US', {
+  return new Date(dateString).toLocaleDateString('en-SG', {
+    timeZone: 'Asia/Singapore',
     year: 'numeric',
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
+    hour12: false // Use 24-hour format for consistency
   })
 }
 

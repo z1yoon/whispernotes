@@ -44,7 +44,7 @@ export function Header() {
               )}
               <button
                 onClick={handleLogout}
-                className="p-2 text-muted-foreground hover:text-foreground transition-colors"
+                className="px-3 py-2 bg-gradient-to-r from-gray-700 to-gray-600 text-white rounded-lg hover:from-gray-600 hover:to-gray-500 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 font-medium"
                 title="Logout"
               >
                 <LogOut className="w-5 h-5" />

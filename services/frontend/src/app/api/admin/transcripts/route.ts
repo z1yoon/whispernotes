@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
 
     // Fetch all transcripts from file uploader service
     const response = await axios.get(
-      `${FILE_UPLOADER_URL}/api/v1/admin/transcripts`,
+      `${FILE_UPLOADER_URL}/api/v1/transcripts/admin/all`,
       { 
         headers: { 
           'Authorization': `Bearer ${session.accessToken}` 

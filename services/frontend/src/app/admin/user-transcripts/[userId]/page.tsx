@@ -49,21 +49,24 @@ const HeaderLeft = styled.div`
 `;
 
 const BackButton = styled.button`
-  background: rgba(136, 80, 242, 0.1);
-  border: 1px solid rgba(136, 80, 242, 0.2);
-  color: #C4C4CC;
+  background: linear-gradient(135deg, #7C3AED 0%, #9333EA 50%, #8B5CF6 100%);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  color: #FFFFFF;
   padding: 0.75rem;
-  border-radius: 8px;
+  border-radius: 12px;
   cursor: pointer;
   transition: all 0.3s ease;
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 6px 20px rgba(124, 58, 237, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
   
   &:hover {
-    background: rgba(136, 80, 242, 0.2);
-    border-color: rgba(136, 80, 242, 0.3);
-    color: #FFFFFF;
+    background: linear-gradient(135deg, #6D28D9 0%, #7C3AED 50%, #8B5CF6 100%);
+    border-color: rgba(255, 255, 255, 0.5);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 28px rgba(124, 58, 237, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.4);
   }
 `;
 
@@ -230,9 +233,9 @@ const FilterButton = styled.button<{ active: boolean }>`
   border: 1px solid rgba(136, 80, 242, 0.3);
   
   ${props => props.active ? `
-    background: linear-gradient(135deg, #8850F2 0%, #A855F7 100%);
+    background: linear-gradient(135deg, #7C3AED 0%, #9333EA 50%, #8B5CF6 100%);
     color: #FFFFFF;
-    border-color: #8850F2;
+    border-color: #7C3AED;
   ` : `
     background: rgba(20, 20, 24, 0.5);
     color: #8D8D99;
@@ -389,12 +392,12 @@ const ActionButtons = styled.div`
     text-decoration: none;
 
     &.view {
-      background: linear-gradient(135deg, #8850F2 0%, #A855F7 100%);
+      background: linear-gradient(135deg, #7C3AED 0%, #9333EA 50%, #8B5CF6 100%);
       color: white;
 
       &:hover {
         transform: translateY(-1px);
-        box-shadow: 0 8px 25px rgba(136, 80, 242, 0.4);
+        box-shadow: 0 8px 25px rgba(124, 58, 237, 0.4);
       }
     }
   }
@@ -540,12 +543,14 @@ export default function UserTranscriptsPage() {
   }
 
   const formatDate = (dateString: string): string => {
-    return new Date(dateString).toLocaleDateString('en-US', {
+    return new Date(dateString).toLocaleDateString('en-SG', {
+      timeZone: 'Asia/Singapore',
       year: 'numeric',
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
+      hour12: false // Use 24-hour format for consistency
     });
   }
 

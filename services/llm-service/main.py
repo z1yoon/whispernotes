@@ -156,57 +156,60 @@ class LLMAnalyzer:
         
         logger.info(f"📊 Content analysis: {word_count} words, max {max_items} action items")
         
-        prompt = f"""You are an expert meeting assistant. Analyze this transcript and extract GENUINE action items based on the content.
+        prompt = f"""You are a helpful assistant that creates actionable todo items from any conversation or transcript. Your goal is to ALWAYS find useful actions people can take, even from casual discussions.
 
-CONTENT GUIDANCE: {content_guidance}
+Participants: {', '.join(speakers)}
+Content length: {word_count:,} words
 
-CRITICAL INSTRUCTION: If no clear action items exist, DO NOT return empty array. Instead, create 3-5 summary points of the conversation as action items using this format:
-- "Discussed [topic]: [brief summary of what was covered]"
-- "Reviewed [subject]: [key points mentioned]"
-- "Shared information about [topic]: [main insights]"
+## Be GENEROUS and CREATIVE in finding todos:
+From any conversation, you can find actionable items by looking for:
+- **Explicit actions**: Things people directly said they would do
+- **Implied actions**: Things that naturally follow from what was discussed
+- **Follow-up opportunities**: Ideas, topics, or decisions that suggest next steps
+- **Learning opportunities**: Things mentioned that someone could research or explore
+- **Relationship building**: People mentioned who could be contacted
+- **Process improvements**: Ways to make discussed activities better
+- **Documentation needs**: Things that should be recorded or shared
+- **Decision points**: Topics that need decisions or clarification
 
-QUALITY GUIDELINES:
-1. CONTENT-DRIVEN: Extract items based on what's actually discussed, not arbitrary limits
-2. FIRST try to find genuine action items (commitments, assignments, decisions requiring follow-up)
-3. IF no clear action items exist, create summary points of key topics discussed
-4. DO NOT assign priorities - let users decide
-5. Keep descriptions concise and actionable
-6. Maximum {max_items} items for this content length
+## Types of todos you can create:
+- Research or learn about topics discussed
+- Follow up with people mentioned
+- Share information or resources
+- Schedule meetings or calls
+- Review or evaluate options discussed
+- Document decisions or ideas
+- Explore opportunities mentioned
+- Contact vendors, partners, or colleagues
+- Prepare materials or presentations
+- Update systems or processes
 
-WHAT QUALIFIES AS A GENUINE ACTION ITEM:
-- Explicit commitments: "I'll send the report by Friday"
-- Direct assignments: "Can you review the proposal?"
-- Decisions requiring follow-up: "We decided to implement feature X"
-- Clear next steps mentioned: "Let's schedule a follow-up meeting"
-- Specific tasks mentioned: "We need to update the documentation"
+## ALWAYS generate useful todos - be creative and helpful!
+Even from casual conversations, you can find valuable actions like:
+- "Research the [topic] that was mentioned"
+- "Follow up with [person] about [subject]"
+- "Share [resource/idea] with the team"
+- "Schedule time to discuss [topic] further"
+- "Document the [decision/idea] for future reference"
 
-WHAT TO SUMMARIZE (if no action items found):
-- Main topics discussed
-- Key information shared
-- Important points reviewed
-- Decisions made (even if no follow-up required)
-- Problems or challenges mentioned
-
-Meeting Participants: {', '.join(speakers)}
-
-CONVERSATION TRANSCRIPT:
-{transcript}
-
-RESPONSE FORMAT (extract genuine action items OR create summary points, up to {max_items}):
+## JSON format (MUST return valid JSON):
+```json
 [
     {{
-        "task": "Specific, actionable description OR summary of discussion topic",
-        "assignee": "Name of person responsible (if clearly mentioned, otherwise null)",
-        "priority": "medium",
-        "context": "Brief context from the conversation explaining why this is needed or what was discussed"
+        "task": "Clear, actionable task description",
+        "context": "Why this is valuable based on the conversation"
     }}
 ]
+```
 
-Extract all genuine action items, or if none exist, create summary points of the conversation:"""
+## The transcript:
+{transcript}
+
+Generate {max_items} helpful, actionable todo items. Be generous - find valuable actions even if they weren't explicitly stated. Focus on being helpful and practical."""
         
         try:
-            # Adjust token limit based on expected response size
-            max_tokens = min(1200, max_items * 60 + 200)  # ~60 tokens per item + overhead
+            # Adjust token limit based on expected response size - increased for complete responses
+            max_tokens = min(2000, max_items * 80 + 400)  # ~80 tokens per item + overhead
             response = await self._call_deepseek_api(prompt, max_tokens=max_tokens)
             
             # Try to parse JSON response
@@ -219,213 +222,160 @@ Extract all genuine action items, or if none exist, create summary points of the
                     clean_response = clean_response[:-3]  # Remove '```'
                 clean_response = clean_response.strip()
                 
+                # Check if response is truncated and try to fix common JSON issues
+                if clean_response.endswith('...') or clean_response.count('{') != clean_response.count('}'):
+                    logger.warning("🔧 Response appears truncated, attempting to fix JSON")
+                    # If it's a truncated array, try to close it properly
+                    if '[' in clean_response and not clean_response.endswith(']'):
+                        # Find the last complete object
+                        last_complete = clean_response.rfind('}')
+                        if last_complete > 0:
+                            clean_response = clean_response[:last_complete + 1] + ']'
+                
                 action_items = json.loads(clean_response)
                 
-                # Log results with content analysis
+                # Validate and clean the action items
                 if isinstance(action_items, list):
                     items_count = len(action_items)
                     items_per_100_words = (items_count / word_count * 100) if word_count > 0 else 0
                     
-                    # Determine if these are genuine action items or summary points
-                    has_genuine_actions = any(
-                        any(keyword in item.get('task', '').lower() for keyword in [
-                            'will', 'need to', 'should', 'must', 'schedule', 'send', 'review', 
-                            'implement', 'update', 'create', 'follow up', 'contact', 'prepare'
-                        ]) for item in action_items
-                    )
+                    # Clean and validate each item - simple format focused on content
+                    cleaned_items = []
+                    for item in action_items:
+                        if isinstance(item, dict) and 'task' in item:
+                            # Simple, content-focused format
+                            cleaned_item = {
+                                'task': item.get('task', '').strip(),
+                                'context': item.get('context', '').strip()
+                            }
+                            # Only include items with meaningful content
+                            if cleaned_item['task'] and len(cleaned_item['task']) > 5:
+                                cleaned_items.append(cleaned_item)
                     
-                    if has_genuine_actions:
-                        logger.info(f"✅ Extracted {items_count} genuine action items from {word_count} words ({items_per_100_words:.1f} items per 100 words)")
-                    else:
-                        logger.info(f"📝 Created {items_count} summary points from {word_count} words (no clear action items found)")
+                    logger.info(f"✅ Generated {len(cleaned_items)} clear action items from {word_count} words ({items_per_100_words:.1f} items per 100 words)")
                     
-                    # Log each action item/summary for debugging
-                    for i, item in enumerate(action_items):
-                        task_preview = (item.get('task', 'Unknown task')[:80] + '...') if len(item.get('task', '')) > 80 else item.get('task', 'Unknown task')
+                    # Log each action item for debugging
+                    for i, item in enumerate(cleaned_items):
+                        task_preview = (item['task'][:80] + '...') if len(item['task']) > 80 else item['task']
                         logger.info(f"📋 Item {i+1}: {task_preview}")
+                        if item['context']:
+                            context_preview = (item['context'][:60] + '...') if len(item['context']) > 60 else item['context']
+                            logger.info(f"   📝 Context: {context_preview}")
                     
-                    return action_items
+                    return cleaned_items
                 else:
-                    logger.warning("❌ Response is not a list, creating real transcript summary")
-                    return self._create_real_summary_from_transcript(transcript, speakers, max_items)
+                    logger.warning("❌ Response is not a list, generating fallback todos")
+                    return self._generate_fallback_todos(transcript, speakers, max_items)
                     
             except json.JSONDecodeError as e:
                 logger.error(f"❌ JSON parsing failed: {e}")
                 logger.error(f"🔧 Raw response: {response[:500]}...")
-                logger.error("❌ Unable to parse LLM response - creating real transcript summary")
-                return self._create_real_summary_from_transcript(transcript, speakers, max_items)
+                logger.error("❌ Unable to parse LLM response - generating fallback todos")
+                return self._generate_fallback_todos(transcript, speakers, max_items)
                 
         except Exception as e:
             logger.error(f"❌ Error extracting action items: {e}")
-            logger.info("🔧 API unavailable - creating real summary from transcript content")
-            return self._create_real_summary_from_transcript(transcript, speakers, max_items)
+            logger.info("🔧 API unavailable - generating fallback todos")
+            return self._generate_fallback_todos(transcript, speakers, max_items)
     
-    def _create_real_summary_from_transcript(self, transcript: str, speakers: List[str], max_items: int) -> List[Dict[str, Any]]:
-        """Create a real summary from transcript content using simple text analysis when API fails"""
-        logger.info("🔄 Creating real summary from transcript content using text analysis")
+    def _generate_fallback_todos(self, transcript: str, speakers: List[str], max_items: int) -> List[Dict[str, Any]]:
+        """Generate useful todos from transcript using simple text analysis when API fails"""
+        logger.info("🔄 Generating fallback todos from transcript content")
         
-        # Simple text analysis to extract key topics and themes
         words = transcript.lower().split()
-        sentences = transcript.split('.')
+        sentences = [s.strip() for s in transcript.split('.') if len(s.strip()) > 20]
         
-        # Extract key themes by finding frequently mentioned words (excluding common words)
-        stop_words = {'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'can', 'this', 'that', 'these', 'those', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her', 'us', 'them'}
+        # Find action words
+        action_words = ['need', 'should', 'will', 'plan', 'decide', 'review', 'follow', 'contact', 'call', 'email', 'meeting', 'schedule', 'research', 'check', 'update', 'create', 'prepare', 'discuss', 'implement', 'consider']
         
-        # Count word frequency (excluding stop words and short words)
+        # Extract key topics mentioned frequently
         word_count = {}
         for word in words:
             clean_word = word.strip('.,!?";:()[]{}').lower()
-            if len(clean_word) > 3 and clean_word not in stop_words and clean_word.isalpha():
+            if len(clean_word) > 4 and clean_word.isalpha():
                 word_count[clean_word] = word_count.get(clean_word, 0) + 1
         
-        # Get most common topics
-        common_words = sorted(word_count.items(), key=lambda x: x[1], reverse=True)[:10]
+        # Get most mentioned topics
+        common_topics = [word for word, count in sorted(word_count.items(), key=lambda x: x[1], reverse=True)[:8] if count > 1]
         
-        # Find sentences with decisions, actions, or key topics
-        action_keywords = ['decide', 'agreed', 'plan', 'will', 'should', 'need', 'discuss', 'review', 'implement', 'create', 'update', 'schedule', 'meeting', 'project', 'task']
-        important_sentences = []
+        # Find sentences with action indicators
+        action_sentences = []
+        for sentence in sentences[:15]:
+            for action_word in action_words:
+                if action_word in sentence.lower():
+                    action_sentences.append(sentence)
+                    break
         
-        for sentence in sentences[:20]:  # Check first 20 sentences
-            sentence = sentence.strip()
-            if len(sentence) > 30:  # Skip very short sentences
-                for keyword in action_keywords:
-                    if keyword in sentence.lower():
-                        important_sentences.append(sentence)
-                        break
+        # Generate todos
+        todos = []
         
-        # Create summary items based on analysis
-        summary_items = []
-        
-        # Add topic-based summaries
-        if common_words:
-            for i, (word, count) in enumerate(common_words[:3]):
-                summary_items.append({
-                    "task": f"Discussed {word.title()}: Key topic mentioned {count} times in conversation",
-                    "assignee": None,
-                    "priority": "medium",
-                    "context": f"Frequently mentioned topic during the meeting with {len(speakers)} participants"
-                })
-        
-        # Add sentence-based summaries
-        for sentence in important_sentences[:max_items-len(summary_items)]:
-            if len(summary_items) >= max_items:
-                break
-            summary_items.append({
-                "task": f"Reviewed: {sentence[:100]}{'...' if len(sentence) > 100 else ''}",
-                "assignee": None,
-                "priority": "medium", 
-                "context": "Key point or decision mentioned during the conversation"
+        # Generate todos from common topics
+        for topic in common_topics[:3]:
+            todos.append({
+                "task": f"Follow up on {topic.title()} discussion",
+                "context": f"This topic was frequently mentioned during the conversation"
             })
         
-        # Ensure we have at least some content
-        if not summary_items:
-            summary_items = [
+        # Generate todos from action sentences
+        for sentence in action_sentences[:max_items-len(todos)]:
+            if len(todos) >= max_items:
+                break
+            clean_sentence = sentence[:80] + '...' if len(sentence) > 80 else sentence
+            todos.append({
+                "task": f"Review: {clean_sentence}",
+                "context": "Action item identified from the conversation"
+            })
+        
+        # Add generic helpful todos if we don't have enough
+        generic_todos = [
+            {
+                "task": f"Schedule follow-up meeting with {', '.join(speakers[:2])}",
+                "context": "Continue the discussion from this conversation"
+            },
+            {
+                "task": "Document key decisions and outcomes",
+                "context": "Capture important points from the conversation"
+            },
+            {
+                "task": "Share relevant information with team members",
+                "context": "Ensure everyone is informed about the discussion"
+            },
+            {
+                "task": "Research topics mentioned in the conversation",
+                "context": "Gather more information on subjects discussed"
+            },
+            {
+                "task": "Prepare agenda for next discussion",
+                "context": "Build on topics covered in this conversation"
+            }
+        ]
+        
+        # Fill remaining slots with generic todos
+        for generic_todo in generic_todos:
+            if len(todos) >= max_items:
+                break
+            todos.append(generic_todo)
+        
+        # Ensure we have at least some todos
+        if not todos:
+            todos = [
                 {
-                    "task": f"Meeting discussion with {len(speakers)} participants",
-                    "assignee": None,
-                    "priority": "medium",
-                    "context": f"Conversation covered approximately {len(words)} words across {len(sentences)} topics"
+                    "task": f"Review conversation with {len(speakers)} participants",
+                    "context": "Follow up on the discussion points"
                 },
                 {
-                    "task": "Reviewed various topics and shared information",
-                    "assignee": None,
-                    "priority": "medium",
-                    "context": "General discussion and information sharing session"
+                    "task": "Identify next steps from the conversation",
+                    "context": "Determine actionable items moving forward"
                 }
             ]
         
-        logger.info(f"📝 Created {len(summary_items)} summary items from transcript analysis")
-        for i, item in enumerate(summary_items):
-            task_preview = (item['task'][:60] + '...') if len(item['task']) > 60 else item['task']
-            logger.info(f"📋 Summary {i+1}: {task_preview}")
+        logger.info(f"📝 Generated {len(todos)} fallback todos")
+        for i, todo in enumerate(todos):
+            task_preview = (todo['task'][:60] + '...') if len(todo['task']) > 60 else todo['task']
+            logger.info(f"📋 Fallback {i+1}: {task_preview}")
         
-        return summary_items[:max_items]
+        return todos[:max_items]
     
-    def _analyze_participants(self, transcript_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Analyze participant engagement and contributions"""
-        
-        segments = transcript_data.get("segments", [])
-        speakers = transcript_data.get("speakers", [])
-        
-        if not segments:
-            return {}
-        
-        # Calculate speaking time for each speaker
-        speaker_stats = {}
-        for speaker in speakers:
-            speaker_segments = [seg for seg in segments if seg.get("speaker") == speaker]
-            total_time = sum([seg.get("end", 0) - seg.get("start", 0) for seg in speaker_segments])
-            word_count = sum([len(seg.get("text", "").split()) for seg in speaker_segments])
-            
-            speaker_stats[speaker] = {
-                "speaking_time": total_time,
-                "word_count": word_count,
-                "segment_count": len(speaker_segments),
-                "avg_segment_length": total_time / len(speaker_segments) if speaker_segments else 0
-            }
-        
-        # Generate insights about participation
-        total_duration = transcript_data.get("duration", 1)
-        
-        for speaker, stats in speaker_stats.items():
-            stats["speaking_percentage"] = (stats["speaking_time"] / total_duration) * 100
-            stats["engagement_level"] = (
-                "High" if stats["speaking_percentage"] > 30 else
-                "Medium" if stats["speaking_percentage"] > 15 else
-                "Low"
-            )
-        
-        return {
-            "participant_statistics": speaker_stats,
-            "most_active_speaker": max(speaker_stats.keys(), key=lambda x: speaker_stats[x]["speaking_time"]) if speaker_stats else None,
-            "participation_balance": "Balanced" if max(speaker_stats.values(), key=lambda x: x["speaking_percentage"])["speaking_percentage"] < 50 else "Unbalanced"
-        }
-    
-    async def _identify_risks_opportunities(self, transcript: str) -> Dict[str, Any]:
-        """Identify potential risks and opportunities mentioned"""
-        
-        prompt = f"""
-        Analyze the meeting transcript to identify potential risks and opportunities.
-        
-        Transcript:
-        {transcript}
-        
-        Identify:
-        1. Risks or concerns mentioned
-        2. Opportunities or positive developments
-        3. Mitigation strategies discussed
-        
-        Format as JSON:
-        {{
-            "risks": [
-                {{
-                    "risk": "Description of risk",
-                    "severity": "High/Medium/Low",
-                    "mitigation": "Mitigation strategy if mentioned"
-                }}
-            ],
-            "opportunities": [
-                {{
-                    "opportunity": "Description of opportunity",
-                    "potential_impact": "High/Medium/Low",
-                    "next_steps": "Steps to pursue if mentioned"
-                }}
-            ]
-        }}
-        """
-        
-        try:
-            response = await self._call_deepseek_api(prompt, max_tokens=800)
-            
-            try:
-                risks_opps = json.loads(response)
-                return risks_opps
-            except json.JSONDecodeError:
-                return {"risks": [], "opportunities": []}
-                
-        except Exception as e:
-            print(f"Error identifying risks/opportunities: {e}")
-            return {"risks": [], "opportunities": []}
     
 
 analyzer = LLMAnalyzer()

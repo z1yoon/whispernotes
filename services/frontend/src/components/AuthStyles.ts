@@ -146,7 +146,7 @@ export const PasswordToggle = styled.button`
 
 export const SubmitButton = styled(motion.button)`
   padding: 1rem;
-  background: linear-gradient(90deg, #8850F2 0%, #A855F7 100%);
+  background: linear-gradient(135deg, #A855F7 0%, #7C3AED 100%);
   color: white;
   border: none;
   border-radius: 10px;
@@ -157,7 +157,8 @@ export const SubmitButton = styled(motion.button)`
 
   &:hover {
     transform: translateY(-1px);
-    box-shadow: 0 10px 30px rgba(168, 85, 247, 0.3);
+    box-shadow: 0 10px 30px rgba(168, 85, 247, 0.4);
+    background: linear-gradient(135deg, #9333EA 0%, #6D28D9 100%);
   }
 
   &:disabled {

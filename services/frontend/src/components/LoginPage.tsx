@@ -94,7 +94,7 @@ const LoginCard = styled(motion.div)`
     left: 0;
     right: 0;
     height: 3px;
-    background: linear-gradient(90deg, #8850F2, #A855F7, #C084FC, #A855F7, #8850F2);
+    background: linear-gradient(90deg, #374151, #4B5563, #06B6D4, #4B5563, #374151);
     background-size: 200% 100%;
     border-radius: 32px 32px 0 0;
     animation: ${shimmer} 3s infinite;
@@ -117,7 +117,7 @@ const LogoContainer = styled(motion.div)`
 const LogoIcon = styled.div`
   width: 64px;
   height: 64px;
-  background: linear-gradient(135deg, #8850F2 0%, #A855F7 50%, #C084FC 100%);
+  background: linear-gradient(135deg, #374151 0%, #4B5563 50%, #06B6D4 100%);
   border-radius: 20px;
   display: flex;
   align-items: center;
@@ -130,7 +130,7 @@ const LogoIcon = styled.div`
     content: '';
     position: absolute;
     inset: -2px;
-    background: linear-gradient(45deg, #8850F2, #A855F7, #C084FC, #A855F7, #8850F2);
+    background: linear-gradient(45deg, #374151, #4B5563, #06B6D4, #4B5563, #374151);
     border-radius: 22px;
     z-index: -1;
     animation: ${shimmer} 2s infinite;
@@ -142,7 +142,7 @@ const BrandName = styled.h1`
   font-family: 'Inter', sans-serif;
   font-size: 2rem;
   font-weight: 800;
-  background: linear-gradient(135deg, #FFFFFF 0%, #C4C4CC 50%, #A855F7 100%);
+  background: linear-gradient(135deg, #FFFFFF 0%, #C4C4CC 50%, #06B6D4 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -376,7 +376,7 @@ const SubmitButton = styled(motion.button)`
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
-  background: linear-gradient(90deg, #8850F2 0%, #A855F7 100%);
+  background: linear-gradient(90deg, #374151 0%, #4B5563 100%);
   color: white;
   
   &:disabled {

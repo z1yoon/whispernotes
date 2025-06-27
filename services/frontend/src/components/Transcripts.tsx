@@ -80,21 +80,24 @@ const HeaderLeft = styled.div`
 `;
 
 const BackButton = styled.button`
-  background: rgba(136, 80, 242, 0.1);
-  border: 1px solid rgba(136, 80, 242, 0.2);
-  color: #C4C4CC;
+  background: linear-gradient(135deg, #7C3AED 0%, #9333EA 50%, #8B5CF6 100%);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  color: #FFFFFF;
   padding: 0.75rem;
-  border-radius: 8px;
+  border-radius: 12px;
   cursor: pointer;
   transition: all 0.3s ease;
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 6px 20px rgba(124, 58, 237, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
   
   &:hover {
-    background: rgba(136, 80, 242, 0.2);
-    border-color: rgba(136, 80, 242, 0.3);
-    color: #FFFFFF;
+    background: linear-gradient(135deg, #6D28D9 0%, #7C3AED 50%, #8B5CF6 100%);
+    border-color: rgba(255, 255, 255, 0.5);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 28px rgba(124, 58, 237, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.4);
   }
 `;
 
@@ -162,20 +165,16 @@ const AuthButton = styled.button<{ $variant?: 'primary' | 'secondary' }>`
   align-items: center;
   gap: 0.5rem;
   border: none;
+  background: rgba(255, 255, 255, 0.1);
   
-  ${props => props.$variant === 'primary' ? `
-    background: linear-gradient(90deg, #8850F2 0%, #A855F7 100%);
-    color: white;
-    &:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 8px 25px rgba(168, 85, 247, 0.4);
-    }
-  ` : `
-    background: rgba(255, 255, 255, 0.1);
-    &:hover {
-      background: rgba(255, 255, 255, 0.15);
-    }
-  `}
+  &:hover {
+    background: rgba(255, 255, 255, 0.15);
+    transform: translateY(-1px);
+  }
+  
+  &:active {
+    transform: translateY(0);
+  }
 `;
 
 const MainContent = styled.div`
@@ -323,6 +322,7 @@ const FilterButton = styled.button<{ active: boolean }>`
   font-size: 0.875rem;
   transition: all 0.2s;
   border: 1px solid rgba(136, 80, 242, 0.3);
+  cursor: pointer;
   
   ${props => props.active ? `
     background: linear-gradient(135deg, #8850F2 0%, #A855F7 100%);
@@ -380,12 +380,15 @@ const TranscriptionHeader = styled.div`
   .file-avatar {
     width: 48px;
     height: 48px;
-    background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%);
+    background: linear-gradient(135deg, #8B5CF6 0%, #A855F7 50%, #D946EF 100%);
+    border: 2px solid rgba(255, 255, 255, 0.4);
     border-radius: 12px;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: white;
+    color: #FFFFFF;
+    box-shadow: 0 8px 24px rgba(139, 92, 246, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
   }
 
   .file-info {
@@ -407,12 +410,12 @@ const TranscriptionHeader = styled.div`
 `;
 
 const statusColors = {
-  completed: { bg: 'rgba(34, 197, 94, 0.1)', color: '#4ADE80', border: 'rgba(34, 197, 94, 0.3)' },
-  processing: { bg: 'rgba(254, 240, 138, 0.1)', color: '#FDE047', border: 'rgba(254, 240, 138, 0.3)' },
-  transcribing: { bg: 'rgba(254, 240, 138, 0.1)', color: '#FDE047', border: 'rgba(254, 240, 138, 0.3)' },
-  uploading: { bg: 'rgba(59, 130, 246, 0.1)', color: '#60A5FA', border: 'rgba(59, 130, 246, 0.3)' },
+  completed: { bg: 'rgba(139, 92, 246, 0.1)', color: '#A855F7', border: 'rgba(139, 92, 246, 0.3)' },
+  processing: { bg: 'rgba(168, 85, 247, 0.1)', color: '#C084FC', border: 'rgba(168, 85, 247, 0.3)' },
+  transcribing: { bg: 'rgba(168, 85, 247, 0.1)', color: '#C084FC', border: 'rgba(168, 85, 247, 0.3)' },
+  uploading: { bg: 'rgba(124, 58, 237, 0.1)', color: '#8B5CF6', border: 'rgba(124, 58, 237, 0.3)' },
   failed: { bg: 'rgba(239, 68, 68, 0.1)', color: '#F87171', border: 'rgba(239, 68, 68, 0.3)' },
-  default: { bg: 'rgba(107, 114, 128, 0.1)', color: '#9CA3AF', border: 'rgba(107, 114, 128, 0.3)' }
+  default: { bg: 'rgba(139, 92, 246, 0.1)', color: '#A855F7', border: 'rgba(139, 92, 246, 0.3)' }
 };
 
 const StatusBadge = styled.span<{ status: string }>`
@@ -454,10 +457,10 @@ const TranscriptionDetails = styled.div`
 
 const ViewButton = styled.button`
   padding: 0.625rem 1rem;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #6D28D9 0%, #8B5CF6 100%);
-  color: white;
-  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #3B82F6 0%, #6366F1 100%);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  color: #FFFFFF;
   font-size: 0.875rem;
   font-weight: 600;
   cursor: pointer;
@@ -465,18 +468,22 @@ const ViewButton = styled.button`
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
   
   svg {
-    color: #D8B4FE;
-    transition: color 0.2s ease;
+    color: #FFFFFF;
+    transition: all 0.2s ease;
   }
   
   &:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 8px 25px rgba(109, 40, 217, 0.4);
+    background: linear-gradient(135deg, #2563EB 0%, #4F46E5 100%);
+    border-color: rgba(255, 255, 255, 0.5);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 28px rgba(59, 130, 246, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.4);
     
     svg {
-      color: #FFFFFF;
+      transform: scale(1.1);
     }
   }
   
@@ -487,10 +494,10 @@ const ViewButton = styled.button`
 
 const DownloadButton = styled.button`
   padding: 0.625rem 1rem;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #4F46E5 0%, #6366F1 100%);
-  color: white;
-  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #10B981 0%, #34D399 100%);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  color: #FFFFFF;
   font-size: 0.875rem;
   font-weight: 600;
   cursor: pointer;
@@ -498,18 +505,22 @@ const DownloadButton = styled.button`
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
   
   svg {
-    color: #C4B5FD;
-    transition: color 0.2s ease;
+    color: #FFFFFF;
+    transition: all 0.2s ease;
   }
   
   &:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 8px 25px rgba(79, 70, 229, 0.4);
+    background: linear-gradient(135deg, #059669 0%, #10B981 100%);
+    border-color: rgba(255, 255, 255, 0.5);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 28px rgba(16, 185, 129, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.4);
     
     svg {
-      color: #FFFFFF;
+      transform: scale(1.1);
     }
   }
   
@@ -520,10 +531,10 @@ const DownloadButton = styled.button`
 
 const DeleteButton = styled.button`
   padding: 0.625rem 1rem;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #BE123C 0%, #F43F5E 100%);
-  color: white;
-  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #EF4444 0%, #F87171 100%);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  color: #FFFFFF;
   font-size: 0.875rem;
   font-weight: 600;
   cursor: pointer;
@@ -531,18 +542,22 @@ const DeleteButton = styled.button`
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  box-shadow: 0 6px 20px rgba(239, 68, 68, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
   
   svg {
-    color: #FDA4AF;
-    transition: color 0.2s ease;
+    color: #FFFFFF;
+    transition: all 0.2s ease;
   }
   
   &:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 8px 25px rgba(244, 63, 94, 0.4);
+    background: linear-gradient(135deg, #DC2626 0%, #EF4444 100%);
+    border-color: rgba(255, 255, 255, 0.5);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 28px rgba(239, 68, 68, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.4);
     
     svg {
-      color: #FFFFFF;
+      transform: scale(1.1);
     }
   }
   
@@ -601,15 +616,19 @@ const EmptyState = styled.div`
     border-radius: 12px;
     font-weight: 600;
     font-size: 1rem;
-    border: none;
+    border: 2px solid rgba(255, 255, 255, 0.3);
     cursor: pointer;
-    background: linear-gradient(135deg, #8850F2 0%, #A855F7 100%);
+    background: linear-gradient(135deg, #7C3AED 0%, #9333EA 50%, #8B5CF6 100%);
     color: white;
     transition: all 0.2s;
+    box-shadow: 0 4px 16px rgba(124, 58, 237, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
     
     &:hover {
+      background: linear-gradient(135deg, #6D28D9 0%, #7C3AED 50%, #8B5CF6 100%);
+      border-color: rgba(255, 255, 255, 0.5);
       transform: translateY(-1px);
-      box-shadow: 0 8px 25px rgba(136, 80, 242, 0.4);
+      box-shadow: 0 8px 25px rgba(124, 58, 237, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.4);
     }
   }
 `;
@@ -771,7 +790,7 @@ const Transcripts = () => {
   };
 
   const formatDate = (dateString: string): string => {
-    // Convert to Singapore timezone (UTC+8)
+    // Use Singapore timezone (UTC+8)
     const date = new Date(dateString);
     return date.toLocaleDateString('en-SG', {
       timeZone: 'Asia/Singapore',
