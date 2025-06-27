@@ -1,0 +1,16 @@
+<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background with rounded corners -->
+  <rect width="32" height="32" rx="8" fill="url(#paint0_linear)" />
+  
+  <!-- W letter for Whisper -->
+  <path d="M6 8L10 24H12L15 14L18 24H20L24 8H22L19 20L16 8H14L11 20L8 8H6Z" fill="white"/>
+  
+  <!-- Gradient definitions -->
+  <defs>
+    <linearGradient id="paint0_linear" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#8850F2" />
+      <stop offset="60%" stop-color="#A855F7" />
+      <stop offset="100%" stop-color="#B0E54F" />
+    </linearGradient>
+  </defs>
+</svg> 

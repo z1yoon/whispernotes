@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Favicon Generator</title>
+  <script>
+    window.onload = function() {
+      const svg = document.getElementById('favicon-svg');
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+      
+      img.onload = function() {
+        ctx.drawImage(img, 0, 0, 32, 32);
+        const dataUrl = canvas.toDataURL('image/png');
+        document.getElementById('download-link').href = dataUrl;
+        document.getElementById('download-link').style.display = 'block';
+        document.getElementById('png-preview').src = dataUrl;
+      };
+      
+      // Convert SVG to data URL
+      const svgData = new XMLSerializer().serializeToString(svg);
+      const svgBlob = new Blob([svgData], {type: 'image/svg+xml;charset=utf-8'});
+      const url = URL.createObjectURL(svgBlob);
+      img.src = url;
+    };
+  </script>
+</head>
+<body>
+  <h1>Favicon Generator</h1>
+  
+  <svg id="favicon-svg" width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <!-- Background with rounded corners -->
+    <rect width="32" height="32" rx="8" fill="url(#paint0_linear)" />
+    
+    <!-- W letter for Whisper -->
+    <path d="M6 8L10 24H12L15 14L18 24H20L24 8H22L19 20L16 8H14L11 20L8 8H6Z" fill="white"/>
+    
+    <!-- Gradient definitions -->
+    <defs>
+      <linearGradient id="paint0_linear" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stop-color="#8850F2" />
+        <stop offset="60%" stop-color="#A855F7" />
+        <stop offset="100%" stop-color="#B0E54F" />
+      </linearGradient>
+    </defs>
+  </svg>
+  
+  <div style="margin-top: 20px;">
+    <canvas id="canvas" width="32" height="32" style="border:1px solid #d3d3d3;"></canvas>
+  </div>
+  
+  <div style="margin-top: 20px;">
+    <img id="png-preview" width="32" height="32" style="border:1px solid #d3d3d3;" />
+  </div>
+  
+  <div style="margin-top: 20px;">
+    <a id="download-link" download="favicon.png" style="display: none;">Download PNG</a>
+  </div>
+</body>
+</html> 
