@@ -1,6 +1,6 @@
 # WhisperNotes - AI-Powered Meeting Transcription Platform
 
-WhisperNotes transforms meeting videos into intelligent, actionable insights using advanced AI technologies including WhisperX for transcription and DeepSeek for analysis.
+WhisperNotes transforms meeting videos into intelligent, actionable insights using advanced AI technologies including WhisperX for transcription and QWEN for analysis.
 
 ## ✨ Features
 
