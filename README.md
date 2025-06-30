@@ -52,7 +52,6 @@ WhisperNotes transforms meeting videos into intelligent, actionable insights usi
 
 - **Speaker Diarization**: Automatically identifies and separates different speakers
 - **Action Items**: Extracts tasks and to-dos from meeting discussions
-- **Meeting Summaries**: Generates concise summaries of key points
 - **Progress Tracking**: Real-time updates throughout the processing pipeline
 - **User Management**: Admin approval workflow for new users
 
