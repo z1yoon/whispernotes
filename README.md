@@ -30,12 +30,13 @@ WhisperNotes transforms meeting videos into intelligent, actionable insights usi
 ## 🚀 Quick Start
 
 1. **Clone the repository**
-2. **Start all services** using Docker Compose
-3. **Access the application** at http://localhost:3000
-4. **Upload your video file** (supports MP4, MOV, AVI, WebM formats)
-5. **Set the number of speakers**
-6. **Monitor real-time processing progress**
-7. **View transcripts and AI-generated insights**
+2. **Ask the admin for the .env file and create it in the root directory**
+3. **Start all services** using Docker Compose
+4. **Access the application** at http://localhost:3000
+5. **Upload your video file** (supports MP4, MOV, AVI, WebM formats)
+6. **Set the number of speakers**
+7. **Monitor real-time processing progress**
+8. **View transcripts and AI-generated insights**
 
 
 ## 📚 Usage Guide
