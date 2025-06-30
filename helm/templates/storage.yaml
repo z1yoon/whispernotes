@@ -1,0 +1,118 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{ include "whispernotes.fullname" . }}-pv
+  labels:
+    {{- include "whispernotes.labels" . | nindent 4 }}
+spec:
+  capacity:
+    storage: {{ .Values.storage.pv.size }}
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: {{ .Values.storage.storageClass }}
+  hostPath:
+    path: {{ .Values.storage.pv.hostPath }}
+    type: DirectoryOrCreate
+---
+# PostgreSQL PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "whispernotes.fullname" . }}-postgres-pvc
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "whispernotes.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.storage.postgres.size }}
+  storageClassName: {{ .Values.storage.storageClass }}
+---
+# MinIO PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "whispernotes.fullname" . }}-minio-pvc
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "whispernotes.labels" . | nindent 4 }}
+    app.kubernetes.io/component: minio
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.storage.minio.size }}
+  storageClassName: {{ .Values.storage.storageClass }}
+---
+# Redis PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "whispernotes.fullname" . }}-redis-pvc
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "whispernotes.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.storage.redis.size }}
+  storageClassName: {{ .Values.storage.storageClass }}
+---
+# RabbitMQ PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "whispernotes.fullname" . }}-rabbitmq-pvc
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "whispernotes.labels" . | nindent 4 }}
+    app.kubernetes.io/component: rabbitmq
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.storage.rabbitmq.size }}
+  storageClassName: {{ .Values.storage.storageClass }}
+---
+# WhisperX PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "whispernotes.fullname" . }}-whisperx-pvc
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "whispernotes.labels" . | nindent 4 }}
+    app.kubernetes.io/component: whisperx
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.storage.whisperx.size }}
+  storageClassName: {{ .Values.storage.storageClass }}
+---
+# HuggingFace Cache PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "whispernotes.fullname" . }}-huggingface-cache-pvc
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "whispernotes.labels" . | nindent 4 }}
+    app.kubernetes.io/component: whisperx
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.storage.huggingfaceCache.size }}
+  storageClassName: {{ .Values.storage.storageClass }}

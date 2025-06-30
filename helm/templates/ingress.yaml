@@ -1,0 +1,90 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "whispernotes.fullname" . }}-ingress
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "whispernotes.labels" . | nindent 4 }}
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - whispernotes.leeseng.net
+    secretName: {{ include "whispernotes.fullname" . }}-tls
+  rules:
+  - host: whispernotes.leeseng.net
+    http:
+      paths:
+      # Frontend (default route)
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ include "whispernotes.fullname" . }}-frontend
+            port:
+              number: {{ .Values.ports.frontend }}
+      
+      # API routes
+      - path: /api/auth
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ include "whispernotes.fullname" . }}-auth-service
+            port:
+              number: {{ .Values.ports.authService }}
+      
+      - path: /api/upload
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ include "whispernotes.fullname" . }}-file-uploader
+            port:
+              number: {{ .Values.ports.fileUploader }}
+      
+      - path: /api/process
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ include "whispernotes.fullname" . }}-video-processor
+            port:
+              number: {{ .Values.ports.videoProcessor }}
+      
+      - path: /api/transcribe
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ include "whispernotes.fullname" . }}-whisperx
+            port:
+              number: {{ .Values.ports.whisperx }}
+      
+      - path: /api/llm
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ include "whispernotes.fullname" . }}-llm-service
+            port:
+              number: {{ .Values.ports.llmService }}
+      
+      # MinIO Console (admin interface)
+      - path: /minio
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ include "whispernotes.fullname" . }}-minio
+            port:
+              number: {{ .Values.ports.minioConsole }}
+      
+      # RabbitMQ Management (admin interface)  
+      - path: /rabbitmq
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ include "whispernotes.fullname" . }}-rabbitmq
+            port:
+              number: {{ .Values.ports.rabbitmqManagement }}

@@ -1,0 +1,155 @@
+{{- if .Values.services.whisperx.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "whispernotes.fullname" . }}-whisperx
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "whispernotes.labels" . | nindent 4 }}
+    app.kubernetes.io/component: whisperx
+spec:
+  replicas: {{ .Values.services.whisperx.replicas }}
+  selector:
+    matchLabels:
+      {{- include "whispernotes.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: whisperx
+  template:
+    metadata:
+      labels:
+        {{- include "whispernotes.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: whisperx
+    spec:
+      containers:
+      - name: whisperx
+        image: {{ .Values.global.imageRegistry }}/{{ .Values.services.whisperx.image }}
+        ports:
+        - containerPort: {{ .Values.ports.whisperx }}
+        env:
+        - name: DEVICE
+          value: {{ .Values.services.whisperx.env.device | quote }}
+        - name: COMPUTE_TYPE
+          value: {{ .Values.services.whisperx.env.computeType | quote }}
+        - name: BATCH_SIZE
+          value: {{ .Values.services.whisperx.env.batchSize | quote }}
+        - name: SHOULD_MOCK_DIARIZATION
+          value: {{ .Values.services.whisperx.env.shouldMockDiarization | quote }}
+        - name: HF_HOME
+          value: "/root/.cache/huggingface"
+        - name: HF_HUB_CACHE
+          value: "/root/.cache/huggingface/hub"
+        - name: TRANSFORMERS_CACHE
+          value: "/root/.cache/huggingface/transformers"
+        - name: HF_HUB_DOWNLOAD_TIMEOUT
+          value: "300"
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "whispernotes.fullname" . }}-secrets
+              key: HF_TOKEN
+        - name: RABBITMQ_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "whispernotes.fullname" . }}-config
+              key: RABBITMQ_HOST
+        - name: RABBITMQ_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "whispernotes.fullname" . }}-config
+              key: RABBITMQ_PORT
+        - name: RABBITMQ_DEFAULT_USER
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "whispernotes.fullname" . }}-config
+              key: RABBITMQ_DEFAULT_USER
+        - name: RABBITMQ_DEFAULT_PASS
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "whispernotes.fullname" . }}-secrets
+              key: RABBITMQ_DEFAULT_PASS
+        - name: MINIO_ENDPOINT
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "whispernotes.fullname" . }}-config
+              key: MINIO_ENDPOINT
+        - name: MINIO_ACCESS_KEY
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "whispernotes.fullname" . }}-config
+              key: MINIO_ACCESS_KEY
+        - name: MINIO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "whispernotes.fullname" . }}-secrets
+              key: MINIO_SECRET_KEY
+        volumeMounts:
+        - name: whisperx-storage
+          mountPath: /app/models
+        - name: huggingface-cache
+          mountPath: /root/.cache/huggingface
+        - name: temp-storage
+          mountPath: /tmp/whisper_temp
+        resources:
+          requests:
+            memory: {{ .Values.services.whisperx.resources.requests.memory }}
+            cpu: {{ .Values.services.whisperx.resources.requests.cpu }}
+            {{- if .Values.services.whisperx.gpu.enabled }}
+            nvidia.com/gpu: {{ .Values.services.whisperx.gpu.count }}
+            {{- end }}
+          limits:
+            memory: {{ .Values.services.whisperx.resources.limits.memory }}
+            cpu: {{ .Values.services.whisperx.resources.limits.cpu }}
+            {{- if .Values.services.whisperx.gpu.enabled }}
+            nvidia.com/gpu: {{ .Values.services.whisperx.gpu.count }}
+            {{- end }}
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: {{ .Values.ports.whisperx }}
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: {{ .Values.ports.whisperx }}
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+      volumes:
+      - name: whisperx-storage
+        persistentVolumeClaim:
+          claimName: {{ include "whispernotes.fullname" . }}-whisperx-pvc
+      - name: huggingface-cache
+        persistentVolumeClaim:
+          claimName: {{ include "whispernotes.fullname" . }}-huggingface-cache-pvc
+      - name: temp-storage
+        emptyDir:
+          sizeLimit: 5Gi
+      {{- if .Values.services.whisperx.gpu.enabled }}
+      nodeSelector:
+        {{- toYaml .Values.services.whisperx.gpu.nodeSelector | nindent 8 }}
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "whispernotes.fullname" . }}-whisperx
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "whispernotes.labels" . | nindent 4 }}
+    app.kubernetes.io/component: whisperx
+spec:
+  selector:
+    {{- include "whispernotes.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: whisperx
+  ports:
+  - port: {{ .Values.ports.whisperx }}
+    targetPort: {{ .Values.ports.whisperx }}
+  type: ClusterIP
+{{- end }}

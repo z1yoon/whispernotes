@@ -22,7 +22,8 @@
       "Bash(cp:*)",
       "Bash(ls:*)",
       "Bash(docker restart:*)",
-      "mcp__ide__getDiagnostics"
+      "mcp__ide__getDiagnostics",
+      "Bash(mkdir:*)"
     ],
     "deny": []
   }
