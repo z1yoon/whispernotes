@@ -1,0 +1,192 @@
+# Default values for whispernotes
+# This is a YAML-formatted file.
+
+global:
+  namespace: whispernotes
+  environment: main
+  imageRegistry: harbor.leeseng.net/whispernotes
+  imagePullPolicy: Always
+
+# Storage configuration
+storage:
+  storageClass: whispernotes-storage
+  pv:
+    size: 100Gi
+    hostPath: /var/lib/whispernotes
+  postgres:
+    size: 10Gi
+  minio:
+    size: 50Gi
+  redis:
+    size: 5Gi
+  rabbitmq:
+    size: 5Gi
+  whisperx:
+    size: 20Gi
+  huggingfaceCache:
+    size: 10Gi
+
+# Application configuration
+config:
+  database:
+    name: whisper_notes
+    user: whisper_user
+  redis:
+    port: 6379
+  rabbitmq:
+    port: 5672
+    user: whisper_user
+    vhost: "/"
+  minio:
+    accessKey: whisper_admin
+  qwen:
+    apiBase: https://test-llm.rdc.nie.edu.sg/api/v1/
+    model: DeepSeek-R1-Distill-Qwen-32B
+  logLevel: INFO
+
+# Services configuration
+services:
+  postgres:
+    enabled: true
+    image: postgres:15-alpine
+    replicas: 1
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 250m
+      limits:
+        memory: 1Gi
+        cpu: 1000m
+    
+  redis:
+    enabled: true
+    image: redis:7-alpine
+    replicas: 1
+    resources:
+      requests:
+        memory: 128Mi
+        cpu: 100m
+      limits:
+        memory: 256Mi
+        cpu: 200m
+    
+  rabbitmq:
+    enabled: true
+    image: rabbitmq:3-management-alpine
+    replicas: 1
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 200m
+      limits:
+        memory: 512Mi
+        cpu: 400m
+    
+  minio:
+    enabled: true
+    image: minio/minio:latest
+    replicas: 1
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 200m
+      limits:
+        memory: 512Mi
+        cpu: 400m
+    
+  whisperx:
+    enabled: true
+    image: whisperx:latest
+    replicas: 1
+    gpu:
+      enabled: true
+      count: 1
+      nodeSelector:
+        accelerator: nvidia-tesla-gpu
+    env:
+      device: cuda
+      computeType: float16
+      batchSize: 8
+      shouldMockDiarization: false
+    resources:
+      requests:
+        memory: 6Gi
+        cpu: 1500m
+      limits:
+        memory: 12Gi
+        cpu: 3000m
+    
+  authService:
+    enabled: true
+    image: auth-service:latest
+    replicas: 1
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 200m
+      limits:
+        memory: 512Mi
+        cpu: 400m
+    
+  fileUploader:
+    enabled: true
+    image: file-uploader:latest
+    replicas: 1
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 200m
+      limits:
+        memory: 512Mi
+        cpu: 400m
+    
+  videoProcessor:
+    enabled: true
+    image: video-processor:latest
+    replicas: 1
+    resources:
+      requests:
+        memory: 512Mi
+        cpu: 400m
+      limits:
+        memory: 1Gi
+        cpu: 800m
+    
+  llmService:
+    enabled: true
+    image: llm-service:latest
+    replicas: 1
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 200m
+      limits:
+        memory: 512Mi
+        cpu: 400m
+    
+  frontend:
+    enabled: true
+    image: frontend:latest
+    replicas: 1
+    resources:
+      requests:
+        memory: 128Mi
+        cpu: 100m
+      limits:
+        memory: 256Mi
+        cpu: 200m
+
+# Service ports
+ports:
+  postgres: 5432
+  redis: 6379
+  rabbitmq: 5672
+  rabbitmqManagement: 15672
+  minio: 9000
+  minioConsole: 9001
+  authService: 8000
+  fileUploader: 8002
+  whisperx: 8003
+  llmService: 8004
+  videoProcessor: 8001
+  frontend: 3000

@@ -1,65 +1,68 @@
-# WhisperNotes - AI-Powered Meeting Transcription Platform
+# WhisperNotes
 
-WhisperNotes transforms meeting videos into intelligent, actionable insights using advanced AI technologies including WhisperX for transcription and QWEN for analysis.
+AI-powered meeting transcription platform that transforms videos into actionable insights.
 
-## ✨ Features
+## Features
 
-- **Video Upload**: Support for large video files with chunked upload and resume capability
-- **Advanced Transcription**: WhisperX integration with speaker diarization for accurate multi-speaker transcripts
-- **Intelligent Analysis**: AI-powered generation of action items, meeting summaries, and key insights
-- **Real-time Progress**: Live updates during processing via WebSocket
-- **Secure Authentication**: JWT-based authentication with admin approval workflow
-- **Modern UI**: React frontend with clean, intuitive design
+- Upload large video files with resume capability
+- AI transcription with speaker identification  
+- Generate action items and meeting summaries
+- Real-time processing progress
+- Secure JWT authentication
 
-## 🏗️ Architecture
+## Architecture
 
-### Core Services
-- **Auth Service** (Port 8000) - User authentication and authorization
-- **File Uploader** (Port 8002) - Chunked file upload with WebSocket progress
-- **Video Processor** - Video format conversion and audio extraction
-- **Whisper Transcriber** (Port 8003) - AI transcription with speaker diarization
-- **LLM Service** (Port 8004) - AI analysis for intelligent insights
-- **Frontend** (Port 3000) - Next.js React application
+**Services:**
+- Auth Service - User authentication
+- File Uploader - Video upload handling
+- Video Processor - Format conversion
+- WhisperX - AI transcription with GPU
+- LLM Service - Intelligent analysis
+- Frontend - Next.js web interface
 
-### Infrastructure
-- **PostgreSQL** - Primary database
-- **Redis** - Caching and session storage
-- **RabbitMQ** - Message queue for service communication
-- **MinIO** - Object storage for files
+**Infrastructure:**
+- PostgreSQL, Redis, RabbitMQ, MinIO
+- Kubernetes deployment with Helm
+- Harbor container registry
 
-## 🚀 Quick Start
+## Deployment
 
-1. **Clone the repository**
-2. **Ask the admin for the .env file and create it in the root directory**
-3. **Start all services** using Docker Compose
-4. **Access the application** at http://localhost:3000
-5. **Upload your video file** (supports MP4, MOV, AVI, WebM formats)
-6. **Set the number of speakers**
-7. **Monitor real-time processing progress**
-8. **View transcripts and AI-generated insights**
+### Prerequisites
+- MicroK8s cluster with GPU support
+- Harbor registry access
+- GitLab CI/CD setup
 
+### Required Environment Variables
+Set in GitLab **Settings → CI/CD → Variables**:
 
-## 📚 Usage Guide
+```
+HARBOR_PASSWORD
+MICROK8S_KUBECONFIG_CONTENT
+POSTGRES_PASSWORD
+REDIS_PASSWORD
+RABBITMQ_DEFAULT_PASS
+MINIO_SECRET_KEY
+JWT_SECRET_KEY
+QWEN_API_KEY
+HF_TOKEN
+```
 
-### Processing Pipeline
+### Deploy
+1. Push to `main` branch
+2. Run manual deployment in GitLab CI/CD
+3. Access at https://whispernotes.leeseng.net
 
-1. **Upload Stage**: Chunked file upload with resume capability
-2. **Video Processing**: Format conversion and audio extraction
-3. **Transcription**: AI-powered transcription with speaker identification
-4. **Analysis**: AI analysis for actionable insights
+## Usage
 
-### Key Features
+1. Upload video file (MP4, MOV, AVI, WebM)
+2. Set number of speakers
+3. Monitor processing progress
+4. View transcripts and AI insights
 
-- **Speaker Diarization**: Automatically identifies and separates different speakers
-- **Action Items**: Extracts tasks and to-dos from meeting discussions
-- **Progress Tracking**: Real-time updates throughout the processing pipeline
-- **User Management**: Admin approval workflow for new users
+## Tech Stack
 
-## 🔧 Technology Stack
-
-- **Frontend**: Next.js, React, TypeScript, Styled Components
+- **Frontend**: Next.js, React, TypeScript
 - **Backend**: FastAPI, Python
-- **Database**: PostgreSQL, Redis
-- **Message Queue**: RabbitMQ
-- **Storage**: MinIO
-- **AI/ML**: WhisperX,QWEN
+- **AI**: WhisperX, QWEN
+- **Deploy**: Kubernetes, Helm, Docker
+- **Storage**: PostgreSQL, Redis, MinIO

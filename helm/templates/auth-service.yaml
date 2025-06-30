@@ -1,0 +1,83 @@
+{{- if .Values.services.authService.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "whispernotes.fullname" . }}-auth-service
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "whispernotes.labels" . | nindent 4 }}
+    app.kubernetes.io/component: auth-service
+spec:
+  replicas: {{ .Values.services.authService.replicas }}
+  selector:
+    matchLabels:
+      {{- include "whispernotes.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: auth-service
+  template:
+    metadata:
+      labels:
+        {{- include "whispernotes.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: auth-service
+    spec:
+      containers:
+      - name: auth-service
+        image: {{ .Values.global.imageRegistry }}/{{ .Values.services.authService.image }}
+        ports:
+        - containerPort: {{ .Values.ports.authService }}
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "whispernotes.fullname" . }}-secrets
+              key: DATABASE_URL
+        - name: JWT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "whispernotes.fullname" . }}-secrets
+              key: JWT_SECRET_KEY
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "whispernotes.fullname" . }}-config
+              key: LOG_LEVEL
+        resources:
+          requests:
+            memory: {{ .Values.services.authService.resources.requests.memory }}
+            cpu: {{ .Values.services.authService.resources.requests.cpu }}
+          limits:
+            memory: {{ .Values.services.authService.resources.limits.memory }}
+            cpu: {{ .Values.services.authService.resources.limits.cpu }}
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: {{ .Values.ports.authService }}
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: {{ .Values.ports.authService }}
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "whispernotes.fullname" . }}-auth-service
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "whispernotes.labels" . | nindent 4 }}
+    app.kubernetes.io/component: auth-service
+spec:
+  selector:
+    {{- include "whispernotes.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: auth-service
+  ports:
+  - port: {{ .Values.ports.authService }}
+    targetPort: {{ .Values.ports.authService }}
+  type: ClusterIP
+{{- end }}

@@ -1,0 +1,101 @@
+stages:
+  - build
+  - deploy
+
+variables:
+  DOCKER_DRIVER: overlay2
+  HELM_CHART_PATH: ./helm
+  MICROK8S_KUBECONFIG: /etc/kubernetes/admin.conf
+  HARBOR_REGISTRY: harbor.leeseng.net
+  HARBOR_USERNAME: admin
+
+# Build and push images to Harbor
+.build_template: &build_template
+  stage: build
+  image: docker:20.10.16
+  services:
+    - docker:20.10.16-dind
+  before_script:
+    - docker login -u $HARBOR_USERNAME -p $HARBOR_PASSWORD $HARBOR_REGISTRY
+  script:
+    - cd services/$SERVICE_NAME
+    - docker build -t $HARBOR_REGISTRY/whispernotes/$SERVICE_NAME:$CI_COMMIT_SHA .
+    - docker tag $HARBOR_REGISTRY/whispernotes/$SERVICE_NAME:$CI_COMMIT_SHA $HARBOR_REGISTRY/whispernotes/$SERVICE_NAME:latest
+    - docker push $HARBOR_REGISTRY/whispernotes/$SERVICE_NAME:$CI_COMMIT_SHA
+    - docker push $HARBOR_REGISTRY/whispernotes/$SERVICE_NAME:latest
+  only:
+    - main
+
+# Build all services
+build:auth-service:
+  <<: *build_template
+  variables:
+    SERVICE_NAME: auth-service
+
+build:file-uploader:
+  <<: *build_template
+  variables:
+    SERVICE_NAME: file-uploader
+
+build:video-processor:
+  <<: *build_template
+  variables:
+    SERVICE_NAME: video-processor
+
+build:whisperx:
+  <<: *build_template
+  variables:
+    SERVICE_NAME: whisperx
+
+build:llm-service:
+  <<: *build_template
+  variables:
+    SERVICE_NAME: llm-service
+
+build:frontend:
+  <<: *build_template
+  variables:
+    SERVICE_NAME: frontend
+
+# Deploy to MicroK8s
+deploy:microk8s:
+  stage: deploy
+  image: alpine/helm:3.12.0
+  variables:
+    KUBE_NAMESPACE: whispernotes
+  before_script:
+    - apk add --no-cache envsubst
+    - mkdir -p ~/.kube
+    - echo "$MICROK8S_KUBECONFIG_CONTENT" | base64 -d > ~/.kube/config
+    - helm repo add stable https://charts.helm.sh/stable
+    - helm repo update
+  script:
+    # Substitute GitLab secrets in secrets.yaml
+    - envsubst < helm/templates/secrets.yaml > helm/templates/secrets-processed.yaml
+    - mv helm/templates/secrets-processed.yaml helm/templates/secrets.yaml
+    
+    # Deploy with Helm
+    - |
+      helm upgrade --install whispernotes $HELM_CHART_PATH \
+        --namespace $KUBE_NAMESPACE \
+        --create-namespace \
+        --values $HELM_CHART_PATH/values.yaml \
+        --set global.imageRegistry=$HARBOR_REGISTRY/whispernotes \
+        --set services.authService.image=auth-service:$CI_COMMIT_SHA \
+        --set services.fileUploader.image=file-uploader:$CI_COMMIT_SHA \
+        --set services.videoProcessor.image=video-processor:$CI_COMMIT_SHA \
+        --set services.whisperx.image=whisperx:$CI_COMMIT_SHA \
+        --set services.llmService.image=llm-service:$CI_COMMIT_SHA \
+        --set services.frontend.image=frontend:$CI_COMMIT_SHA \
+        --wait \
+        --timeout=10m
+    
+    # Verify deployment
+    - kubectl get pods -n $KUBE_NAMESPACE
+    - kubectl get services -n $KUBE_NAMESPACE
+  environment:
+    name: main
+    url: https://whispernotes.leeseng.net
+  only:
+    - main
+  when: manual

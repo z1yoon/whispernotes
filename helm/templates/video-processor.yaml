@@ -1,0 +1,123 @@
+{{- if .Values.services.videoProcessor.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "whispernotes.fullname" . }}-video-processor
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "whispernotes.labels" . | nindent 4 }}
+    app.kubernetes.io/component: video-processor
+spec:
+  replicas: {{ .Values.services.videoProcessor.replicas }}
+  selector:
+    matchLabels:
+      {{- include "whispernotes.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: video-processor
+  template:
+    metadata:
+      labels:
+        {{- include "whispernotes.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: video-processor
+    spec:
+      containers:
+      - name: video-processor
+        image: {{ .Values.global.imageRegistry }}/{{ .Values.services.videoProcessor.image }}
+        ports:
+        - containerPort: {{ .Values.ports.videoProcessor }}
+        env:
+        - name: RABBITMQ_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "whispernotes.fullname" . }}-config
+              key: RABBITMQ_HOST
+        - name: RABBITMQ_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "whispernotes.fullname" . }}-config
+              key: RABBITMQ_PORT
+        - name: RABBITMQ_DEFAULT_USER
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "whispernotes.fullname" . }}-config
+              key: RABBITMQ_DEFAULT_USER
+        - name: RABBITMQ_DEFAULT_PASS
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "whispernotes.fullname" . }}-secrets
+              key: RABBITMQ_DEFAULT_PASS
+        - name: MINIO_ENDPOINT
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "whispernotes.fullname" . }}-config
+              key: MINIO_ENDPOINT
+        - name: MINIO_ACCESS_KEY
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "whispernotes.fullname" . }}-config
+              key: MINIO_ACCESS_KEY
+        - name: MINIO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "whispernotes.fullname" . }}-secrets
+              key: MINIO_SECRET_KEY
+        - name: REDIS_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "whispernotes.fullname" . }}-config
+              key: REDIS_HOST
+        - name: REDIS_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "whispernotes.fullname" . }}-config
+              key: REDIS_PORT
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "whispernotes.fullname" . }}-secrets
+              key: REDIS_PASSWORD
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "whispernotes.fullname" . }}-config
+              key: LOG_LEVEL
+        resources:
+          requests:
+            memory: {{ .Values.services.videoProcessor.resources.requests.memory }}
+            cpu: {{ .Values.services.videoProcessor.resources.requests.cpu }}
+          limits:
+            memory: {{ .Values.services.videoProcessor.resources.limits.memory }}
+            cpu: {{ .Values.services.videoProcessor.resources.limits.cpu }}
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: {{ .Values.ports.videoProcessor }}
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: {{ .Values.ports.videoProcessor }}
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "whispernotes.fullname" . }}-video-processor
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "whispernotes.labels" . | nindent 4 }}
+    app.kubernetes.io/component: video-processor
+spec:
+  selector:
+    {{- include "whispernotes.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: video-processor
+  ports:
+  - port: {{ .Values.ports.videoProcessor }}
+    targetPort: {{ .Values.ports.videoProcessor }}
+  type: ClusterIP
+{{- end }}

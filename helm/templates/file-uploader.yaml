@@ -1,0 +1,103 @@
+{{- if .Values.services.fileUploader.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "whispernotes.fullname" . }}-file-uploader
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "whispernotes.labels" . | nindent 4 }}
+    app.kubernetes.io/component: file-uploader
+spec:
+  replicas: {{ .Values.services.fileUploader.replicas }}
+  selector:
+    matchLabels:
+      {{- include "whispernotes.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: file-uploader
+  template:
+    metadata:
+      labels:
+        {{- include "whispernotes.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: file-uploader
+    spec:
+      containers:
+      - name: file-uploader
+        image: {{ .Values.global.imageRegistry }}/{{ .Values.services.fileUploader.image }}
+        ports:
+        - containerPort: {{ .Values.ports.fileUploader }}
+        env:
+        - name: MINIO_ENDPOINT
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "whispernotes.fullname" . }}-config
+              key: MINIO_ENDPOINT
+        - name: MINIO_ACCESS_KEY
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "whispernotes.fullname" . }}-config
+              key: MINIO_ACCESS_KEY
+        - name: MINIO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "whispernotes.fullname" . }}-secrets
+              key: MINIO_SECRET_KEY
+        - name: REDIS_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "whispernotes.fullname" . }}-config
+              key: REDIS_HOST
+        - name: REDIS_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "whispernotes.fullname" . }}-config
+              key: REDIS_PORT
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "whispernotes.fullname" . }}-secrets
+              key: REDIS_PASSWORD
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "whispernotes.fullname" . }}-config
+              key: LOG_LEVEL
+        resources:
+          requests:
+            memory: {{ .Values.services.fileUploader.resources.requests.memory }}
+            cpu: {{ .Values.services.fileUploader.resources.requests.cpu }}
+          limits:
+            memory: {{ .Values.services.fileUploader.resources.limits.memory }}
+            cpu: {{ .Values.services.fileUploader.resources.limits.cpu }}
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: {{ .Values.ports.fileUploader }}
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: {{ .Values.ports.fileUploader }}
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "whispernotes.fullname" . }}-file-uploader
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "whispernotes.labels" . | nindent 4 }}
+    app.kubernetes.io/component: file-uploader
+spec:
+  selector:
+    {{- include "whispernotes.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: file-uploader
+  ports:
+  - port: {{ .Values.ports.fileUploader }}
+    targetPort: {{ .Values.ports.fileUploader }}
+  type: ClusterIP
+{{- end }}
