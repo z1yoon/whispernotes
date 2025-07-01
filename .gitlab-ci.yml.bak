@@ -1,0 +1,78 @@
+stages:
+  - build
+  - deploy
+
+# Build template
+.build_template: &build_template
+  stage: build
+  image: docker:24
+  services:
+    - docker:24-dind
+  variables:
+    DOCKER_DRIVER: overlay2
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+  before_script:
+    - docker login -u $HARBOR_USERNAME -p $HARBOR_PASSWORD $HARBOR_REGISTRY
+  script:
+    - cd services/$SERVICE_NAME
+    - docker build -t $HARBOR_REGISTRY/whispernotes/$SERVICE_NAME:$CI_COMMIT_SHA .
+    - docker push $HARBOR_REGISTRY/whispernotes/$SERVICE_NAME:$CI_COMMIT_SHA
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+
+# Build all services with DinD
+build:auth-service:
+  <<: *build_template
+  variables:
+    SERVICE_NAME: auth-service
+
+build:file-uploader:
+  <<: *build_template
+  variables:
+    SERVICE_NAME: file-uploader
+
+build:video-processor:
+  <<: *build_template
+  variables:
+    SERVICE_NAME: video-processor
+
+build:whisperx:
+  <<: *build_template
+  variables:
+    SERVICE_NAME: whisperx
+
+build:llm-service:
+  <<: *build_template
+  variables:
+    SERVICE_NAME: llm-service
+
+build:frontend:
+  <<: *build_template
+  variables:
+    SERVICE_NAME: frontend
+
+deploy:microk8s:
+  stage: deploy
+  image: alpine/helm:3.12.0
+  variables:
+    KUBE_NAMESPACE: whispernotes
+  before_script:
+    - mkdir -p ~/.kube
+    - echo "$MICROK8S_KUBECONFIG_CONTENT" | base64 -d > ~/.kube/config
+  script:
+    - |
+      helm upgrade --install whispernotes ./helm \
+        --namespace $KUBE_NAMESPACE \
+        --create-namespace \
+        --set global.imageRegistry=$HARBOR_REGISTRY/whispernotes \
+        --set services.whisperx.image=whisperx:$CI_COMMIT_SHA \
+        --set services.llmService.image=llm-service:$CI_COMMIT_SHA \
+        --set services.fileUploader.image=file-uploader:$CI_COMMIT_SHA \
+        --set services.frontend.image=frontend:$CI_COMMIT_SHA \
+        --wait
+  environment:
+    name: main
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+  when: manual
