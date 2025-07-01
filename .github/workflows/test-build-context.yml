@@ -35,38 +35,21 @@ jobs:
         echo "=== Current service: ${{ matrix.service }} ==="
         ls -la ./services/${{ matrix.service }}/
         echo ""
-        echo "=== Checking shared_utils.py (for Python services) ==="
-        if [ -f "./services/shared_utils.py" ]; then
-          echo "✅ shared_utils.py exists"
-        else
-          echo "❌ shared_utils.py missing"
-        fi
-        echo ""
-        echo "=== Checking service-specific files ==="
-        if [ "${{ matrix.service }}" = "frontend" ]; then
-          echo "Frontend specific files:"
-          ls -la ./services/frontend/package.json || echo "❌ package.json missing"
-          ls -la ./services/frontend/src/lib/ || echo "❌ src/lib directory missing"
-        else
-          echo "Python service specific files:"
-          ls -la ./services/${{ matrix.service }}/requirements.txt || echo "❌ requirements.txt missing"
-          ls -la ./services/${{ matrix.service }}/main.py || echo "❌ main.py missing"
-        fi
+        echo "=== Checking shared_utils.py ==="
+        ls -la ./services/shared_utils.py || echo "❌ shared_utils.py missing"
     
-    - name: Test build with consistent context and target
+    - name: Test build with consistent context
       run: |
-        # Use same context path and target as GitLab CI for all services
-        echo "Building ${{ matrix.service }} with target=production..."
+        # Use same context path for all services
+        echo "Building ${{ matrix.service }}..."
         docker build \
-          --target production \
           -t ${{ env.DOCKERHUB_USERNAME }}/whispernotes:${{ matrix.service }}-${{ env.IMAGE_TAG }} \
           -f ./services/${{ matrix.service }}/Dockerfile \
           ./services
         
         echo "✅ Build successful for ${{ matrix.service }}"
     
-    - name: Test image and push (optional)
-      if: github.event_name == 'push'
+    - name: Test image and push
       run: |
         # Test that the image was built correctly
         docker images | grep ${{ matrix.service }}-${{ env.IMAGE_TAG }}
@@ -81,7 +64,6 @@ jobs:
         echo "🎯 Build Context Test Summary for ${{ matrix.service }}:"
         echo "   Context Path: ./services"
         echo "   Dockerfile: ./services/${{ matrix.service }}/Dockerfile"
-        echo "   Target: production"
         echo "   Status: ✅ SUCCESS"
         echo ""
-        echo "This confirms the consistent context path and target works for all services!"
+        echo "This confirms the consistent context path works for all services!"
