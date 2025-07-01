@@ -25,7 +25,8 @@
       "mcp__ide__getDiagnostics",
       "Bash(mkdir:*)",
       "WebFetch(domain:hub.docker.com)",
-      "WebFetch(domain:docs.gitlab.com)"
+      "WebFetch(domain:docs.gitlab.com)",
+      "Bash(npx tsc:*)"
     ],
     "deny": []
   }

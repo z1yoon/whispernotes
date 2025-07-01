@@ -24,9 +24,9 @@ import {
 } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
 import { useNotification } from './NotificationProvider';
-import { useProgressUpdates } from '../hooks/useProgressUpdates';
-import { useHttpClient } from '../lib/http-client';
-import { formatSingaporeDate } from '../lib/date-utils';
+import { useProgressUpdates } from '@/hooks/useProgressUpdates';
+import { useHttpClient } from '@/lib/http-client';
+import { formatSingaporeDate } from '@/lib/date-utils';
 
 // TypeScript interfaces
 interface Transcription {

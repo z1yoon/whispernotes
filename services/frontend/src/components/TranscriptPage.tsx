@@ -21,7 +21,7 @@ import {
   Plus
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { useHttpClient } from '../lib/http-client';
+import { useHttpClient } from '@/lib/http-client';
 
 // TypeScript interfaces
 

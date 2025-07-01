@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 import { useNotification } from './NotificationProvider';
-import { useHttpClient } from '../lib/http-client';
+import { useHttpClient } from '@/lib/http-client';
 import axios from 'axios';
 
 // TypeScript interfaces
