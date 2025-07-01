@@ -1,39 +1,86 @@
 stages:
+  - prepare
   - build
 
-# BuildKit template - using cluster BuildKit service
-.buildkit_template: &buildkit_template
-  image: moby/buildkit:v0.12.0
-  stage: build
-  variables:
-    BUILDKIT_HOST: tcp://buildkitd.buildkit.svc.cluster.local:1234
-  before_script:
-    - mkdir -p ~/.docker
-    - echo "{\"auths\":{\"$HARBOR_REGISTRY\":{\"username\":\"$HARBOR_USERNAME\",\"password\":\"$HARBOR_PASSWORD\"}}}" > ~/.docker/config.json
+variables:
+  SERVICES: "auth-service file-uploader video-processor whisperx llm-service frontend"
+
+# Create Harbor repositories if they don't exist
+create-repositories:
+  stage: prepare
+  image: curlimages/curl:latest
   script:
     - |
-      buildctl \
-        --addr $BUILDKIT_HOST \
-        build \
-        --frontend dockerfile.v0 \
-        --local context=services/$SERVICE_NAME \
-        --local dockerfile=services/$SERVICE_NAME \
-        --output type=image,name=$HARBOR_REGISTRY/whispernotes/$SERVICE_NAME:test-$CI_COMMIT_SHA,push=true
+      for service in $SERVICES; do
+        echo "Creating repository for $service..."
+        # Check if repository exists
+        response=$(curl -s -w "%{http_code}" -o /dev/null \
+          -u "$HARBOR_USERNAME:$HARBOR_PASSWORD" \
+          "$HARBOR_REGISTRY/api/v2.0/projects/whispernotes/repositories/$service")
+        
+        if [ "$response" = "404" ]; then
+          echo "Repository $service doesn't exist, creating..."
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -u "$HARBOR_USERNAME:$HARBOR_PASSWORD" \
+            -d "{\"name\":\"$service\",\"description\":\"WhisperNotes $service container\"}" \
+            "$HARBOR_REGISTRY/api/v2.0/projects/whispernotes/repositories" || echo "Repository may already exist or auto-created"
+        else
+          echo "Repository $service already exists or will be auto-created"
+        fi
+      done
   rules:
     - if: $CI_COMMIT_BRANCH == "staging"
 
-# Build jobs (testing BuildKit cluster service)
+# Kaniko template - truly daemonless and rootless
+.kaniko_template: &kaniko_template
+  image:
+    name: gcr.io/kaniko-project/executor:v1.9.0-debug
+    entrypoint: [""]
+  stage: build
+  before_script:
+    - mkdir -p /kaniko/.docker
+    - echo "{\"auths\":{\"$HARBOR_REGISTRY\":{\"username\":\"$HARBOR_USERNAME\",\"password\":\"$HARBOR_PASSWORD\"}}}" > /kaniko/.docker/config.json
+  script:
+    - |
+      /kaniko/executor \
+        --context $CI_PROJECT_DIR/services/$SERVICE_NAME \
+        --dockerfile $CI_PROJECT_DIR/services/$SERVICE_NAME/Dockerfile \
+        --destination $HARBOR_REGISTRY/whispernotes/$SERVICE_NAME:test-$CI_COMMIT_SHA \
+        --cache=true \
+        --cache-ttl=24h \
+        --compressed-caching=false \
+        --cleanup
+  rules:
+    - if: $CI_COMMIT_BRANCH == "staging"
+
+# Build jobs - all services (daemonless & rootless)
 build:auth-service:
-  <<: *buildkit_template
+  <<: *kaniko_template
   variables:
     SERVICE_NAME: auth-service
 
 build:file-uploader:
-  <<: *buildkit_template
+  <<: *kaniko_template
   variables:
     SERVICE_NAME: file-uploader
 
+build:video-processor:
+  <<: *kaniko_template
+  variables:
+    SERVICE_NAME: video-processor
+
+build:whisperx:
+  <<: *kaniko_template
+  variables:
+    SERVICE_NAME: whisperx
+
+build:llm-service:
+  <<: *kaniko_template
+  variables:
+    SERVICE_NAME: llm-service
+
 build:frontend:
-  <<: *buildkit_template
+  <<: *kaniko_template
   variables:
     SERVICE_NAME: frontend
