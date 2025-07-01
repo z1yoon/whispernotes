@@ -5,18 +5,14 @@ stages:
 variables:
   DOCKER_DRIVER: overlay2
 
-# BuildKit rootless template
+# Simple BuildKit template without rootless complications
 .buildkit_template: &buildkit_template
-  image: moby/buildkit:rootless
+  image: moby/buildkit:latest
   stage: build
-  variables:
-    BUILDKITD_FLAGS: --oci-worker-no-process-sandbox
   before_script:
     - |
       mkdir -p ~/.docker
       echo "{\"auths\":{\"$HARBOR_REGISTRY\":{\"username\":\"$HARBOR_USERNAME\",\"password\":\"$HARBOR_PASSWORD\"}}}" > ~/.docker/config.json
-    - rootlesskit buildkitd $BUILDKITD_FLAGS &
-    - sleep 10
   script:
     - |
       buildctl-daemonless.sh build \
