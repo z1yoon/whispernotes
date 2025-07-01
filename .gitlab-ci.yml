@@ -19,6 +19,7 @@ stages:
         --destination $HARBOR_REGISTRY/whispernotes/$SERVICE_NAME:$CI_COMMIT_SHA
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "staging"
 
 # Build jobs
 build:auth-service:
@@ -51,8 +52,8 @@ build:frontend:
   variables:
     SERVICE_NAME: frontend
 
-# Deploy job
-deploy:microk8s:
+# Deploy to production
+deploy:production:
   stage: deploy
   image: alpine/helm:3.12.0
   variables:
@@ -74,7 +75,37 @@ deploy:microk8s:
         --set services.frontend.image=frontend:$CI_COMMIT_SHA \
         --wait
   environment:
-    name: main
+    name: production
+    url: https://whispernotes.your-domain.com
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
+  when: manual
+
+# Deploy to staging
+deploy:staging:
+  stage: deploy
+  image: alpine/helm:3.12.0
+  variables:
+    KUBE_NAMESPACE: whispernotes-staging
+  before_script:
+    - mkdir -p ~/.kube
+    - echo "$MICROK8S_KUBECONFIG_CONTENT" | base64 -d > ~/.kube/config
+  script:
+    - |
+      helm upgrade --install whispernotes-staging ./helm \
+        --namespace $KUBE_NAMESPACE \
+        --create-namespace \
+        --set global.imageRegistry=$HARBOR_REGISTRY/whispernotes \
+        --set services.whisperx.image=whisperx:$CI_COMMIT_SHA \
+        --set services.llmService.image=llm-service:$CI_COMMIT_SHA \
+        --set services.fileUploader.image=file-uploader:$CI_COMMIT_SHA \
+        --set services.authService.image=auth-service:$CI_COMMIT_SHA \
+        --set services.videoProcessor.image=video-processor:$CI_COMMIT_SHA \
+        --set services.frontend.image=frontend:$CI_COMMIT_SHA \
+        --wait
+  environment:
+    name: staging
+    url: https://staging.whispernotes.your-domain.com
+  rules:
+    - if: $CI_COMMIT_BRANCH == "staging"
   when: manual
