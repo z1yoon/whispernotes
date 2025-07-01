@@ -1,111 +1,39 @@
 stages:
   - build
-  - deploy
 
-# Kaniko template - builds without Docker daemon
-.kaniko_template: &kaniko_template
-  image:
-    name: gcr.io/kaniko-project/executor:v1.9.0-debug
-    entrypoint: [""]
+# BuildKit template - using cluster BuildKit service
+.buildkit_template: &buildkit_template
+  image: moby/buildkit:v0.12.0
   stage: build
+  variables:
+    BUILDKIT_HOST: tcp://buildkitd.buildkit.svc.cluster.local:1234
   before_script:
-    - mkdir -p /kaniko/.docker
-    - echo "{\"auths\":{\"$HARBOR_REGISTRY\":{\"username\":\"$HARBOR_USERNAME\",\"password\":\"$HARBOR_PASSWORD\"}}}" > /kaniko/.docker/config.json
+    - mkdir -p ~/.docker
+    - echo "{\"auths\":{\"$HARBOR_REGISTRY\":{\"username\":\"$HARBOR_USERNAME\",\"password\":\"$HARBOR_PASSWORD\"}}}" > ~/.docker/config.json
   script:
     - |
-      /kaniko/executor \
-        --context $CI_PROJECT_DIR/services/$SERVICE_NAME \
-        --dockerfile $CI_PROJECT_DIR/services/$SERVICE_NAME/Dockerfile \
-        --destination $HARBOR_REGISTRY/whispernotes/$SERVICE_NAME:$CI_COMMIT_SHA
+      buildctl \
+        --addr $BUILDKIT_HOST \
+        build \
+        --frontend dockerfile.v0 \
+        --local context=services/$SERVICE_NAME \
+        --local dockerfile=services/$SERVICE_NAME \
+        --output type=image,name=$HARBOR_REGISTRY/whispernotes/$SERVICE_NAME:test-$CI_COMMIT_SHA,push=true
   rules:
-    - if: $CI_COMMIT_BRANCH == "main"
     - if: $CI_COMMIT_BRANCH == "staging"
 
-# Build jobs
+# Build jobs (testing BuildKit cluster service)
 build:auth-service:
-  <<: *kaniko_template
+  <<: *buildkit_template
   variables:
     SERVICE_NAME: auth-service
 
 build:file-uploader:
-  <<: *kaniko_template
+  <<: *buildkit_template
   variables:
     SERVICE_NAME: file-uploader
 
-build:video-processor:
-  <<: *kaniko_template
-  variables:
-    SERVICE_NAME: video-processor
-
-build:whisperx:
-  <<: *kaniko_template
-  variables:
-    SERVICE_NAME: whisperx
-
-build:llm-service:
-  <<: *kaniko_template
-  variables:
-    SERVICE_NAME: llm-service
-
 build:frontend:
-  <<: *kaniko_template
+  <<: *buildkit_template
   variables:
     SERVICE_NAME: frontend
-
-# Deploy to production
-deploy:production:
-  stage: deploy
-  image: alpine/helm:3.12.0
-  variables:
-    KUBE_NAMESPACE: whispernotes
-  before_script:
-    - mkdir -p ~/.kube
-    - echo "$MICROK8S_KUBECONFIG_CONTENT" | base64 -d > ~/.kube/config
-  script:
-    - |
-      helm upgrade --install whispernotes ./helm \
-        --namespace $KUBE_NAMESPACE \
-        --create-namespace \
-        --set global.imageRegistry=$HARBOR_REGISTRY/whispernotes \
-        --set services.whisperx.image=whisperx:$CI_COMMIT_SHA \
-        --set services.llmService.image=llm-service:$CI_COMMIT_SHA \
-        --set services.fileUploader.image=file-uploader:$CI_COMMIT_SHA \
-        --set services.authService.image=auth-service:$CI_COMMIT_SHA \
-        --set services.videoProcessor.image=video-processor:$CI_COMMIT_SHA \
-        --set services.frontend.image=frontend:$CI_COMMIT_SHA \
-        --wait
-  environment:
-    name: production
-    url: https://whispernotes.your-domain.com
-  rules:
-    - if: $CI_COMMIT_BRANCH == "main"
-  when: manual
-
-# Deploy to staging
-deploy:staging:
-  stage: deploy
-  image: alpine/helm:3.12.0
-  variables:
-    KUBE_NAMESPACE: whispernotes-staging
-  before_script:
-    - mkdir -p ~/.kube
-    - echo "$MICROK8S_KUBECONFIG_CONTENT" | base64 -d > ~/.kube/config
-  script:
-    - |
-      helm upgrade --install whispernotes-staging ./helm \
-        --namespace $KUBE_NAMESPACE \
-        --create-namespace \
-        --set global.imageRegistry=$HARBOR_REGISTRY/whispernotes \
-        --set services.whisperx.image=whisperx:$CI_COMMIT_SHA \
-        --set services.llmService.image=llm-service:$CI_COMMIT_SHA \
-        --set services.fileUploader.image=file-uploader:$CI_COMMIT_SHA \
-        --set services.authService.image=auth-service:$CI_COMMIT_SHA \
-        --set services.videoProcessor.image=video-processor:$CI_COMMIT_SHA \
-        --set services.frontend.image=frontend:$CI_COMMIT_SHA \
-        --wait
-  environment:
-    name: staging
-    url: https://staging.whispernotes.your-domain.com
-  rules:
-    - if: $CI_COMMIT_BRANCH == "staging"
-  when: manual
