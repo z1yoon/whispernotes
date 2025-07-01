@@ -29,6 +29,7 @@ variables:
         --cleanup
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "staging"
 
 # Build all services
 build:auth-service:
@@ -85,7 +86,9 @@ deploy:microk8s:
         --wait \
         --timeout=10m
   environment:
-    name: main
+    name: $CI_COMMIT_BRANCH
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
-  when: manual
+      when: manual
+    - if: $CI_COMMIT_BRANCH == "staging"
+      when: manual

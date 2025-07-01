@@ -34,6 +34,14 @@ const nextConfig: NextConfig = {
       };
     }
     
+    // Ensure path resolution works correctly
+    config.resolve = {
+      ...config.resolve,
+      alias: {
+        ...config.resolve.alias,
+        '@': require('path').resolve(__dirname, 'src')
+      }
+    };
     
     // Optimize bundle splitting
     config.optimization = {
