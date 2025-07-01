@@ -8,12 +8,12 @@ stages:
   stage: test
   image: moby/buildkit:latest
   variables:
-    BUILDKITD_FLAGS: --oci-worker-no-process-sandbox --addr tcp://0.0.0.0:1234
+    BUILDKITD_FLAGS: --oci-worker-no-process-sandbox --oci-worker-snapshotter=overlayfs --addr tcp://0.0.0.0:1234
     BUILDKIT_HOST: tcp://127.0.0.1:1234
   before_script:
     - mkdir -p ~/.docker
     - echo "{\"auths\":{\"$HARBOR_REGISTRY\":{\"username\":\"$HARBOR_USERNAME\",\"password\":\"$HARBOR_PASSWORD\"}}}" > ~/.docker/config.json
-    # Start BuildKit daemon in background
+    # Start BuildKit daemon in background with overlayfs snapshotter
     - buildkitd $BUILDKITD_FLAGS &
     - sleep 5
     # Test connection
@@ -36,12 +36,12 @@ stages:
   stage: build
   image: moby/buildkit:latest
   variables:
-    BUILDKITD_FLAGS: --oci-worker-no-process-sandbox --addr tcp://0.0.0.0:1234
+    BUILDKITD_FLAGS: --oci-worker-no-process-sandbox --oci-worker-snapshotter=overlayfs --addr tcp://0.0.0.0:1234
     BUILDKIT_HOST: tcp://127.0.0.1:1234
   before_script:
     - mkdir -p ~/.docker
     - echo "{\"auths\":{\"$HARBOR_REGISTRY\":{\"username\":\"$HARBOR_USERNAME\",\"password\":\"$HARBOR_PASSWORD\"}}}" > ~/.docker/config.json
-    # Start BuildKit daemon in background
+    # Start BuildKit daemon in background with overlayfs snapshotter
     - buildkitd $BUILDKITD_FLAGS &
     - sleep 5
     # Test connection
