@@ -17,13 +17,20 @@ variables:
     - echo "{\"auths\":{\"$HARBOR_REGISTRY\":{\"username\":\"$HARBOR_USERNAME\",\"password\":\"$HARBOR_PASSWORD\"}}}" > /kaniko/.docker/config.json
   script:
     - |
+      if [ "$SERVICE_NAME" = "frontend" ]; then
+        CONTEXT_PATH=$CI_PROJECT_DIR/services/$SERVICE_NAME
+      else
+        CONTEXT_PATH=$CI_PROJECT_DIR/services
+      fi
       /kaniko/executor \
-        --context $CI_PROJECT_DIR/services/$SERVICE_NAME \
+        --context $CONTEXT_PATH \
         --dockerfile $CI_PROJECT_DIR/services/$SERVICE_NAME/Dockerfile \
         --destination $HARBOR_REGISTRY/whispernotes/$SERVICE_NAME:$IMAGE_TAG \
         --cache=true \
-        --cache-ttl=24h \
-        --compressed-caching=false \
+        --cache-ttl=168h \
+        --cache-repo=$HARBOR_REGISTRY/whispernotes/cache \
+        --compressed-caching=true \
+        --use-new-run \
         --cleanup
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
