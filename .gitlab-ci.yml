@@ -6,16 +6,16 @@ stages:
 # Test template with BuildKit (no Docker daemon)
 .test_template: &test_template
   stage: test
-  image: moby/buildkit:latest
+  image: moby/buildkit:rootless
   variables:
-    BUILDKITD_FLAGS: --oci-worker-no-process-sandbox --oci-worker-snapshotter=overlayfs --addr tcp://0.0.0.0:1234
-    BUILDKIT_HOST: tcp://127.0.0.1:1234
+    BUILDKITD_FLAGS: --addr unix:///tmp/buildkitd.sock
+    BUILDKIT_HOST: unix:///tmp/buildkitd.sock
   before_script:
     - mkdir -p ~/.docker
     - echo "{\"auths\":{\"$HARBOR_REGISTRY\":{\"username\":\"$HARBOR_USERNAME\",\"password\":\"$HARBOR_PASSWORD\"}}}" > ~/.docker/config.json
-    # Start BuildKit daemon in background with overlayfs snapshotter
-    - buildkitd $BUILDKITD_FLAGS &
-    - sleep 5
+    # Start rootless BuildKit daemon
+    - rootlesskit buildkitd $BUILDKITD_FLAGS &
+    - sleep 10
     # Test connection
     - buildctl debug workers
   script:
@@ -34,16 +34,16 @@ stages:
 # Build template with BuildKit (no Docker daemon)
 .build_template: &build_template
   stage: build
-  image: moby/buildkit:latest
+  image: moby/buildkit:rootless
   variables:
-    BUILDKITD_FLAGS: --oci-worker-no-process-sandbox --oci-worker-snapshotter=overlayfs --addr tcp://0.0.0.0:1234
-    BUILDKIT_HOST: tcp://127.0.0.1:1234
+    BUILDKITD_FLAGS: --addr unix:///tmp/buildkitd.sock
+    BUILDKIT_HOST: unix:///tmp/buildkitd.sock
   before_script:
     - mkdir -p ~/.docker
     - echo "{\"auths\":{\"$HARBOR_REGISTRY\":{\"username\":\"$HARBOR_USERNAME\",\"password\":\"$HARBOR_PASSWORD\"}}}" > ~/.docker/config.json
-    # Start BuildKit daemon in background with overlayfs snapshotter
-    - buildkitd $BUILDKITD_FLAGS &
-    - sleep 5
+    # Start rootless BuildKit daemon
+    - rootlesskit buildkitd $BUILDKITD_FLAGS &
+    - sleep 10
     # Test connection
     - buildctl debug workers
   script:
