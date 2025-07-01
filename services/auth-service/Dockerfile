@@ -1,5 +1,9 @@
 FROM python:3.11-slim
 
+# Set non-interactive environment
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Asia/Singapore
+
 WORKDIR /app
 
 # Install system dependencies including gcc for some Python packages and curl for health checks

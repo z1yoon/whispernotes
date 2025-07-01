@@ -1,6 +1,10 @@
 # Simplified WhisperX Dockerfile
 FROM pytorch/pytorch:2.1.2-cuda11.8-cudnn8-runtime
 
+# Set non-interactive environment
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Asia/Singapore
+
 WORKDIR /app
 
 # Install system dependencies
