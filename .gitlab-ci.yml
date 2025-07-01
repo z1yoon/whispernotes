@@ -22,12 +22,11 @@ variables:
     - echo "{\"auths\":{\"$HARBOR_REGISTRY\":{\"username\":\"$HARBOR_USERNAME\",\"password\":\"$HARBOR_PASSWORD\"}}}" > /kaniko/.docker/config.json
   script:
     - |
-      # Use consistent context path and target for all services
+      # Use consistent context path for all services
       /kaniko/executor \
         --context $CI_PROJECT_DIR/services \
         --dockerfile $CI_PROJECT_DIR/services/$SERVICE_NAME/Dockerfile \
         --destination $HARBOR_REGISTRY/whispernotes/$SERVICE_NAME:$IMAGE_TAG \
-        --target production \
         --cache=true \
         --cache-ttl=168h \
         --cache-repo=$HARBOR_REGISTRY/whispernotes/cache \
