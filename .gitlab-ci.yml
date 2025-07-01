@@ -19,13 +19,16 @@ variables:
     - |
       if [ "$SERVICE_NAME" = "frontend" ]; then
         CONTEXT_PATH=$CI_PROJECT_DIR/services/$SERVICE_NAME
+        TARGET_STAGE="--target production"
       else
         CONTEXT_PATH=$CI_PROJECT_DIR/services
+        TARGET_STAGE=""
       fi
       /kaniko/executor \
         --context $CONTEXT_PATH \
         --dockerfile $CI_PROJECT_DIR/services/$SERVICE_NAME/Dockerfile \
         --destination $HARBOR_REGISTRY/whispernotes/$SERVICE_NAME:$IMAGE_TAG \
+        $TARGET_STAGE \
         --cache=true \
         --cache-ttl=168h \
         --cache-repo=$HARBOR_REGISTRY/whispernotes/cache \

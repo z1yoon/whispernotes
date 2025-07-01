@@ -25,29 +25,18 @@ jobs:
         username: ${{ env.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
     
-    - name: Debug files before build (frontend only)
-      if: matrix.service == 'frontend'
-      run: |
-        echo "=== Checking frontend files ==="
-        ls -la ./services/frontend/
-        echo "=== Checking lib directory ==="
-        ls -la ./services/frontend/src/lib/
-        echo "=== Checking tsconfig.json ==="
-        cat ./services/frontend/tsconfig.json | grep -A 5 paths || echo "No paths found"
-        echo "=== Checking next.config.ts ==="
-        cat ./services/frontend/next.config.ts | grep -A 10 resolve || echo "No resolve config found"
-
     - name: Build and push Docker image
       run: |
         if [ "${{ matrix.service }}" = "frontend" ]; then
-          # Try building without target first to use default
           docker build \
-            --build-arg NODE_ENV=production \
-            --progress=plain \
+            --target production \
             -t ${{ env.DOCKERHUB_USERNAME }}/whispernotes:${{ matrix.service }}-${{ env.IMAGE_TAG }} \
             -f ./services/frontend/Dockerfile \
             ./services/frontend
         else
-          docker build -t ${{ env.DOCKERHUB_USERNAME }}/whispernotes:${{ matrix.service }}-${{ env.IMAGE_TAG }} -f ./services/${{ matrix.service }}/Dockerfile ./services
+          docker build \
+            -t ${{ env.DOCKERHUB_USERNAME }}/whispernotes:${{ matrix.service }}-${{ env.IMAGE_TAG }} \
+            -f ./services/${{ matrix.service }}/Dockerfile \
+            ./services
         fi
         docker push ${{ env.DOCKERHUB_USERNAME }}/whispernotes:${{ matrix.service }}-${{ env.IMAGE_TAG }}
