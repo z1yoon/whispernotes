@@ -1,86 +1,60 @@
 stages:
-  - prepare
+  - test-auth
   - build
 
-variables:
-  SERVICES: "auth-service file-uploader video-processor whisperx llm-service frontend"
-
-# Create Harbor repositories if they don't exist
-create-repositories:
-  stage: prepare
+# Test Harbor authentication
+test-harbor-auth:
+  stage: test-auth
   image: curlimages/curl:latest
   script:
     - |
-      for service in $SERVICES; do
-        echo "Creating repository for $service..."
-        # Check if repository exists
-        response=$(curl -s -w "%{http_code}" -o /dev/null \
-          -u "$HARBOR_USERNAME:$HARBOR_PASSWORD" \
-          "$HARBOR_REGISTRY/api/v2.0/projects/whispernotes/repositories/$service")
-        
-        if [ "$response" = "404" ]; then
-          echo "Repository $service doesn't exist, creating..."
-          curl -X POST \
-            -H "Content-Type: application/json" \
-            -u "$HARBOR_USERNAME:$HARBOR_PASSWORD" \
-            -d "{\"name\":\"$service\",\"description\":\"WhisperNotes $service container\"}" \
-            "$HARBOR_REGISTRY/api/v2.0/projects/whispernotes/repositories" || echo "Repository may already exist or auto-created"
-        else
-          echo "Repository $service already exists or will be auto-created"
-        fi
-      done
+      echo "Testing Harbor registry connectivity..."
+      echo "Registry: $HARBOR_REGISTRY"
+      echo "Username: $HARBOR_USERNAME"
+      
+      # Test Harbor API access
+      echo "Testing Harbor API..."
+      curl -f -u "$HARBOR_USERNAME:$HARBOR_PASSWORD" \
+        "https://$HARBOR_REGISTRY/api/v2.0/projects" || {
+        echo "ERROR: Harbor API authentication failed"
+        exit 1
+      }
+      
+      # Test Docker registry login
+      echo "Testing Docker registry login..."
+      echo "$HARBOR_PASSWORD" | docker login "$HARBOR_REGISTRY" \
+        -u "$HARBOR_USERNAME" --password-stdin || {
+        echo "ERROR: Docker registry login failed"
+        exit 1
+      }
+      
+      echo "✅ Harbor authentication successful!"
   rules:
     - if: $CI_COMMIT_BRANCH == "staging"
 
-# Kaniko template - truly daemonless and rootless
-.kaniko_template: &kaniko_template
+# Simple Kaniko test - build one service only
+test-kaniko-build:
+  stage: build
   image:
     name: gcr.io/kaniko-project/executor:v1.9.0-debug
     entrypoint: [""]
-  stage: build
   before_script:
-    - mkdir -p /kaniko/.docker
-    - echo "{\"auths\":{\"$HARBOR_REGISTRY\":{\"username\":\"$HARBOR_USERNAME\",\"password\":\"$HARBOR_PASSWORD\"}}}" > /kaniko/.docker/config.json
+    - |
+      echo "Setting up Kaniko authentication..."
+      mkdir -p /kaniko/.docker
+      
+      # Simple auth setup
+      echo "{\"auths\":{\"$HARBOR_REGISTRY\":{\"username\":\"$HARBOR_USERNAME\",\"password\":\"$HARBOR_PASSWORD\"}}}" > /kaniko/.docker/config.json
+      
+      echo "Auth config created, testing registry access..."
   script:
     - |
+      echo "Building auth-service with Kaniko..."
       /kaniko/executor \
-        --context $CI_PROJECT_DIR/services/$SERVICE_NAME \
-        --dockerfile $CI_PROJECT_DIR/services/$SERVICE_NAME/Dockerfile \
-        --destination $HARBOR_REGISTRY/whispernotes/$SERVICE_NAME:test-$CI_COMMIT_SHA \
-        --cache=true \
-        --cache-ttl=24h \
-        --compressed-caching=false \
-        --cleanup
+        --context $CI_PROJECT_DIR/services/auth-service \
+        --dockerfile $CI_PROJECT_DIR/services/auth-service/Dockerfile \
+        --destination $HARBOR_REGISTRY/whispernotes/auth-service:test-$CI_COMMIT_SHA \
+        --verbosity=debug \
+        --log-timestamp
   rules:
     - if: $CI_COMMIT_BRANCH == "staging"
-
-# Build jobs - all services (daemonless & rootless)
-build:auth-service:
-  <<: *kaniko_template
-  variables:
-    SERVICE_NAME: auth-service
-
-build:file-uploader:
-  <<: *kaniko_template
-  variables:
-    SERVICE_NAME: file-uploader
-
-build:video-processor:
-  <<: *kaniko_template
-  variables:
-    SERVICE_NAME: video-processor
-
-build:whisperx:
-  <<: *kaniko_template
-  variables:
-    SERVICE_NAME: whisperx
-
-build:llm-service:
-  <<: *kaniko_template
-  variables:
-    SERVICE_NAME: llm-service
-
-build:frontend:
-  <<: *kaniko_template
-  variables:
-    SERVICE_NAME: frontend
