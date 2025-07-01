@@ -1,3 +1,8 @@
+# GitLab CI/CD for On-Premise WhisperNotes Deployment
+# - Build: Both staging and main branches build container images with Kaniko
+# - Deploy: Only main branch deploys to production MicroK8s cluster (manual trigger)
+# - Harbor Registry: On-premise container registry with security scanning
+
 stages:
   - build
   - deploy
@@ -17,18 +22,12 @@ variables:
     - echo "{\"auths\":{\"$HARBOR_REGISTRY\":{\"username\":\"$HARBOR_USERNAME\",\"password\":\"$HARBOR_PASSWORD\"}}}" > /kaniko/.docker/config.json
   script:
     - |
-      if [ "$SERVICE_NAME" = "frontend" ]; then
-        CONTEXT_PATH=$CI_PROJECT_DIR/services/$SERVICE_NAME
-        TARGET_STAGE="--target production"
-      else
-        CONTEXT_PATH=$CI_PROJECT_DIR/services
-        TARGET_STAGE=""
-      fi
+      # Use consistent context path and target for all services
       /kaniko/executor \
-        --context $CONTEXT_PATH \
+        --context $CI_PROJECT_DIR/services \
         --dockerfile $CI_PROJECT_DIR/services/$SERVICE_NAME/Dockerfile \
         --destination $HARBOR_REGISTRY/whispernotes/$SERVICE_NAME:$IMAGE_TAG \
-        $TARGET_STAGE \
+        --target production \
         --cache=true \
         --cache-ttl=168h \
         --cache-repo=$HARBOR_REGISTRY/whispernotes/cache \
@@ -70,7 +69,7 @@ build:frontend:
   variables:
     SERVICE_NAME: frontend
 
-# Deploy to MicroK8s
+# Deploy to MicroK8s - Main branch only (Production)
 deploy:microk8s:
   stage: deploy
   image: alpine/helm:3.12.0
@@ -81,6 +80,7 @@ deploy:microk8s:
     - echo "$MICROK8S_KUBECONFIG_CONTENT" | base64 -d > ~/.kube/config
   script:
     - |
+      echo "Deploying to production MicroK8s cluster..."
       helm upgrade --install whispernotes ./helm \
         --namespace $KUBE_NAMESPACE \
         --create-namespace \
@@ -93,10 +93,10 @@ deploy:microk8s:
         --set services.frontend.image=frontend:$IMAGE_TAG \
         --wait \
         --timeout=10m
+      echo "Deployment completed successfully"
   environment:
-    name: $CI_COMMIT_BRANCH
+    name: production
+    url: https://whispernotes.leeseng.net
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
-      when: manual
-    - if: $CI_COMMIT_BRANCH == "staging"
       when: manual
