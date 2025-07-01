@@ -8,12 +8,11 @@ stages:
   stage: test
   image: moby/buildkit:latest
   services:
-    - name: moby/buildkit:buildkitd
+    - name: moby/buildkit:buildkitd-rootless
       alias: buildkitd
       command: ["--addr", "tcp://0.0.0.0:1234", "--oci-worker-no-process-sandbox"]
   variables:
     BUILDKIT_HOST: tcp://buildkitd:1234
-    DOCKER_HOST: tcp://buildkitd:1234
   before_script:
     - apk add --no-cache docker-cli
     - docker login -u $HARBOR_USERNAME -p $HARBOR_PASSWORD $HARBOR_REGISTRY
@@ -32,12 +31,11 @@ stages:
   stage: build
   image: moby/buildkit:latest
   services:
-    - name: moby/buildkit:buildkitd
+    - name: moby/buildkit:buildkitd-rootless
       alias: buildkitd
       command: ["--addr", "tcp://0.0.0.0:1234", "--oci-worker-no-process-sandbox"]
   variables:
     BUILDKIT_HOST: tcp://buildkitd:1234
-    DOCKER_HOST: tcp://buildkitd:1234
   before_script:
     - apk add --no-cache docker-cli
     - docker login -u $HARBOR_USERNAME -p $HARBOR_PASSWORD $HARBOR_REGISTRY
