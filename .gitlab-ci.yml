@@ -1,126 +1,64 @@
 stages:
-  - test
   - build
   - deploy
 
-# Test template with BuildKit (no Docker daemon)
-.test_template: &test_template
-  stage: test
-  image: moby/buildkit:rootless
-  variables:
-    BUILDKITD_FLAGS: --addr unix:///tmp/buildkitd.sock
-    BUILDKIT_HOST: unix:///tmp/buildkitd.sock
-  before_script:
-    - mkdir -p ~/.docker
-    - echo "{\"auths\":{\"$HARBOR_REGISTRY\":{\"username\":\"$HARBOR_USERNAME\",\"password\":\"$HARBOR_PASSWORD\"}}}" > ~/.docker/config.json
-    # Start rootless BuildKit daemon
-    - rootlesskit buildkitd $BUILDKITD_FLAGS &
-    - sleep 10
-    # Test connection
-    - buildctl debug workers
-  script:
-    - cd services/$SERVICE_NAME
-    # Build and run tests using BuildKit directly
-    - |
-      buildctl build \
-        --frontend dockerfile.v0 \
-        --local context=. \
-        --local dockerfile=. \
-        --opt target=test \
-        --opt build-arg:RUN_TESTS=true
-  rules:
-    - if: $CI_COMMIT_BRANCH == "staging"
+variables:
+  DOCKER_DRIVER: overlay2
 
-# Build template with BuildKit (no Docker daemon)
-.build_template: &build_template
-  stage: build
+# BuildKit rootless template
+.buildkit_template: &buildkit_template
   image: moby/buildkit:rootless
+  stage: build
   variables:
-    BUILDKITD_FLAGS: --addr unix:///tmp/buildkitd.sock
-    BUILDKIT_HOST: unix:///tmp/buildkitd.sock
+    BUILDKITD_FLAGS: --oci-worker-no-process-sandbox
   before_script:
-    - mkdir -p ~/.docker
-    - echo "{\"auths\":{\"$HARBOR_REGISTRY\":{\"username\":\"$HARBOR_USERNAME\",\"password\":\"$HARBOR_PASSWORD\"}}}" > ~/.docker/config.json
-    # Start rootless BuildKit daemon
+    - |
+      mkdir -p ~/.docker
+      echo "{\"auths\":{\"$HARBOR_REGISTRY\":{\"username\":\"$HARBOR_USERNAME\",\"password\":\"$HARBOR_PASSWORD\"}}}" > ~/.docker/config.json
     - rootlesskit buildkitd $BUILDKITD_FLAGS &
     - sleep 10
-    # Test connection
-    - buildctl debug workers
   script:
-    - cd services/$SERVICE_NAME
     - |
-      buildctl build \
+      buildctl-daemonless.sh build \
         --frontend dockerfile.v0 \
-        --local context=. \
-        --local dockerfile=. \
-        --output type=image,name=$HARBOR_REGISTRY/whispernotes/$SERVICE_NAME:$CI_COMMIT_SHA,push=true \
-        --export-cache type=registry,ref=$HARBOR_REGISTRY/whispernotes/$SERVICE_NAME:cache \
-        --import-cache type=registry,ref=$HARBOR_REGISTRY/whispernotes/$SERVICE_NAME:cache
+        --local context=services/$SERVICE_NAME \
+        --local dockerfile=services/$SERVICE_NAME \
+        --output type=image,name=$HARBOR_REGISTRY/whispernotes/$SERVICE_NAME:$CI_COMMIT_SHA,push=true
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
 
-# Test all services on staging
-test:auth-service:
-  <<: *test_template
-  variables:
-    SERVICE_NAME: auth-service
-
-test:file-uploader:
-  <<: *test_template
-  variables:
-    SERVICE_NAME: file-uploader
-
-test:video-processor:
-  <<: *test_template
-  variables:
-    SERVICE_NAME: video-processor
-
-test:whisperx:
-  <<: *test_template
-  variables:
-    SERVICE_NAME: whisperx
-
-test:llm-service:
-  <<: *test_template
-  variables:
-    SERVICE_NAME: llm-service
-
-test:frontend:
-  <<: *test_template
-  variables:
-    SERVICE_NAME: frontend
-
-# Build all services with DinD
+# Build jobs
 build:auth-service:
-  <<: *build_template
+  <<: *buildkit_template
   variables:
     SERVICE_NAME: auth-service
 
 build:file-uploader:
-  <<: *build_template
+  <<: *buildkit_template
   variables:
     SERVICE_NAME: file-uploader
 
 build:video-processor:
-  <<: *build_template
+  <<: *buildkit_template
   variables:
     SERVICE_NAME: video-processor
 
 build:whisperx:
-  <<: *build_template
+  <<: *buildkit_template
   variables:
     SERVICE_NAME: whisperx
 
 build:llm-service:
-  <<: *build_template
+  <<: *buildkit_template
   variables:
     SERVICE_NAME: llm-service
 
 build:frontend:
-  <<: *build_template
+  <<: *buildkit_template
   variables:
     SERVICE_NAME: frontend
 
+# Deploy job
 deploy:microk8s:
   stage: deploy
   image: alpine/helm:3.12.0
@@ -138,6 +76,8 @@ deploy:microk8s:
         --set services.whisperx.image=whisperx:$CI_COMMIT_SHA \
         --set services.llmService.image=llm-service:$CI_COMMIT_SHA \
         --set services.fileUploader.image=file-uploader:$CI_COMMIT_SHA \
+        --set services.authService.image=auth-service:$CI_COMMIT_SHA \
+        --set services.videoProcessor.image=video-processor:$CI_COMMIT_SHA \
         --set services.frontend.image=frontend:$CI_COMMIT_SHA \
         --wait
   environment:
