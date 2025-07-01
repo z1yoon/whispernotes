@@ -3,8 +3,8 @@ WORKDIR /app
 RUN apk add --no-cache libc6-compat
 
 # Copy package files
-COPY package.json ./
-COPY package-lock.json* ./
+COPY frontend/package.json ./
+COPY frontend/package-lock.json* ./
 
 # Set production environment
 ENV NODE_ENV=production
@@ -13,14 +13,14 @@ ENV NODE_ENV=production
 RUN npm ci --only=production && npm cache clean --force
 
 # Copy application code
-COPY . .
+COPY frontend/ .
 
 # Build the application
 RUN npm run build
 
 # Expose port
 EXPOSE 3000
-ENV PORT 3000
+ENV PORT=3000
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # Start the application
