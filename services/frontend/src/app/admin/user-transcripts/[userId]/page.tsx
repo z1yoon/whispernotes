@@ -20,6 +20,7 @@ import {
   Filter
 } from 'lucide-react'
 import { useNotification } from '@/components/NotificationProvider'
+import { useHttpClient } from '@/lib/http-client'
 import { formatSingaporeDate } from '@/lib/date-utils'
 import Link from 'next/link'
 
@@ -487,6 +488,7 @@ export default function UserTranscriptsPage() {
   
   const { data: session } = useSession()
   const notification = useNotification()
+  const httpClient = useHttpClient()
   const router = useRouter()
   const params = useParams()
   const userId = params?.userId as string
@@ -499,7 +501,7 @@ export default function UserTranscriptsPage() {
   const loadUserTranscripts = async () => {
     try {
       setIsLoading(true)
-      const response = await fetch(`/api/admin/user-transcripts/${userId}`)
+      const response = await httpClient.get(`/api/admin/user-transcripts/${userId}`)
       
       if (!response.ok) {
         throw new Error('Failed to fetch user transcripts')

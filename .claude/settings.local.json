@@ -26,7 +26,8 @@
       "Bash(mkdir:*)",
       "WebFetch(domain:hub.docker.com)",
       "WebFetch(domain:docs.gitlab.com)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(timeout 60 npm run build:*)"
     ],
     "deny": []
   }
