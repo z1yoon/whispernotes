@@ -3,48 +3,55 @@ stages:
   - build
   - deploy
 
-# Test template with BuildKit daemon
+# Test template with BuildKit daemonless (no Docker daemon)
 .test_template: &test_template
   stage: test
-  image: moby/buildkit:latest
-  services:
-    - name: moby/buildkit:buildkitd-rootless
-      alias: buildkitd
-      command: ["--addr", "tcp://0.0.0.0:1234", "--oci-worker-no-process-sandbox"]
+  image: moby/buildkit:rootless
   variables:
-    BUILDKIT_HOST: tcp://buildkitd:1234
+    BUILDKITD_FLAGS: --oci-worker-no-process-sandbox
   before_script:
-    - apk add --no-cache docker-cli
-    - docker login -u $HARBOR_USERNAME -p $HARBOR_PASSWORD $HARBOR_REGISTRY
-    # Test BuildKit connectivity
-    - docker buildx create --driver remote --name container --use tcp://buildkitd:1234
-    - docker buildx inspect --bootstrap
+    - mkdir -p ~/.docker
+    - echo "{\"auths\":{\"$HARBOR_REGISTRY\":{\"username\":\"$HARBOR_USERNAME\",\"password\":\"$HARBOR_PASSWORD\"}}}" > ~/.docker/config.json
   script:
     - cd services/$SERVICE_NAME
-    - docker buildx build --target test -t $SERVICE_NAME:test-$CI_COMMIT_SHA . --load
-    - docker run --rm $SERVICE_NAME:test-$CI_COMMIT_SHA
+    # Build test image and export to OCI format for running tests
+    - |
+      buildctl-daemonless.sh build \
+        --frontend dockerfile.v0 \
+        --local context=. \
+        --local dockerfile=. \
+        --opt target=test \
+        --output type=oci,dest=/tmp/test-image.tar
+    # Extract and run the test (since we can't use docker run without daemon)
+    - |
+      buildctl-daemonless.sh build \
+        --frontend dockerfile.v0 \
+        --local context=. \
+        --local dockerfile=. \
+        --opt target=test \
+        --opt build-arg:RUN_TESTS=true
   rules:
     - if: $CI_COMMIT_BRANCH == "staging"
 
-# Build template with BuildKit daemon
+# Build template with BuildKit daemonless (no Docker daemon)
 .build_template: &build_template
   stage: build
-  image: moby/buildkit:latest
-  services:
-    - name: moby/buildkit:buildkitd-rootless
-      alias: buildkitd
-      command: ["--addr", "tcp://0.0.0.0:1234", "--oci-worker-no-process-sandbox"]
+  image: moby/buildkit:rootless
   variables:
-    BUILDKIT_HOST: tcp://buildkitd:1234
+    BUILDKITD_FLAGS: --oci-worker-no-process-sandbox
   before_script:
-    - apk add --no-cache docker-cli
-    - docker login -u $HARBOR_USERNAME -p $HARBOR_PASSWORD $HARBOR_REGISTRY
-    # Test BuildKit connectivity
-    - docker buildx create --driver remote --name container --use tcp://buildkitd:1234
-    - docker buildx inspect --bootstrap
+    - mkdir -p ~/.docker
+    - echo "{\"auths\":{\"$HARBOR_REGISTRY\":{\"username\":\"$HARBOR_USERNAME\",\"password\":\"$HARBOR_PASSWORD\"}}}" > ~/.docker/config.json
   script:
     - cd services/$SERVICE_NAME
-    - docker buildx build -t $HARBOR_REGISTRY/whispernotes/$SERVICE_NAME:$CI_COMMIT_SHA . --push
+    - |
+      buildctl-daemonless.sh build \
+        --frontend dockerfile.v0 \
+        --local context=. \
+        --local dockerfile=. \
+        --output type=image,name=$HARBOR_REGISTRY/whispernotes/$SERVICE_NAME:$CI_COMMIT_SHA,push=true \
+        --export-cache type=registry,ref=$HARBOR_REGISTRY/whispernotes/$SERVICE_NAME:cache \
+        --import-cache type=registry,ref=$HARBOR_REGISTRY/whispernotes/$SERVICE_NAME:cache
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
 
