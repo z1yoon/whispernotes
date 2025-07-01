@@ -32,7 +32,6 @@ RUN npm run build
 # Production stage - optimized for fast startup
 FROM node:18-alpine AS production
 WORKDIR /app
-ENV NODE_ENV=production
 
 # Install only production dependencies
 COPY package*.json ./

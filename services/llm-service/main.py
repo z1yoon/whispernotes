@@ -27,10 +27,10 @@ app.add_middleware(
 # Configuration
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
 
-# DeepSeek Configuration
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-DEEPSEEK_API_BASE = os.getenv("DEEPSEEK_API_BASE")
-DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL")
+# Qwen LLM Configuration
+QWEN_API_KEY = os.getenv("QWEN_API_KEY")
+QWEN_API_BASE = os.getenv("QWEN_API_BASE")
+QWEN_MODEL = os.getenv("QWEN_MODEL")
 
 # Initialize Redis client with error handling
 try:
@@ -67,8 +67,8 @@ class LLMAnalyzer:
                     "action_items": action_items
                 },
                 "metadata": {
-                    "model_used": DEEPSEEK_MODEL,
-                    "api_base": DEEPSEEK_API_BASE,
+                    "model_used": QWEN_MODEL,
+                    "api_base": QWEN_API_BASE,
                     "processing_time": datetime.now(timezone(timedelta(hours=8))).isoformat()
                 }
             }
@@ -76,19 +76,19 @@ class LLMAnalyzer:
         except Exception as e:
             raise Exception(f"LLM analysis failed: {str(e)}")
     
-    async def _call_deepseek_api(self, prompt: str, max_tokens: int = 2000) -> str:
-        """Make API call to DeepSeek - only real API calls, no mock responses"""
-        if not DEEPSEEK_API_KEY:
-            logger.error("❌ DEEPSEEK_API_KEY not configured - cannot make API calls")
+    async def _call_qwen_api(self, prompt: str, max_tokens: int = 2000) -> str:
+        """Make API call to Qwen API"""
+        if not QWEN_API_KEY:
+            logger.error("❌ QWEN_API_KEY not configured - cannot make API calls")
             raise Exception("API key not configured")
         
         headers = {
-            "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+            "Authorization": f"Bearer {QWEN_API_KEY}",
             "Content-Type": "application/json"
         }
         
         payload = {
-            "model": DEEPSEEK_MODEL,
+            "model": QWEN_MODEL,
             "messages": [
                 {"role": "system", "content": "You are an intelligent meeting assistant that analyzes transcripts to extract actionable insights, create to-do lists, and provide comprehensive meeting analysis."},
                 {"role": "user", "content": prompt}
@@ -98,13 +98,13 @@ class LLMAnalyzer:
             "top_p": 0.9
         }
         
-        logger.info(f"🔄 Calling NIE LLM API: {DEEPSEEK_API_BASE}/chat/completions")
-        logger.info(f"📝 Model: {DEEPSEEK_MODEL}")
+        logger.info(f"🔄 Calling Qwen API: {QWEN_API_BASE}/chat/completions")
+        logger.info(f"📝 Model: {QWEN_MODEL}")
         logger.info(f"📏 Max tokens: {max_tokens}")
         
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(
-                f"{DEEPSEEK_API_BASE}/chat/completions",
+                f"{QWEN_API_BASE}/chat/completions",
                 headers=headers,
                 json=payload
             )
@@ -113,17 +113,17 @@ class LLMAnalyzer:
                 data = response.json()
                 content = data["choices"][0]["message"]["content"].strip()
                 
-                logger.info(f"✅ NIE API Response received ({len(content)} characters)")
+                logger.info(f"✅ Qwen API Response received ({len(content)} characters)")
                 logger.info(f"📄 Response preview: {content[:200]}...")
                 
                 # Validate that we got actual content
                 if content and len(content.strip()) > 10:
                     return content
                 else:
-                    logger.warning("⚠️ NIE API returned empty/minimal content")
+                    logger.warning("⚠️ Qwen API returned empty/minimal content")
                     raise Exception("API returned empty response")
             else:
-                logger.error(f"❌ NIE API error: {response.status_code} - {response.text}")
+                logger.error(f"❌ Qwen API error: {response.status_code} - {response.text}")
                 raise Exception(f"API call failed with status {response.status_code}")
     
     async def _extract_action_items(self, transcript: str, speakers: List[str]) -> List[Dict[str, Any]]:
@@ -212,7 +212,7 @@ Generate {max_items} helpful, actionable todo items. Be generous - find valuable
         try:
             # Adjust token limit based on expected response size - increased for complete responses
             max_tokens = min(2000, max_items * 80 + 400)  # ~80 tokens per item + overhead
-            response = await self._call_deepseek_api(prompt, max_tokens=max_tokens)
+            response = await self._call_qwen_api(prompt, max_tokens=max_tokens)
             
             # Try to parse JSON response
             try:
@@ -384,7 +384,7 @@ analyzer = LLMAnalyzer()
 
 @app.post("/process-transcript")
 async def process_transcript(transcript_data: dict):
-    """Process transcript and generate analysis with DeepSeek"""
+    """Process transcript and generate analysis with Qwen"""
     try:
         session_id = transcript_data.get("session_id")
         if not session_id:
@@ -494,7 +494,7 @@ async def health_check():
         "timestamp": datetime.now(timezone(timedelta(hours=8))).isoformat(),
         "dependencies": {
             "redis": redis_status,
-            "deepseek_api": "configured" if DEEPSEEK_API_KEY else "not configured"
+            "qwen_api": "configured" if QWEN_API_KEY else "not configured"
         }
     }
 

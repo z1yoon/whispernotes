@@ -9,31 +9,35 @@ data:
   # Database
   POSTGRES_DB: {{ .Values.config.database.name | quote }}
   POSTGRES_USER: {{ .Values.config.database.user | quote }}
+  DATABASE_URL: postgresql://{{ .Values.config.database.user }}:${POSTGRES_PASSWORD}@{{ include "whispernotes.fullname" . }}-postgres.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.ports.postgres }}/{{ .Values.config.database.name }}
   
   # Redis
-  REDIS_HOST: {{ include "whispernotes.fullname" . }}-redis
+  REDIS_HOST: {{ include "whispernotes.fullname" . }}-redis.{{ .Values.global.namespace }}.svc.cluster.local
   REDIS_PORT: {{ .Values.config.redis.port | quote }}
+  REDIS_URL: redis://:${REDIS_PASSWORD}@{{ include "whispernotes.fullname" . }}-redis.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.config.redis.port }}/0
   
   # RabbitMQ
-  RABBITMQ_HOST: {{ include "whispernotes.fullname" . }}-rabbitmq
+  RABBITMQ_HOST: {{ include "whispernotes.fullname" . }}-rabbitmq.{{ .Values.global.namespace }}.svc.cluster.local
   RABBITMQ_PORT: {{ .Values.config.rabbitmq.port | quote }}
   RABBITMQ_DEFAULT_USER: {{ .Values.config.rabbitmq.user | quote }}
   RABBITMQ_DEFAULT_VHOST: {{ .Values.config.rabbitmq.vhost | quote }}
   
-  # MinIO
-  MINIO_ENDPOINT: {{ include "whispernotes.fullname" . }}-minio:{{ .Values.ports.minio }}
+  # MinIO (External - existing MinIO in minio namespace)
+  MINIO_ENDPOINT: {{ .Values.config.minio.host }}:{{ .Values.config.minio.port }}
   MINIO_ACCESS_KEY: {{ .Values.config.minio.accessKey | quote }}
+  MINIO_BUCKET: {{ .Values.config.minio.bucket | quote }}
   
-  # Services
-  AUTH_SERVICE_URL: http://{{ include "whispernotes.fullname" . }}-auth-service:{{ .Values.ports.authService }}
-  FILE_UPLOADER_URL: http://{{ include "whispernotes.fullname" . }}-file-uploader:{{ .Values.ports.fileUploader }}
-  WHISPER_TRANSCRIBER_URL: http://{{ include "whispernotes.fullname" . }}-whisperx:{{ .Values.ports.whisperx }}
-  LLM_SERVICE_URL: http://{{ include "whispernotes.fullname" . }}-llm-service:{{ .Values.ports.llmService }}
-  VIDEO_PROCESSOR_URL: http://{{ include "whispernotes.fullname" . }}-video-processor:{{ .Values.ports.videoProcessor }}
+  # Services (Kubernetes service names with proper FQDN)
+  AUTH_SERVICE_URL: http://{{ include "whispernotes.fullname" . }}-auth-service.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.ports.authService }}
+  FILE_UPLOADER_URL: http://{{ include "whispernotes.fullname" . }}-file-uploader.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.ports.fileUploader }}
+  WHISPER_SERVICE_URL: http://{{ include "whispernotes.fullname" . }}-whisperx.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.ports.whisperx }}
+  LLM_SERVICE_URL: http://{{ include "whispernotes.fullname" . }}-llm-service.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.ports.llmService }}
+  VIDEO_PROCESSOR_URL: http://{{ include "whispernotes.fullname" . }}-video-processor.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.ports.videoProcessor }}
   
   # LLM Configuration
   QWEN_API_BASE: {{ .Values.config.qwen.apiBase | quote }}
   QWEN_MODEL: {{ .Values.config.qwen.model | quote }}
+  # Note: QWEN_API_KEY should be provided via secrets
   
   # Environment
   ENVIRONMENT: {{ .Values.global.environment | quote }}

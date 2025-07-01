@@ -28,10 +28,6 @@ RUN mkdir -p /app/models /tmp/whisper_temp /root/.cache/huggingface && \
     chmod -R 755 /app/models /tmp/whisper_temp /root/.cache/huggingface
 
 # Set environment variables for GPU optimization
-ENV HF_HOME=/root/.cache/huggingface
-ENV HF_HUB_CACHE=/root/.cache/huggingface/hub
-ENV TRANSFORMERS_CACHE=/root/.cache/huggingface/transformers
-ENV HF_HUB_DOWNLOAD_TIMEOUT=600
 ENV CUDA_VISIBLE_DEVICES=0
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility

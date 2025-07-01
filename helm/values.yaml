@@ -38,7 +38,11 @@ config:
     user: whisper_user
     vhost: "/"
   minio:
+    # Use existing MinIO credentials
+    host: minio.minio.svc.cluster.local
+    port: 9000
     accessKey: whisper_admin
+    bucket: whispernotes  # Create this bucket in existing MinIO
   qwen:
     apiBase: https://test-llm.rdc.nie.edu.sg/api/v1/
     model: DeepSeek-R1-Distill-Qwen-32B
@@ -83,16 +87,16 @@ services:
         cpu: 400m
     
   minio:
-    enabled: true
-    image: minio/minio:latest
-    replicas: 1
-    resources:
-      requests:
-        memory: 256Mi
-        cpu: 200m
-      limits:
-        memory: 512Mi
-        cpu: 400m
+    enabled: false  # Use existing MinIO in minio namespace
+    external:
+      enabled: true
+      # Use existing MinIO service in minio namespace
+      host: minio.minio.svc.cluster.local
+      port: 9000
+      console_port: 9001
+      ssl: false  # Internal cluster communication
+      # External access via minio.leeseng.net
+      public_endpoint: minio.leeseng.net
     
   whisperx:
     enabled: true
@@ -175,6 +179,21 @@ services:
       limits:
         memory: 256Mi
         cpu: 200m
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: nginx
+  host: whispernotes.leeseng.net
+  tls:
+    enabled: true
+    secretName: whispernotes-tls
+  # Disable paths that conflict with existing services
+  paths:
+    minio:
+      enabled: false  # Use existing minio.leeseng.net
+    rabbitmq:
+      enabled: false  # Avoid conflicts with existing setup
 
 # Service ports
 ports:

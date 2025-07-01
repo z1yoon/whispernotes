@@ -8,9 +8,9 @@ variables:
 # Build template
 .build_template: &build_template
   stage: build
-  image: docker:20.10.16
+  image: docker:24
   services:
-    - name: docker:20.10.16-dind
+    - name: docker:24-dind
       alias: docker
   variables:
     DOCKER_HOST: tcp://docker:2375

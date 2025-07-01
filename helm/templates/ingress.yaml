@@ -13,12 +13,14 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
 spec:
   ingressClassName: nginx
+  {{- if .Values.ingress.tls.enabled }}
   tls:
   - hosts:
-    - whispernotes.leeseng.net
-    secretName: {{ include "whispernotes.fullname" . }}-tls
+    - {{ .Values.ingress.host }}
+    secretName: {{ .Values.ingress.tls.secretName | default (printf "%s-tls" (include "whispernotes.fullname" .)) }}
+  {{- end }}
   rules:
-  - host: whispernotes.leeseng.net
+  - host: {{ .Values.ingress.host }}
     http:
       paths:
       # Frontend (default route)
@@ -71,6 +73,7 @@ spec:
             port:
               number: {{ .Values.ports.llmService }}
       
+      {{- if .Values.ingress.paths.minio.enabled }}
       # MinIO Console (admin interface)
       - path: /minio
         pathType: Prefix
@@ -79,7 +82,9 @@ spec:
             name: {{ include "whispernotes.fullname" . }}-minio
             port:
               number: {{ .Values.ports.minioConsole }}
+      {{- end }}
       
+      {{- if .Values.ingress.paths.rabbitmq.enabled }}
       # RabbitMQ Management (admin interface)  
       - path: /rabbitmq
         pathType: Prefix
@@ -88,3 +93,4 @@ spec:
             name: {{ include "whispernotes.fullname" . }}-rabbitmq
             port:
               number: {{ .Values.ports.rabbitmqManagement }}
+      {{- end }}
