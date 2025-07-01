@@ -9,7 +9,8 @@ data:
   # Database
   POSTGRES_DB: {{ .Values.config.database.name | quote }}
   POSTGRES_USER: {{ .Values.config.database.user | quote }}
-  DATABASE_URL: postgresql://{{ .Values.config.database.user }}:${POSTGRES_PASSWORD}@{{ include "whispernotes.fullname" . }}-postgres.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.ports.postgres }}/{{ .Values.config.database.name }}
+  POSTGRES_HOST: {{ include "whispernotes.fullname" . }}-postgres.{{ .Values.global.namespace }}.svc.cluster.local
+  POSTGRES_PORT: {{ .Values.ports.postgres | quote }}
   
   # Redis
   REDIS_HOST: {{ include "whispernotes.fullname" . }}-redis.{{ .Values.global.namespace }}.svc.cluster.local
@@ -42,3 +43,9 @@ data:
   # Environment
   ENVIRONMENT: {{ .Values.global.environment | quote }}
   LOG_LEVEL: {{ .Values.config.logLevel | quote }}
+  
+  # Frontend (client-side environment variables)
+  NEXT_PUBLIC_API_BASE_URL: https://{{ .Values.ingress.host }}
+  NEXT_PUBLIC_AUTH_SERVICE_URL: https://{{ .Values.ingress.host }}/api/auth
+  NEXT_PUBLIC_FILE_UPLOADER_URL: https://{{ .Values.ingress.host }}/api/upload
+  NEXT_PUBLIC_VIDEO_PROCESSOR_URL: https://{{ .Values.ingress.host }}/api/process

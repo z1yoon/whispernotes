@@ -9,7 +9,7 @@ global:
 
 # Storage configuration
 storage:
-  storageClass: whispernotes-storage
+  storageClass: microk8s-hostpath
   pv:
     size: 100Gi
     hostPath: /var/lib/whispernotes

@@ -81,6 +81,11 @@ spec:
             secretKeyRef:
               name: {{ include "whispernotes.fullname" . }}-secrets
               key: MINIO_SECRET_KEY
+        - name: MINIO_BUCKET
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "whispernotes.fullname" . }}-config
+              key: MINIO_BUCKET
         volumeMounts:
         - name: whisperx-storage
           mountPath: /app/models
