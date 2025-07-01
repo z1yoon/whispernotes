@@ -4,14 +4,17 @@ stages:
 
 variables:
   DOCKER_DRIVER: overlay2
-  DOCKER_TLS_CERTDIR: "/certs"
 
 # Build template
 .build_template: &build_template
   stage: build
-  image: docker:24
+  image: docker:20.10.16
   services:
-    - docker:24-dind
+    - name: docker:20.10.16-dind
+      alias: docker
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
   before_script:
     - docker login -u $HARBOR_USERNAME -p $HARBOR_PASSWORD $HARBOR_REGISTRY
   script:
