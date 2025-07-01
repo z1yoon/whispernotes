@@ -5,14 +5,13 @@ RUN apk add --no-cache libc6-compat
 
 # Dependencies stage - install all dependencies
 FROM base AS deps
-COPY package*.json ./
+COPY frontend/ .
 RUN npm ci && npm cache clean --force
 
 # Development stage - optimized for hot reloading
 FROM base AS development
-COPY package*.json ./
+COPY frontend/ .
 RUN npm install
-COPY . .
 # Don't pre-build in development - let hot reload handle it
 EXPOSE 3000
 ENV NODE_ENV=development
@@ -23,9 +22,8 @@ CMD ["npm", "run", "dev", "--", "--hostname", "0.0.0.0"]
 
 # Production build stage
 FROM base AS builder
-COPY package*.json ./
+COPY frontend/ .
 RUN npm ci --omit=dev
-COPY . .
 # Build the application
 RUN npm run build
 
@@ -34,7 +32,7 @@ FROM node:18-alpine AS production
 WORKDIR /app
 
 # Install only production dependencies
-COPY package*.json ./
+COPY --from=builder /app/package*.json ./
 RUN npm ci --only=production && npm cache clean --force
 
 # Copy built application

@@ -17,11 +17,11 @@ RUN apt-get update && apt-get install -y \
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
 # Copy requirements and install dependencies
-COPY requirements.txt .
+COPY whisperx/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY . .
+COPY whisperx/ .
 
 # Create necessary directories with proper permissions
 RUN mkdir -p /app/models /tmp/whisper_temp /root/.cache/huggingface && \

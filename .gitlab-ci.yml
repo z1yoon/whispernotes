@@ -18,7 +18,7 @@ variables:
   script:
     - |
       /kaniko/executor \
-        --context $CI_PROJECT_DIR/services/$SERVICE_NAME \
+        --context $CI_PROJECT_DIR/services \
         --dockerfile $CI_PROJECT_DIR/services/$SERVICE_NAME/Dockerfile \
         --destination $HARBOR_REGISTRY/whispernotes/$SERVICE_NAME:$IMAGE_TAG \
         --cache=true \

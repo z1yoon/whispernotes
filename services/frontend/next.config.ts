@@ -34,6 +34,7 @@ const nextConfig: NextConfig = {
       };
     }
     
+    
     // Optimize bundle splitting
     config.optimization = {
       ...config.optimization,
