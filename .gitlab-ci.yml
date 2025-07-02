@@ -5,7 +5,6 @@
 
 stages:
   - build
-  - build-tools
   - deploy
 
 variables:
@@ -68,30 +67,6 @@ build:frontend:
   variables:
     SERVICE_NAME: frontend
 
-# Build custom CI/CD base image
-build:ci-base:
-  image:
-    name: gcr.io/kaniko-project/executor:v1.9.0-debug
-    entrypoint: [""]
-  stage: build-tools
-  before_script:
-    - mkdir -p /kaniko/.docker
-    - echo "{\"auths\":{\"$HARBOR_REGISTRY\":{\"username\":\"$HARBOR_USERNAME\",\"password\":\"$HARBOR_PASSWORD\"}}}" > /kaniko/.docker/config.json
-  script:
-    - |
-      /kaniko/executor \
-        --context $CI_PROJECT_DIR/docker/ci-base \
-        --dockerfile $CI_PROJECT_DIR/docker/ci-base/Dockerfile \
-        --destination $HARBOR_REGISTRY/whispernotes/ci-base:v0.0.1 \
-        --destination $HARBOR_REGISTRY/whispernotes/ci-base:latest \
-        --cache=true \
-        --cache-ttl=168h \
-        --cleanup
-  rules:
-    - if: $CI_COMMIT_BRANCH == "main"
-    - if: $CI_COMMIT_BRANCH == "staging"
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-    - when: manual
 
 # Deploy to MicroK8s - Main branch only (Production)
 deploy:microk8s:
@@ -124,7 +99,5 @@ deploy:microk8s:
   environment:
     name: production
     url: https://whispernotes.leeseng.net
-  dependencies:
-    - build:ci-base
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
