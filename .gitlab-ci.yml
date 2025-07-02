@@ -18,8 +18,8 @@ variables:
     entrypoint: [""]
   stage: build
   before_script:
-    # Harbor credentials are now mounted by GitLab runner
-    - ls -la /kaniko/.docker/
+    - mkdir -p /kaniko/.docker
+    - echo "{\"auths\":{\"$HARBOR_REGISTRY\":{\"username\":\"$HARBOR_USERNAME\",\"password\":\"$HARBOR_PASSWORD\"}}}" > /kaniko/.docker/config.json
   script:
     - |
       /kaniko/executor \
