@@ -71,7 +71,10 @@ build:frontend:
 # Deploy to MicroK8s - Main branch only (Production)
 deploy:microk8s:
   stage: deploy
-  image: $HARBOR_REGISTRY/whispernotes/ci-base:latest
+  image:
+    name: $HARBOR_REGISTRY/whispernotes/ci-base:latest
+    username: $HARBOR_USERNAME
+    password: $HARBOR_PASSWORD
   variables:
     KUBE_NAMESPACE: whispernotes
   before_script:
