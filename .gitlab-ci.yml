@@ -18,8 +18,8 @@ variables:
     entrypoint: [""]
   stage: build
   before_script:
-    - mkdir -p /kaniko/.docker
-    - echo "{\"auths\":{\"$HARBOR_REGISTRY\":{\"username\":\"$HARBOR_USERNAME\",\"password\":\"$HARBOR_PASSWORD\"}}}" > /kaniko/.docker/config.json
+    # Harbor credentials are now mounted by GitLab runner
+    - ls -la /kaniko/.docker/
   script:
     - |
       /kaniko/executor \
@@ -71,11 +71,11 @@ build:frontend:
 # Deploy to MicroK8s - Main branch only (Production)
 deploy:microk8s:
   stage: deploy
-  image: $HARBOR_REGISTRY/whispernotes/ci-base:latest
+  image: harbor.leeseng.net/whispernotes/ci-base:latest
   variables:
     KUBE_NAMESPACE: whispernotes
   before_script:
-    - echo "$HARBOR_PASSWORD" | docker login $HARBOR_REGISTRY -u $HARBOR_USERNAME --password-stdin
+    # All tools (kubectl, gettext, curl, bash) are pre-installed in ci-base image
     - mkdir -p ~/.kube
     - echo "$MICROK8S_KUBECONFIG_CONTENT" | base64 -d > ~/.kube/config
   script:

@@ -1,0 +1,33 @@
+gitlabUrl: "https://gitlab.leeseng.net"
+
+runnerRegistrationToken: "glrt-2I44W214YLYKxz1fTkHCcnQ6MQp1OjEH.01.0w1a9ig47"
+
+certsSecretName: gitlab-tls-secret
+
+# RBAC settings
+rbac:
+  create: true
+  clusterWideAccess: true
+
+# Runner specific settings
+runners:
+  tags: "kubernetes,microk8s,linux"
+  privileged: false
+  imagePullSecrets:
+    - name: harbor-credentials
+  config: |
+    [[runners]]
+      [runners.kubernetes]
+        [[runners.kubernetes.volumes.secret]]
+          name = "harbor-credentials"
+          mount_path = "/kaniko/.docker"
+          read_only = true
+
+# Cache configuration using a Kubernetes PersistentVolumeClaim
+cache:
+  cacheType: "kubernetes"
+  cacheShared: true
+  kubernetes:
+    pvcName: "gitlab-runner-cache"
+    accessModes: "ReadWriteOnce"
+    size: "10Gi"
