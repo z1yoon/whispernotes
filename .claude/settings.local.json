@@ -32,7 +32,10 @@
       "Bash(cat:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(mv:*)",
+      "Bash(docker build:*)",
+      "Bash(docker push:*)"
     ],
     "deny": []
   }
