@@ -22,7 +22,6 @@ variables:
     - echo "{\"auths\":{\"$HARBOR_REGISTRY\":{\"username\":\"$HARBOR_USERNAME\",\"password\":\"$HARBOR_PASSWORD\"}}}" > /kaniko/.docker/config.json
   script:
     - |
-      # Use consistent context path for all services
       /kaniko/executor \
         --context $CI_PROJECT_DIR/services \
         --dockerfile $CI_PROJECT_DIR/services/$SERVICE_NAME/Dockerfile \
@@ -80,6 +79,9 @@ deploy:microk8s:
   script:
     - |
       echo "Deploying to production MicroK8s cluster..."
+      envsubst < ./helm/templates/secrets.yaml > /tmp/secrets.yaml
+      kubectl apply -f /tmp/secrets.yaml
+      
       helm upgrade --install whispernotes ./helm \
         --namespace $KUBE_NAMESPACE \
         --create-namespace \
@@ -98,4 +100,3 @@ deploy:microk8s:
     url: https://whispernotes.leeseng.net
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
-      when: manual
