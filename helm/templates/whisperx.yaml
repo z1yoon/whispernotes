@@ -26,6 +26,11 @@ spec:
         image: {{ .Values.global.imageRegistry }}/{{ .Values.services.whisperx.image }}
         ports:
         - containerPort: {{ .Values.ports.whisperx }}
+        envFrom:
+        - configMapRef:
+            name: {{ include "whispernotes.fullname" . }}-config
+        - secretRef:
+            name: {{ include "whispernotes.fullname" . }}-secrets
         env:
         - name: DEVICE
           value: {{ .Values.services.whisperx.env.device | quote }}
@@ -43,51 +48,6 @@ spec:
           value: "/root/.cache/huggingface/transformers"
         - name: HF_HUB_DOWNLOAD_TIMEOUT
           value: "300"
-        - name: HF_TOKEN
-          valueFrom:
-            secretKeyRef:
-              name: {{ include "whispernotes.fullname" . }}-secrets
-              key: HF_TOKEN
-        - name: RABBITMQ_HOST
-          valueFrom:
-            configMapKeyRef:
-              name: {{ include "whispernotes.fullname" . }}-config
-              key: RABBITMQ_HOST
-        - name: RABBITMQ_PORT
-          valueFrom:
-            configMapKeyRef:
-              name: {{ include "whispernotes.fullname" . }}-config
-              key: RABBITMQ_PORT
-        - name: RABBITMQ_DEFAULT_USER
-          valueFrom:
-            configMapKeyRef:
-              name: {{ include "whispernotes.fullname" . }}-config
-              key: RABBITMQ_DEFAULT_USER
-        - name: RABBITMQ_DEFAULT_PASS
-          valueFrom:
-            secretKeyRef:
-              name: {{ include "whispernotes.fullname" . }}-secrets
-              key: RABBITMQ_DEFAULT_PASS
-        - name: MINIO_ENDPOINT
-          valueFrom:
-            configMapKeyRef:
-              name: {{ include "whispernotes.fullname" . }}-config
-              key: MINIO_ENDPOINT
-        - name: MINIO_ACCESS_KEY
-          valueFrom:
-            configMapKeyRef:
-              name: {{ include "whispernotes.fullname" . }}-config
-              key: MINIO_ACCESS_KEY
-        - name: MINIO_SECRET_KEY
-          valueFrom:
-            secretKeyRef:
-              name: {{ include "whispernotes.fullname" . }}-secrets
-              key: MINIO_SECRET_KEY
-        - name: MINIO_BUCKET
-          valueFrom:
-            configMapKeyRef:
-              name: {{ include "whispernotes.fullname" . }}-config
-              key: MINIO_BUCKET
         volumeMounts:
         - name: whisperx-storage
           mountPath: /app/models
@@ -135,8 +95,10 @@ spec:
         emptyDir:
           sizeLimit: 5Gi
       {{- if .Values.services.whisperx.gpu.enabled }}
+      {{- if .Values.services.whisperx.gpu.nodeSelector }}
       nodeSelector:
         {{- toYaml .Values.services.whisperx.gpu.nodeSelector | nindent 8 }}
+      {{- end }}
       tolerations:
       - key: nvidia.com/gpu
         operator: Exists

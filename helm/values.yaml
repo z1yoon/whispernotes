@@ -106,8 +106,6 @@ services:
     gpu:
       enabled: true
       count: 1
-      nodeSelector:
-        accelerator: nvidia-tesla-gpu
     env:
       device: cuda
       computeType: float16

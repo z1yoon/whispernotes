@@ -26,42 +26,11 @@ spec:
         image: {{ .Values.global.imageRegistry }}/{{ .Values.services.authService.image }}
         ports:
         - containerPort: {{ .Values.ports.authService }}
-        env:
-        - name: POSTGRES_HOST
-          valueFrom:
-            configMapKeyRef:
-              name: {{ include "whispernotes.fullname" . }}-config
-              key: POSTGRES_HOST
-        - name: POSTGRES_PORT
-          valueFrom:
-            configMapKeyRef:
-              name: {{ include "whispernotes.fullname" . }}-config
-              key: POSTGRES_PORT
-        - name: POSTGRES_DB
-          valueFrom:
-            configMapKeyRef:
-              name: {{ include "whispernotes.fullname" . }}-config
-              key: POSTGRES_DB
-        - name: POSTGRES_USER
-          valueFrom:
-            configMapKeyRef:
-              name: {{ include "whispernotes.fullname" . }}-config
-              key: POSTGRES_USER
-        - name: POSTGRES_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: {{ include "whispernotes.fullname" . }}-secrets
-              key: POSTGRES_PASSWORD
-        - name: JWT_SECRET_KEY
-          valueFrom:
-            secretKeyRef:
-              name: {{ include "whispernotes.fullname" . }}-secrets
-              key: JWT_SECRET_KEY
-        - name: LOG_LEVEL
-          valueFrom:
-            configMapKeyRef:
-              name: {{ include "whispernotes.fullname" . }}-config
-              key: LOG_LEVEL
+        envFrom:
+        - configMapRef:
+            name: {{ include "whispernotes.fullname" . }}-config
+        - secretRef:
+            name: {{ include "whispernotes.fullname" . }}-secrets
         resources:
           requests:
             memory: {{ .Values.services.authService.resources.requests.memory }}

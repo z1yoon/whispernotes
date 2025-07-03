@@ -26,27 +26,12 @@ spec:
         image: {{ .Values.global.imageRegistry }}/{{ .Values.services.frontend.image }}
         ports:
         - containerPort: {{ .Values.ports.frontend }}
+        envFrom:
+        - configMapRef:
+            name: {{ include "whispernotes.fullname" . }}-config
+        - secretRef:
+            name: {{ include "whispernotes.fullname" . }}-secrets
         env:
-        - name: NEXT_PUBLIC_API_BASE_URL
-          valueFrom:
-            configMapKeyRef:
-              name: {{ include "whispernotes.fullname" . }}-config
-              key: NEXT_PUBLIC_API_BASE_URL
-        - name: NEXT_PUBLIC_AUTH_SERVICE_URL
-          valueFrom:
-            configMapKeyRef:
-              name: {{ include "whispernotes.fullname" . }}-config
-              key: NEXT_PUBLIC_AUTH_SERVICE_URL
-        - name: NEXT_PUBLIC_FILE_UPLOADER_URL
-          valueFrom:
-            configMapKeyRef:
-              name: {{ include "whispernotes.fullname" . }}-config
-              key: NEXT_PUBLIC_FILE_UPLOADER_URL
-        - name: NEXT_PUBLIC_VIDEO_PROCESSOR_URL
-          valueFrom:
-            configMapKeyRef:
-              name: {{ include "whispernotes.fullname" . }}-config
-              key: NEXT_PUBLIC_VIDEO_PROCESSOR_URL
         - name: NODE_ENV
           value: "production"
         resources:

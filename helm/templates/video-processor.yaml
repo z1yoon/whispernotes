@@ -26,67 +26,11 @@ spec:
         image: {{ .Values.global.imageRegistry }}/{{ .Values.services.videoProcessor.image }}
         ports:
         - containerPort: {{ .Values.ports.videoProcessor }}
-        env:
-        - name: RABBITMQ_HOST
-          valueFrom:
-            configMapKeyRef:
-              name: {{ include "whispernotes.fullname" . }}-config
-              key: RABBITMQ_HOST
-        - name: RABBITMQ_PORT
-          valueFrom:
-            configMapKeyRef:
-              name: {{ include "whispernotes.fullname" . }}-config
-              key: RABBITMQ_PORT
-        - name: RABBITMQ_DEFAULT_USER
-          valueFrom:
-            configMapKeyRef:
-              name: {{ include "whispernotes.fullname" . }}-config
-              key: RABBITMQ_DEFAULT_USER
-        - name: RABBITMQ_DEFAULT_PASS
-          valueFrom:
-            secretKeyRef:
-              name: {{ include "whispernotes.fullname" . }}-secrets
-              key: RABBITMQ_DEFAULT_PASS
-        - name: MINIO_ENDPOINT
-          valueFrom:
-            configMapKeyRef:
-              name: {{ include "whispernotes.fullname" . }}-config
-              key: MINIO_ENDPOINT
-        - name: MINIO_ACCESS_KEY
-          valueFrom:
-            configMapKeyRef:
-              name: {{ include "whispernotes.fullname" . }}-config
-              key: MINIO_ACCESS_KEY
-        - name: MINIO_SECRET_KEY
-          valueFrom:
-            secretKeyRef:
-              name: {{ include "whispernotes.fullname" . }}-secrets
-              key: MINIO_SECRET_KEY
-        - name: MINIO_BUCKET
-          valueFrom:
-            configMapKeyRef:
-              name: {{ include "whispernotes.fullname" . }}-config
-              key: MINIO_BUCKET
-        - name: REDIS_HOST
-          valueFrom:
-            configMapKeyRef:
-              name: {{ include "whispernotes.fullname" . }}-config
-              key: REDIS_HOST
-        - name: REDIS_PORT
-          valueFrom:
-            configMapKeyRef:
-              name: {{ include "whispernotes.fullname" . }}-config
-              key: REDIS_PORT
-        - name: REDIS_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: {{ include "whispernotes.fullname" . }}-secrets
-              key: REDIS_PASSWORD
-        - name: LOG_LEVEL
-          valueFrom:
-            configMapKeyRef:
-              name: {{ include "whispernotes.fullname" . }}-config
-              key: LOG_LEVEL
+        envFrom:
+        - configMapRef:
+            name: {{ include "whispernotes.fullname" . }}-config
+        - secretRef:
+            name: {{ include "whispernotes.fullname" . }}-secrets
         resources:
           requests:
             memory: {{ .Values.services.videoProcessor.resources.requests.memory }}

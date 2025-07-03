@@ -11,6 +11,7 @@ data:
   POSTGRES_USER: {{ .Values.config.database.user | quote }}
   POSTGRES_HOST: {{ include "whispernotes.fullname" . }}-postgres.{{ .Values.global.namespace }}.svc.cluster.local
   POSTGRES_PORT: {{ .Values.ports.postgres | quote }}
+  DATABASE_URL: postgresql://{{ .Values.config.database.user }}:${POSTGRES_PASSWORD}@{{ include "whispernotes.fullname" . }}-postgres.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.ports.postgres }}/{{ .Values.config.database.name }}
   
   # Redis
   REDIS_HOST: {{ include "whispernotes.fullname" . }}-redis.{{ .Values.global.namespace }}.svc.cluster.local
