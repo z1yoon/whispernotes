@@ -3,7 +3,7 @@ import axios from 'axios';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../auth/[...nextauth]/route';
 
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://auth-service:8000';
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL
 
 export async function GET(req: NextRequest) {
   try {

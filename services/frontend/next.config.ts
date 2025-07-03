@@ -63,7 +63,7 @@ const nextConfig: NextConfig = {
   
   // Environment variables that should be available on client-side
   env: {
-    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
   },
   
   // Add service worker support

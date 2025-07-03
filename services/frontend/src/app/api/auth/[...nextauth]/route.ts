@@ -15,9 +15,7 @@ export const authOptions = {
         }
 
         try {
-          // Always use the Docker service name when running in containers
-          // Use environment variable or fallback to Docker service name
-          const authServiceUrl = process.env.AUTH_SERVICE_URL || 'http://auth-service:8000'
+          const authServiceUrl = process.env.AUTH_SERVICE_URL
           
           // Use the correct login endpoint
           const response = await fetch(`${authServiceUrl}/api/v1/auth/login`, {

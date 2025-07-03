@@ -4,7 +4,7 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../auth/[...nextauth]/route';
 
 // Use environment variables for service URLs
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://auth-service:8001';
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL
 
 export async function POST(req: NextRequest) {
   try {

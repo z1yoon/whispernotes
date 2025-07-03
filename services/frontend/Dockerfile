@@ -24,4 +24,5 @@ ENV PORT=3000
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # Start the application
-CMD ["npm", "start"]
+# Use standalone server for production
+CMD ["node", "server.js"]

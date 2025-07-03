@@ -9,8 +9,7 @@ export async function POST(req: NextRequest) {
     const { username, email, full_name, password, purpose } = body;
     console.log('API signup: Email provided:', !!email);
 
-    // Use the Docker service name for internal communication
-    const authServiceUrl = process.env.AUTH_SERVICE_URL || 'http://auth-service:8000';
+    const authServiceUrl = process.env.AUTH_SERVICE_URL
 
     // First, check if user already exists or has pending request
     try {
