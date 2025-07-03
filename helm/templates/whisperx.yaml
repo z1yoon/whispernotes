@@ -9,6 +9,8 @@ metadata:
     app.kubernetes.io/component: whisperx
 spec:
   replicas: {{ .Values.services.whisperx.replicas }}
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       {{- include "whispernotes.selectorLabels" . | nindent 6 }}
