@@ -5,6 +5,8 @@ global:
   environment: main
   imageRegistry: harbor.leeseng.net/whispernotes
   imagePullPolicy: Always
+  imagePullSecrets:
+    - name: harbor-credentials
 
 # Storage configuration
 storage:

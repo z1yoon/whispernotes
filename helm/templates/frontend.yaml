@@ -19,6 +19,8 @@ spec:
         {{- include "whispernotes.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: frontend
     spec:
+      imagePullSecrets:
+        {{- toYaml .Values.global.imagePullSecrets | nindent 8 }}
       containers:
       - name: frontend
         image: {{ .Values.global.imageRegistry }}/{{ .Values.services.frontend.image }}

@@ -19,6 +19,8 @@ spec:
         {{- include "whispernotes.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: file-uploader
     spec:
+      imagePullSecrets:
+        {{- toYaml .Values.global.imagePullSecrets | nindent 8 }}
       containers:
       - name: file-uploader
         image: {{ .Values.global.imageRegistry }}/{{ .Values.services.fileUploader.image }}

@@ -21,7 +21,7 @@ spec:
     spec:
       containers:
       - name: postgres
-        image: {{ .Values.global.imageRegistry }}/{{ .Values.services.postgres.image }}
+        image: {{ .Values.services.postgres.image }}
         ports:
         - containerPort: {{ .Values.ports.postgres }}
         env:

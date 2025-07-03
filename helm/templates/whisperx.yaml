@@ -19,6 +19,8 @@ spec:
         {{- include "whispernotes.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: whisperx
     spec:
+      imagePullSecrets:
+        {{- toYaml .Values.global.imagePullSecrets | nindent 8 }}
       containers:
       - name: whisperx
         image: {{ .Values.global.imageRegistry }}/{{ .Values.services.whisperx.image }}
