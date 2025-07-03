@@ -81,7 +81,7 @@ deploy:microk8s:
   script:
     - |
       echo "Deploying to production MicroK8s cluster..."
-      envsubst < ./helm/templates/secrets.yaml > /tmp/secrets.yaml
+      envsubst < ./helm/ci-secrets.yaml > /tmp/secrets.yaml
       kubectl apply -f /tmp/secrets.yaml
       
       helm upgrade --install whispernotes ./helm \
