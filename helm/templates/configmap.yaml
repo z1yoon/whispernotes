@@ -45,8 +45,15 @@ data:
   ENVIRONMENT: {{ .Values.global.environment | quote }}
   LOG_LEVEL: {{ .Values.config.logLevel | quote }}
   
+  # Service ports
+  PORT: {{ .Values.ports.videoProcessor | quote }}
+  
   # Frontend (client-side environment variables)
   NEXT_PUBLIC_API_BASE_URL: https://{{ .Values.ingress.host }}
   NEXT_PUBLIC_AUTH_SERVICE_URL: https://{{ .Values.ingress.host }}/api/auth
   NEXT_PUBLIC_FILE_UPLOADER_URL: https://{{ .Values.ingress.host }}/api/upload
   NEXT_PUBLIC_VIDEO_PROCESSOR_URL: https://{{ .Values.ingress.host }}/api/process
+  
+  # NextAuth configuration
+  NEXTAUTH_URL: https://{{ .Values.ingress.host }}
+  AUTH_SERVICE_URL: http://{{ include "whispernotes.fullname" . }}-auth-service.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.ports.authService }}/api/v1

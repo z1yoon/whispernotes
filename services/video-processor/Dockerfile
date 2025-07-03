@@ -26,7 +26,7 @@ COPY video-processor/ .
 RUN mkdir -p /app/temp /app/processed
 
 # Expose port
-EXPOSE 8000
+EXPOSE 8001
 
 # Command to run the application
 CMD ["python", "main.py"]

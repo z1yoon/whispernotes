@@ -33,7 +33,17 @@ spec:
               number: {{ .Values.ports.frontend }}
       
       # API routes
+      # NextAuth routes (handled by frontend)
       - path: /api/auth
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ include "whispernotes.fullname" . }}-frontend
+            port:
+              number: {{ .Values.ports.frontend }}
+      
+      # Auth service routes  
+      - path: /api/v1/auth
         pathType: Prefix
         backend:
           service:

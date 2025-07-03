@@ -186,7 +186,7 @@ ingress:
   host: whispernotes.leeseng.net
   tls:
     enabled: true
-    secretName: whispernotes-tls
+    secretName: whispernotes-tls-secret
   # Disable paths that conflict with existing services
   paths:
     minio:
@@ -204,7 +204,7 @@ ports:
   minioConsole: 9001
   authService: 8000
   fileUploader: 8002
+  videoProcessor: 8001
   whisperx: 8003
   llmService: 8004
-  videoProcessor: 8001
   frontend: 3000
