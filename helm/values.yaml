@@ -44,9 +44,19 @@ config:
     port: 9000
     accessKey: whisper_admin
     bucket: whispernotes  # Create this bucket in existing MinIO
+    externalHost: minio.leeseng.net
   qwen:
     apiBase: https://test-llm.rdc.nie.edu.sg/api/v1/
     model: DeepSeek-R1-Distill-Qwen-32B
+  auth:
+    jwtAlgorithm: HS256
+    jwtExpireMinutes: 1800
+    adminEmail: jiyoon.kim@nie.edu.sg
+    adminUsername: Amber
+  whisperx:
+    defaultLanguage: en
+    minSpeakers: 1
+    maxSpeakers: 10
   logLevel: INFO
 
 # Services configuration
