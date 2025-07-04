@@ -44,19 +44,19 @@ data:
   DEVICE: {{ .Values.services.whisperx.env.device | quote }}
   COMPUTE_TYPE: {{ .Values.services.whisperx.env.computeType | quote }}
   BATCH_SIZE: {{ .Values.services.whisperx.env.batchSize | quote }}
-  DEFAULT_LANGUAGE: {{ .Values.config.whisperx.defaultLanguage | default "en" | quote }}
-  MIN_SPEAKERS: {{ .Values.config.whisperx.minSpeakers | default "1" | quote }}
-  MAX_SPEAKERS: {{ .Values.config.whisperx.maxSpeakers | default "5" | quote }}
+  DEFAULT_LANGUAGE: {{ .Values.config.whisperx.defaultLanguage | quote }}
+  MIN_SPEAKERS: {{ .Values.config.whisperx.minSpeakers | quote }}
+  MAX_SPEAKERS: {{ .Values.config.whisperx.maxSpeakers | quote }}
   UI_SERVICE_URL: http://{{ include "whispernotes.fullname" . }}-frontend.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.ports.frontend }}
   
   # Auth Service Configuration
-  JWT_ALGORITHM: {{ .Values.config.auth.jwtAlgorithm | default "HS256" | quote }}
-  JWT_EXPIRE_MINUTES: {{ .Values.config.auth.jwtExpireMinutes | default "43200" | quote }}
+  JWT_ALGORITHM: {{ .Values.config.auth.jwtAlgorithm | quote }}
+  JWT_EXPIRE_MINUTES: {{ .Values.config.auth.jwtExpireMinutes | quote }}
   ADMIN_EMAIL: {{ .Values.config.auth.adminEmail | quote }}
-  ADMIN_USERNAME: {{ .Values.config.auth.adminUsername | default "Admin" | quote }}
+  ADMIN_USERNAME: {{ .Values.config.auth.adminUsername | quote }}
   
   # File Uploader Configuration
-  EXTERNAL_MINIO_HOST: {{ .Values.config.minio.externalHost | default .Values.config.minio.host | quote }}:{{ .Values.config.minio.port }}
+  EXTERNAL_MINIO_HOST: {{ .Values.config.minio.externalHost | quote }}:{{ .Values.config.minio.port }}
   
   # Environment
   ENVIRONMENT: {{ .Values.global.environment | quote }}
