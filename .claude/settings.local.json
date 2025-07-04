@@ -37,7 +37,9 @@
       "Bash(docker build:*)",
       "Bash(docker push:*)",
       "Bash(sed:*)",
-      "Bash(helm template:*)"
+      "Bash(helm template:*)",
+      "Bash(git checkout:*)",
+      "Bash(git stash:*)"
     ],
     "deny": []
   }

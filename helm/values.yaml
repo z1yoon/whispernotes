@@ -97,17 +97,6 @@ services:
         memory: 512Mi
         cpu: 400m
     
-  minio:
-    enabled: false  # Use existing MinIO in minio namespace
-    external:
-      enabled: true
-      # Use existing MinIO service in minio namespace
-      host: minio.minio.svc.cluster.local
-      port: 9000
-      console_port: 9001
-      ssl: false  # Internal cluster communication
-      # External access via minio.leeseng.net
-      public_endpoint: minio.leeseng.net
     
   whisperx:
     enabled: true

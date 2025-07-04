@@ -26,10 +26,7 @@ variables:
         --context $CI_PROJECT_DIR/services \
         --dockerfile $CI_PROJECT_DIR/services/$SERVICE_NAME/Dockerfile \
         --destination $HARBOR_REGISTRY/whispernotes/$SERVICE_NAME:$IMAGE_TAG \
-        --cache=true \
-        --cache-ttl=168h \
-        --cache-repo=$HARBOR_REGISTRY/whispernotes/cache \
-        --compressed-caching=true \
+        --no-cache \
         --use-new-run \
         --cleanup
   rules:
