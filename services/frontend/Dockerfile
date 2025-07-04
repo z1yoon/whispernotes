@@ -18,6 +18,10 @@ COPY frontend/ .
 # Build the application
 RUN npm run build
 
+# Copy static assets for standalone mode
+RUN cp -r .next/static .next/standalone/.next/static
+RUN cp -r public .next/standalone/public
+
 # Expose port
 EXPOSE 3000
 ENV PORT=3000
@@ -25,4 +29,5 @@ ENV NEXT_TELEMETRY_DISABLED=1
 
 # Start the application
 # Use standalone server for production
-CMD ["node", ".next/standalone/server.js"]
+WORKDIR /app/.next/standalone
+CMD ["node", "server.js"]
