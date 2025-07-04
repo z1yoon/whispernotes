@@ -25,4 +25,4 @@ ENV NEXT_TELEMETRY_DISABLED=1
 
 # Start the application
 # Use standalone server for production
-CMD ["node", "server.js"]
+CMD ["node", ".next/standalone/server.js"]
