@@ -32,7 +32,7 @@ spec:
         - configMapRef:
             name: {{ include "whispernotes.fullname" . }}-config
         - secretRef:
-            name: {{ include "whispernotes.fullname" . }}-secrets
+            name: {{ include "whispernotes.secretName" . }}
         env:
         - name: DEVICE
           value: {{ .Values.services.whisperx.env.device | quote }}

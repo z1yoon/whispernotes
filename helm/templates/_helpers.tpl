@@ -59,3 +59,10 @@ Create the name of the service account to use
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
+
+{{/*
+Create the name for secrets
+*/}}
+{{- define "whispernotes.secretName" -}}
+{{- printf "%s-secrets" (include "whispernotes.name" .) }}
+{{- end }}

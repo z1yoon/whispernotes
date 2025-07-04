@@ -30,7 +30,7 @@ spec:
         - configMapRef:
             name: {{ include "whispernotes.fullname" . }}-config
         - secretRef:
-            name: {{ include "whispernotes.fullname" . }}-secrets
+            name: {{ include "whispernotes.secretName" . }}
         resources:
           requests:
             memory: {{ .Values.services.fileUploader.resources.requests.memory }}

@@ -38,7 +38,7 @@ spec:
         - name: POSTGRES_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: {{ include "whispernotes.fullname" . }}-secrets
+              name: {{ include "whispernotes.secretName" . }}
               key: POSTGRES_PASSWORD
         volumeMounts:
         - name: postgres-storage

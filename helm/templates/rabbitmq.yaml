@@ -34,7 +34,7 @@ spec:
         - name: RABBITMQ_DEFAULT_PASS
           valueFrom:
             secretKeyRef:
-              name: {{ include "whispernotes.fullname" . }}-secrets
+              name: {{ include "whispernotes.secretName" . }}
               key: RABBITMQ_DEFAULT_PASS
         - name: RABBITMQ_DEFAULT_VHOST
           valueFrom:
