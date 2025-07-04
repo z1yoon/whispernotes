@@ -36,7 +36,8 @@
       "Bash(mv:*)",
       "Bash(docker build:*)",
       "Bash(docker push:*)",
-      "Bash(sed:*)"
+      "Bash(sed:*)",
+      "Bash(helm template:*)"
     ],
     "deny": []
   }

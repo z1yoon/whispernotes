@@ -56,8 +56,7 @@ data:
   ADMIN_USERNAME: {{ .Values.config.auth.adminUsername | quote }}
   
   # File Uploader Configuration
-  EXTERNAL_MINIO_HOST: {{ .Values.config.minio.externalHost | quote }}:{{ .Values.config.minio.port }}
-  
+  EXTERNAL_MINIO_HOST: {{ .Values.config.minio.externalHost | quote }}
   # Environment
   ENVIRONMENT: {{ .Values.global.environment | quote }}
   LOG_LEVEL: {{ .Values.config.logLevel | quote }}
