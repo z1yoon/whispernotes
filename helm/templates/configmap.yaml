@@ -72,4 +72,4 @@ data:
   
   # NextAuth configuration
   NEXTAUTH_URL: https://{{ .Values.ingress.host }}
-  AUTH_SERVICE_URL: http://{{ include "whispernotes.fullname" . }}-auth-service.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.ports.authService }}/api/v1
+  AUTH_SERVICE_URL: http://{{ include "whispernotes.fullname" . }}-auth-service.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.ports.authService }}
