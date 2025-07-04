@@ -35,7 +35,8 @@
       "Bash(git push:*)",
       "Bash(mv:*)",
       "Bash(docker build:*)",
-      "Bash(docker push:*)"
+      "Bash(docker push:*)",
+      "Bash(sed:*)"
     ],
     "deny": []
   }

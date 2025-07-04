@@ -25,7 +25,7 @@ app.add_middleware(
 )
 
 # Configuration
-REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
+REDIS_URL = os.getenv("REDIS_URL")
 
 # Qwen LLM Configuration
 QWEN_API_KEY = os.getenv("QWEN_API_KEY")

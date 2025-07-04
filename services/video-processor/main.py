@@ -33,25 +33,25 @@ TEMP_DIR = "/app/temp"
 PROCESSED_DIR = "/app/processed"
 
 # Redis for caching and progress tracking
-redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
+redis_url = os.getenv("REDIS_URL")
 redis_client = redis.from_url(redis_url, decode_responses=True)
 
 # Service URLs
-WHISPER_SERVICE_URL = os.getenv("WHISPER_SERVICE_URL", "http://whisper-transcriber:8003")
-FILE_UPLOADER_URL = os.getenv("FILE_UPLOADER_URL", "http://file-uploader:8002")
+WHISPER_SERVICE_URL = os.getenv("WHISPER_SERVICE_URL")
+FILE_UPLOADER_URL = os.getenv("FILE_UPLOADER_URL")
 
 # RabbitMQ configuration
-RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "rabbitmq")
-RABBITMQ_PORT = int(os.getenv("RABBITMQ_PORT", 5672))
-RABBITMQ_USER = os.getenv("RABBITMQ_DEFAULT_USER", "user")
-RABBITMQ_PASS = os.getenv("RABBITMQ_DEFAULT_PASS", "password")
+RABBITMQ_HOST = os.getenv("RABBITMQ_HOST")
+RABBITMQ_PORT = int(os.getenv("RABBITMQ_PORT"))
+RABBITMQ_USER = os.getenv("RABBITMQ_DEFAULT_USER")
+RABBITMQ_PASS = os.getenv("RABBITMQ_DEFAULT_PASS")
 VIDEO_PROCESSING_QUEUE = "video_processing_queue"
 
 # MinIO configuration
-MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "minio:9000")
-MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
-MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin123")
-MINIO_BUCKET = os.getenv("MINIO_BUCKET", "whisper-files")
+MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT")
+MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY")
+MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY")
+MINIO_BUCKET = os.getenv("MINIO_BUCKET")
 
 # Ensure directories exist
 os.makedirs(TEMP_DIR, exist_ok=True)
@@ -513,5 +513,5 @@ async def startup_event():
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.getenv("VIDEO_PROCESSOR_PORT", "8001"))
+    port = int(os.getenv("VIDEO_PROCESSOR_PORT"))
     uvicorn.run(app, host="0.0.0.0", port=port)

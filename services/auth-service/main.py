@@ -11,9 +11,6 @@ from datetime import datetime, timedelta, timezone
 import os
 import logging
 from typing import Optional
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 from contextlib import asynccontextmanager
 
 # Configure logging
@@ -31,16 +28,12 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
 # JWT settings
-SECRET_KEY = os.getenv("JWT_SECRET", "default-secret-key")
-ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "43200")) # 30 days
+SECRET_KEY = os.getenv("JWT_SECRET")
+ALGORITHM = os.getenv("JWT_ALGORITHM")
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES")) # 30 days
 
-# Email settings (for access requests)
-SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
-SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-SMTP_USERNAME = os.getenv("SMTP_USERNAME", "")
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
-ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@whispernotes.com")
+# Admin settings
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL")
 
 # Helper functions
 def verify_password(plain_password, hashed_password):
@@ -70,7 +63,7 @@ def create_admin_user():
     with SessionLocal() as db:
         admin_email = os.getenv("ADMIN_EMAIL")
         admin_password = os.getenv("ADMIN_PASSWORD")
-        admin_username = os.getenv("ADMIN_USERNAME", "Admin")  # Default to "Admin" if not set
+        admin_username = os.getenv("ADMIN_USERNAME")  # Default to "Admin" if not set
         
         if not admin_email or not admin_password:
             logger.warning("Admin credentials not set in environment variables.")

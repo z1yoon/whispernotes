@@ -349,7 +349,7 @@ async def get_presigned_upload_url(session_id: str, request: PresignedUrlRequest
         logger.info(f"Generated presigned URL for part {request.part_number} of upload {session_id}")
         
         # Replace internal MinIO host with external one if necessary
-        external_minio_host = os.getenv("EXTERNAL_MINIO_HOST", "localhost:9000")
+        external_minio_host = os.getenv("EXTERNAL_MINIO_HOST")
         if "minio:9000" in url:
             url = url.replace("minio:9000", external_minio_host)
         
@@ -442,7 +442,7 @@ async def upload_part(session_id: str, part_number: int, file: UploadFile = File
             
             async with httpx.AsyncClient(timeout=5.0) as client:
                 await client.post(
-                    f"{os.getenv('FILE_UPLOADER_URL', 'http://file-uploader:8002')}/upload/progress/{session_id}",
+                    f"{os.getenv('FILE_UPLOADER_URL')}/upload/progress/{session_id}",
                     json={
                         "progress": progress_percentage,
                         "message": progress_message,

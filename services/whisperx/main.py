@@ -31,13 +31,13 @@ logger = logging.getLogger("main")
 app = FastAPI()
 
 # Configuration
-DEVICE = os.environ.get("DEVICE", "cpu")
-DEFAULT_LANGUAGE = os.getenv("DEFAULT_LANGUAGE", "en")
-LLM_SERVICE_URL = os.getenv("LLM_SERVICE_URL", "http://llm-service:8004")
-UI_SERVICE_URL = os.getenv("UI_SERVICE_URL", "http://frontend:3000")
+DEVICE = os.environ.get("DEVICE")
+DEFAULT_LANGUAGE = os.getenv("DEFAULT_LANGUAGE")
+LLM_SERVICE_URL = os.getenv("LLM_SERVICE_URL")
+UI_SERVICE_URL = os.getenv("UI_SERVICE_URL")
 
 # Redis for caching and progress tracking
-redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
+redis_url = os.getenv("REDIS_URL")
 try:
     redis_client = redis.from_url(redis_url, decode_responses=True)
     redis_client.ping()  # Test connection
@@ -117,11 +117,11 @@ app.add_middleware(
 )
 
 # Configuration
-COMPUTE_TYPE = os.environ.get("COMPUTE_TYPE", "int8" if DEVICE == "cpu" else "float16")
-BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "4" if DEVICE == "cpu" else "16"))
-HF_TOKEN = os.environ.get("HF_TOKEN", None)
-MIN_SPEAKERS = int(os.environ.get("MIN_SPEAKERS", "1"))
-MAX_SPEAKERS = int(os.environ.get("MAX_SPEAKERS", "5"))
+COMPUTE_TYPE = os.environ.get("COMPUTE_TYPE")
+BATCH_SIZE = int(os.environ.get("BATCH_SIZE"))
+HF_TOKEN = os.environ.get("HF_TOKEN")
+MIN_SPEAKERS = int(os.environ.get("MIN_SPEAKERS"))
+MAX_SPEAKERS = int(os.environ.get("MAX_SPEAKERS"))
 SAMPLE_RATE = 16000
 
 # Simplified model loading based on WhisperX best practices
@@ -233,21 +233,21 @@ def load_diarization_model():
 
 
 # RabbitMQ configuration
-RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "rabbitmq")
-RABBITMQ_PORT = int(os.getenv("RABBITMQ_PORT", 5672))
-RABBITMQ_USER = os.getenv("RABBITMQ_DEFAULT_USER", "user")
-RABBITMQ_PASS = os.getenv("RABBITMQ_DEFAULT_PASS", "password")
+RABBITMQ_HOST = os.getenv("RABBITMQ_HOST")
+RABBITMQ_PORT = int(os.getenv("RABBITMQ_PORT"))
+RABBITMQ_USER = os.getenv("RABBITMQ_DEFAULT_USER")
+RABBITMQ_PASS = os.getenv("RABBITMQ_DEFAULT_PASS")
 TRANSCRIPTION_QUEUE = "video_processing_queue"  # Listen to the same queue as video-processor
 TRANSCRIPTION_RESULTS_QUEUE = "transcription_results_queue"
 
 # Service URLs
-FILE_UPLOADER_URL = os.getenv("FILE_UPLOADER_URL", "http://file-uploader:8002")
+FILE_UPLOADER_URL = os.getenv("FILE_UPLOADER_URL")
 
 # MinIO configuration for downloading files
-MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "minio:9000")
-MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
-MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin123")
-MINIO_BUCKET = os.getenv("MINIO_BUCKET", "whisper-files")
+MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT")
+MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY")
+MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY")
+MINIO_BUCKET = os.getenv("MINIO_BUCKET")
 
 # Pydantic models
 class TranscriptionRequest(BaseModel):

@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../auth/[...nextauth]/route';
 
 // Use environment variables for service URLs
-const FILE_UPLOADER_URL = process.env.FILE_UPLOADER_URL || 'http://file-uploader:8002';
+const FILE_UPLOADER_URL = process.env.FILE_UPLOADER_URL
 
 export async function POST(req: NextRequest) {
   try {

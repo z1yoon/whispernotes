@@ -30,7 +30,7 @@ export async function GET(
 
     try {
       // Fetch LLM analysis from the LLM service
-      const llmServiceUrl = process.env.LLM_SERVICE_URL || 'http://llm-service:8004';
+      const llmServiceUrl = process.env.LLM_SERVICE_URL
       console.log(`Fetching analysis from: ${llmServiceUrl}/analysis/${sessionId}`);
       
       const response = await fetch(`${llmServiceUrl}/analysis/${sessionId}`, {
@@ -57,7 +57,7 @@ export async function GET(
       // Verify user has access to this transcript (unless admin)
       if (!isAdmin) {
         // First get the transcript to check ownership
-        const transcriptResponse = await fetch(`${process.env.FILE_UPLOADER_URL || 'http://file-uploader:8002'}/api/v1/transcripts/user/${userId}`);
+        const transcriptResponse = await fetch(`${process.env.FILE_UPLOADER_URL}/api/v1/transcripts/user/${userId}`);
         
         if (transcriptResponse.ok) {
           const transcriptData = await transcriptResponse.json();
