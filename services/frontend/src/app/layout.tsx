@@ -19,17 +19,9 @@ export const metadata: Metadata = {
     "meeting notes",
   ],
   icons: {
-    icon: [
-      { url: '/favicon.svg', type: 'image/svg+xml' },
-      { url: '/favicon.png', type: 'image/png', sizes: '32x32' },
-    ],
-    shortcut: [
-      { url: '/favicon.svg', type: 'image/svg+xml' },
-      { url: '/favicon.png', type: 'image/png', sizes: '32x32' },
-    ],
-    apple: [
-      { url: '/favicon.png', sizes: '180x180', type: 'image/png' },
-    ],
+    icon: '/favicon.png',
+    shortcut: '/favicon.png',
+    apple: '/favicon.png',
   },
   manifest: '/manifest.json',
 };
@@ -45,21 +37,13 @@ export default function RootLayout({
       className={`${inter.variable} ${plusJakarta.variable} ${roboto.variable} ${robotoCondensed.variable}`}
     >
       <head>
-        {/* Primary favicon - SVG for modern browsers */}
-        <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-        {/* Fallback PNG favicon for older browsers */}
+        {/* Favicon - PNG for better compatibility */}
         <link rel="icon" href="/favicon.png" type="image/png" sizes="32x32" />
+        <link rel="shortcut icon" href="/favicon.png" type="image/png" />
         {/* Apple touch icon */}
         <link rel="apple-touch-icon" href="/favicon.png" sizes="180x180" />
         {/* Theme color */}
         <meta name="theme-color" content="#8850F2" />
-        {/* Microsoft tile */}
-        <meta name="msapplication-TileColor" content="#8850F2" />
-        <meta name="msapplication-TileImage" content="/favicon.png" />
-        <meta name="msapplication-config" content="/browserconfig.xml" />
-        {/* Force favicon refresh */}
-        <link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml" />
-        <link rel="shortcut icon" href="/favicon.png?v=2" type="image/png" />
       </head>
       <body className="min-h-screen bg-background font-sans antialiased">
         <QueryProvider>
