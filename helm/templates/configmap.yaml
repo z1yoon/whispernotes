@@ -22,8 +22,8 @@ data:
   RABBITMQ_DEFAULT_USER: "whisper_user"
   RABBITMQ_DEFAULT_VHOST: "/"
   
-  # MinIO (External - existing MinIO at minio.leeseng.net)
-  MINIO_ENDPOINT: "minio.leeseng.net:9000"
+  # MinIO Configuration
+  MINIO_ENDPOINT: "minio.minio.svc.cluster.local:9000"  # Internal services use direct connection
   MINIO_ACCESS_KEY: "whisper_admin"
   MINIO_BUCKET: "whispernotes"
   
@@ -60,8 +60,8 @@ data:
   ADMIN_EMAIL: "jiyoon.kim@nie.edu.sg"
   ADMIN_USERNAME: "Amber"
   
-  # File Uploader Configuration
-  EXTERNAL_MINIO_HOST: "minio.leeseng.net"
+  # File Uploader Configuration  
+  EXTERNAL_MINIO_HOST: "minio.leeseng.net"  # For presigned URLs that browsers can access
   # Service Ports
   VIDEO_PROCESSOR_PORT: "8001"
   
