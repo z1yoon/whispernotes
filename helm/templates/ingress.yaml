@@ -10,14 +10,14 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-body-size: "100m"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/use-regex: "true"
 spec:
   ingressClassName: nginx
   {{- if .Values.ingress.tls.enabled }}
   tls:
   - hosts:
     - {{ .Values.ingress.host }}
-    secretName: {{ .Values.ingress.tls.secretName | default (printf "%s-tls" (include "whispernotes.fullname" .)) }}
+    secretName: {{ .Values.ingress.tls.secretName }}
   {{- end }}
   rules:
   - host: {{ .Values.ingress.host }}
@@ -34,52 +34,72 @@ spec:
       
       # API routes
       
-      # NextAuth.js authentication routes (handled by Next.js frontend)
-      # These handle: /api/auth/signin, /api/auth/signout, /api/auth/session, etc.
-      - path: /api/auth(/|$)(.*)
-        pathType: ImplementationSpecific
+      # Standard microservices routing: one path per service
+      
+      # NextAuth.js routes (frontend only)
+      - path: /api/auth
+        pathType: Prefix
         backend:
           service:
             name: {{ include "whispernotes.fullname" . }}-frontend
             port:
               number: {{ .Values.ports.frontend }}
       
-      # Backend auth service API routes (FastAPI microservice)
-      # These handle: /api/v1/auth/login, /api/v1/auth/me, /api/v1/admin/*, etc.
-      - path: /api/v1/auth(/|$)(.*)
-        pathType: ImplementationSpecific
+      # Auth service routes
+      - path: /api/v1/auth
+        pathType: Prefix
         backend:
           service:
             name: {{ include "whispernotes.fullname" . }}-auth-service
             port:
               number: {{ .Values.ports.authService }}
       
-      - path: /api/upload(/|$)(.*)
-        pathType: ImplementationSpecific
+      - path: /api/v1/admin
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ include "whispernotes.fullname" . }}-auth-service
+            port:
+              number: {{ .Values.ports.authService }}
+      
+      # File uploader service routes
+      - path: /api/v1/uploads
+        pathType: Prefix
         backend:
           service:
             name: {{ include "whispernotes.fullname" . }}-file-uploader
             port:
               number: {{ .Values.ports.fileUploader }}
       
-      - path: /api/process(/|$)(.*)
-        pathType: ImplementationSpecific
+      - path: /api/v1/transcripts
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ include "whispernotes.fullname" . }}-file-uploader
+            port:
+              number: {{ .Values.ports.fileUploader }}
+      
+      # Video processor service routes
+      - path: /api/v1/process
+        pathType: Prefix
         backend:
           service:
             name: {{ include "whispernotes.fullname" . }}-video-processor
             port:
               number: {{ .Values.ports.videoProcessor }}
       
-      - path: /api/transcribe(/|$)(.*)
-        pathType: ImplementationSpecific
+      # WhisperX service routes
+      - path: /api/v1/transcribe
+        pathType: Prefix
         backend:
           service:
             name: {{ include "whispernotes.fullname" . }}-whisperx
             port:
               number: {{ .Values.ports.whisperx }}
       
-      - path: /api/llm(/|$)(.*)
-        pathType: ImplementationSpecific
+      # LLM service routes
+      - path: /api/v1/llm
+        pathType: Prefix
         backend:
           service:
             name: {{ include "whispernotes.fullname" . }}-llm-service
