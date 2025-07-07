@@ -130,4 +130,4 @@ data:
         crypt('$ADMIN_PASSWORD', gen_salt('bf')),
         TRUE
     ) ON CONFLICT (email) DO NOTHING;
-EOSQL
+    EOSQL
