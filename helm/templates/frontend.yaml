@@ -28,12 +28,9 @@ spec:
         - containerPort: {{ .Values.ports.frontend }}
         envFrom:
         - configMapRef:
-            name: {{ include "whispernotes.fullname" . }}-config
+            name: whispernotes-config
         - secretRef:
             name: {{ include "whispernotes.secretName" . }}
-        env:
-        - name: NODE_ENV
-          value: "production"
         resources:
           requests:
             memory: {{ .Values.services.frontend.resources.requests.memory }}

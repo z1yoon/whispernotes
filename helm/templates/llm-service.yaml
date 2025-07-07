@@ -28,7 +28,7 @@ spec:
         - containerPort: {{ .Values.ports.llmService }}
         envFrom:
         - configMapRef:
-            name: {{ include "whispernotes.fullname" . }}-config
+            name: whispernotes-config
         - secretRef:
             name: {{ include "whispernotes.secretName" . }}
         resources:

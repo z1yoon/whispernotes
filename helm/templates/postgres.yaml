@@ -24,22 +24,11 @@ spec:
         image: {{ .Values.services.postgres.image }}
         ports:
         - containerPort: {{ .Values.ports.postgres }}
-        env:
-        - name: POSTGRES_DB
-          valueFrom:
-            configMapKeyRef:
-              name: {{ include "whispernotes.fullname" . }}-config
-              key: POSTGRES_DB
-        - name: POSTGRES_USER
-          valueFrom:
-            configMapKeyRef:
-              name: {{ include "whispernotes.fullname" . }}-config
-              key: POSTGRES_USER
-        - name: POSTGRES_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: {{ include "whispernotes.secretName" . }}
-              key: POSTGRES_PASSWORD
+        envFrom:
+        - configMapRef:
+            name: whispernotes-config
+        - secretRef:
+            name: {{ include "whispernotes.secretName" . }}
         volumeMounts:
         - name: postgres-storage
           mountPath: /var/lib/postgresql/data

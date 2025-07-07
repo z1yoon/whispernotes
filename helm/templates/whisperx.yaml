@@ -30,26 +30,9 @@ spec:
         - containerPort: {{ .Values.ports.whisperx }}
         envFrom:
         - configMapRef:
-            name: {{ include "whispernotes.fullname" . }}-config
+            name: whispernotes-config
         - secretRef:
             name: {{ include "whispernotes.secretName" . }}
-        env:
-        - name: DEVICE
-          value: {{ .Values.services.whisperx.env.device | quote }}
-        - name: COMPUTE_TYPE
-          value: {{ .Values.services.whisperx.env.computeType | quote }}
-        - name: BATCH_SIZE
-          value: {{ .Values.services.whisperx.env.batchSize | quote }}
-        - name: SHOULD_MOCK_DIARIZATION
-          value: {{ .Values.services.whisperx.env.shouldMockDiarization | quote }}
-        - name: HF_HOME
-          value: "/root/.cache/huggingface"
-        - name: HF_HUB_CACHE
-          value: "/root/.cache/huggingface/hub"
-        - name: TRANSFORMERS_CACHE
-          value: "/root/.cache/huggingface/transformers"
-        - name: HF_HUB_DOWNLOAD_TIMEOUT
-          value: "300"
         volumeMounts:
         - name: whisperx-storage
           mountPath: /app/models
