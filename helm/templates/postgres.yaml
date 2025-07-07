@@ -32,6 +32,8 @@ spec:
         volumeMounts:
         - name: postgres-storage
           mountPath: /var/lib/postgresql/data
+        - name: init-sql
+          mountPath: /docker-entrypoint-initdb.d
         livenessProbe:
           exec:
             command:
@@ -62,6 +64,9 @@ spec:
       - name: postgres-storage
         persistentVolumeClaim:
           claimName: {{ include "whispernotes.fullname" . }}-postgres-pvc
+      - name: init-sql
+        configMap:
+          name: {{ include "whispernotes.fullname" . }}-init-sql
 ---
 apiVersion: v1
 kind: Service
