@@ -501,6 +501,19 @@ async def delete_user_alt(user_id: str, db=Depends(get_db), admin_user: User = D
 async def health_check():
     return {"status": "ok"}
 
+@app.get("/")
+async def root():
+    return {"message": "WhisperNotes Auth Service", "status": "running"}
+
+# Add redirect for login without prefix
+@app.post("/login", response_model=Token)
+async def login_root(form_data: OAuth2PasswordRequestForm = Depends(), db=Depends(get_db)):
+    return await login_for_access_token(form_data, db)
+
+@app.get("/me", response_model=User)
+async def me_root(current_user: User = Depends(get_current_user)):
+    return current_user
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -17,6 +17,11 @@ export const authOptions = {
         try {
           const authServiceUrl = process.env.AUTH_SERVICE_URL
           
+          if (!authServiceUrl) {
+            console.error('AUTH_SERVICE_URL environment variable is not set')
+            throw new Error('Authentication service configuration error')
+          }
+          
           // Use the correct login endpoint
           const response = await fetch(`${authServiceUrl}/api/v1/auth/login`, {
             method: 'POST',
@@ -98,6 +103,7 @@ export const authOptions = {
     maxAge: 30 * 60, // 30 minutes (in seconds) - matches JWT_EXPIRE_MINUTES from .env
   },
   secret: process.env.NEXTAUTH_SECRET,
+  debug: process.env.NODE_ENV === 'development',
 }
 
 const handler = NextAuth(authOptions)

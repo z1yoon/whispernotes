@@ -39,7 +39,8 @@
       "Bash(sed:*)",
       "Bash(helm template:*)",
       "Bash(git checkout:*)",
-      "Bash(git stash:*)"
+      "Bash(git stash:*)",
+      "Bash(kubectl logs:*)"
     ],
     "deny": []
   }

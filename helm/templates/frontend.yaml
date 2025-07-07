@@ -31,6 +31,10 @@ spec:
           value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DB)"
         - name: REDIS_URL
           value: "redis://:$(REDIS_PASSWORD)@$(REDIS_HOST):$(REDIS_PORT)"
+        - name: NEXTAUTH_URL
+          value: "$(NEXTAUTH_URL)"
+        - name: AUTH_SERVICE_URL
+          value: "$(AUTH_SERVICE_URL)"
         envFrom:
         - configMapRef:
             name: {{ include "whispernotes.configMapName" . }}
