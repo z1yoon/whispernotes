@@ -22,6 +22,9 @@ RUN npm run build
 RUN cp -r .next/static .next/standalone/.next/static
 RUN cp -r public .next/standalone/public
 
+# Ensure favicon files are in the right location
+RUN cp public/favicon.* .next/standalone/public/
+
 # Expose port
 EXPOSE 3000
 ENV PORT=3000

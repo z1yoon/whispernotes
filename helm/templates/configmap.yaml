@@ -1,75 +1,78 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "whispernotes.fullname" . }}-config
-  namespace: {{ .Values.global.namespace }}
+  name: whispernotes-config
+  namespace: whispernotes
   labels:
-    {{- include "whispernotes.labels" . | nindent 4 }}
+    app.kubernetes.io/name: whispernotes
+    app.kubernetes.io/instance: whispernotes
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
 data:
   # Database
-  POSTGRES_DB: {{ .Values.config.database.name | quote }}
-  POSTGRES_USER: {{ .Values.config.database.user | quote }}
-  POSTGRES_HOST: {{ include "whispernotes.fullname" . }}-postgres.{{ .Values.global.namespace }}.svc.cluster.local
-  POSTGRES_PORT: {{ .Values.ports.postgres | quote }}
-  DATABASE_URL: postgresql://{{ .Values.config.database.user }}:${POSTGRES_PASSWORD}@{{ include "whispernotes.fullname" . }}-postgres.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.ports.postgres }}/{{ .Values.config.database.name }}
+  POSTGRES_DB: "whisper_notes"
+  POSTGRES_USER: "whisper_user"
+  POSTGRES_HOST: whispernotes-postgres.whispernotes.svc.cluster.local
+  POSTGRES_PORT: "5432"
+  DATABASE_URL: postgresql://whisper_user:${POSTGRES_PASSWORD}@whispernotes-postgres.whispernotes.svc.cluster.local:5432/whisper_notes
   
   # Redis
-  REDIS_HOST: {{ include "whispernotes.fullname" . }}-redis.{{ .Values.global.namespace }}.svc.cluster.local
-  REDIS_PORT: {{ .Values.config.redis.port | quote }}
-  REDIS_URL: redis://:${REDIS_PASSWORD}@{{ include "whispernotes.fullname" . }}-redis.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.config.redis.port }}/0
+  REDIS_HOST: whispernotes-redis.whispernotes.svc.cluster.local
+  REDIS_PORT: "6379"
+  REDIS_URL: redis://:${REDIS_PASSWORD}@whispernotes-redis.whispernotes.svc.cluster.local:6379/0
   
   # RabbitMQ
-  RABBITMQ_HOST: {{ include "whispernotes.fullname" . }}-rabbitmq.{{ .Values.global.namespace }}.svc.cluster.local
-  RABBITMQ_PORT: {{ .Values.config.rabbitmq.port | quote }}
-  RABBITMQ_DEFAULT_USER: {{ .Values.config.rabbitmq.user | quote }}
-  RABBITMQ_DEFAULT_VHOST: {{ .Values.config.rabbitmq.vhost | quote }}
+  RABBITMQ_HOST: whispernotes-rabbitmq.whispernotes.svc.cluster.local
+  RABBITMQ_PORT: "5672"
+  RABBITMQ_DEFAULT_USER: "whisper_user"
+  RABBITMQ_DEFAULT_VHOST: "/"
   
-  # MinIO (External - existing MinIO in minio namespace)
-  MINIO_ENDPOINT: {{ .Values.config.minio.host }}:{{ .Values.config.minio.port }}
-  MINIO_ACCESS_KEY: {{ .Values.config.minio.accessKey | quote }}
-  MINIO_BUCKET: {{ .Values.config.minio.bucket | quote }}
+  # MinIO (External - existing MinIO at minio.leeseng.net)
+  MINIO_ENDPOINT: "minio.leeseng.net:9000"
+  MINIO_ACCESS_KEY: "whisper_admin"
+  MINIO_BUCKET: "whispernotes"
   
   # Internal Services (Kubernetes service names with proper FQDN)
-  FILE_UPLOADER_URL: http://{{ include "whispernotes.fullname" . }}-file-uploader.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.ports.fileUploader }}
-  WHISPER_SERVICE_URL: http://{{ include "whispernotes.fullname" . }}-whisperx.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.ports.whisperx }}
-  LLM_SERVICE_URL: http://{{ include "whispernotes.fullname" . }}-llm-service.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.ports.llmService }}
-  VIDEO_PROCESSOR_URL: http://{{ include "whispernotes.fullname" . }}-video-processor.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.ports.videoProcessor }}
+  FILE_UPLOADER_URL: http://whispernotes-file-uploader.whispernotes.svc.cluster.local:8002
+  WHISPER_SERVICE_URL: http://whispernotes-whisperx.whispernotes.svc.cluster.local:8003
+  LLM_SERVICE_URL: http://whispernotes-llm-service.whispernotes.svc.cluster.local:8004
+  VIDEO_PROCESSOR_URL: http://whispernotes-video-processor.whispernotes.svc.cluster.local:8001
   
   # LLM Configuration
-  QWEN_API_BASE: {{ .Values.config.qwen.apiBase | quote }}
-  QWEN_MODEL: {{ .Values.config.qwen.model | quote }}
+  QWEN_API_BASE: "https://test-llm.rdc.nie.edu.sg/api/v1/"
+  QWEN_MODEL: "DeepSeek-R1-Distill-Qwen-32B"
   # Note: QWEN_API_KEY should be provided via secrets
   
   # WhisperX Configuration
-  DEVICE: {{ .Values.services.whisperx.env.device | quote }}
-  COMPUTE_TYPE: {{ .Values.services.whisperx.env.computeType | quote }}
-  BATCH_SIZE: {{ .Values.services.whisperx.env.batchSize | quote }}
-  DEFAULT_LANGUAGE: {{ .Values.config.whisperx.defaultLanguage | quote }}
-  MIN_SPEAKERS: {{ .Values.config.whisperx.minSpeakers | quote }}
-  MAX_SPEAKERS: {{ .Values.config.whisperx.maxSpeakers | quote }}
-  UI_SERVICE_URL: http://{{ include "whispernotes.fullname" . }}-frontend.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.ports.frontend }}
+  DEVICE: "cuda"
+  COMPUTE_TYPE: "float16"
+  BATCH_SIZE: "8"
+  DEFAULT_LANGUAGE: "en"
+  MIN_SPEAKERS: "1"
+  MAX_SPEAKERS: "10"
+  UI_SERVICE_URL: http://whispernotes-frontend.whispernotes.svc.cluster.local:3000
   
   # Auth Service Configuration
-  JWT_ALGORITHM: {{ .Values.config.auth.jwtAlgorithm | quote }}
-  JWT_EXPIRE_MINUTES: {{ .Values.config.auth.jwtExpireMinutes | quote }}
-  ADMIN_EMAIL: {{ .Values.config.auth.adminEmail | quote }}
-  ADMIN_USERNAME: {{ .Values.config.auth.adminUsername | quote }}
+  JWT_ALGORITHM: "HS256"
+  JWT_EXPIRE_MINUTES: "30"
+  ADMIN_EMAIL: "jiyoon.kim@nie.edu.sg"
+  ADMIN_USERNAME: "Amber"
   
   # File Uploader Configuration
-  EXTERNAL_MINIO_HOST: {{ .Values.config.minio.externalHost | quote }}
+  EXTERNAL_MINIO_HOST: "minio.leeseng.net"
   # Service Ports
-  VIDEO_PROCESSOR_PORT: {{ .Values.ports.videoProcessor | quote }}
+  VIDEO_PROCESSOR_PORT: "8001"
   
   # Environment
-  ENVIRONMENT: {{ .Values.global.environment | quote }}
-  LOG_LEVEL: {{ .Values.config.logLevel | quote }}
+  ENVIRONMENT: "main"
+  LOG_LEVEL: "INFO"
   
   # Frontend (client-side environment variables)
-  NEXT_PUBLIC_API_BASE_URL: https://{{ .Values.ingress.host }}
-  NEXT_PUBLIC_AUTH_SERVICE_URL: https://{{ .Values.ingress.host }}/api/auth
-  NEXT_PUBLIC_FILE_UPLOADER_URL: https://{{ .Values.ingress.host }}/api/upload
-  NEXT_PUBLIC_VIDEO_PROCESSOR_URL: https://{{ .Values.ingress.host }}/api/process
+  NEXT_PUBLIC_API_BASE_URL: "https://whispernotes.leeseng.net"
+  NEXT_PUBLIC_AUTH_SERVICE_URL: "https://whispernotes.leeseng.net/api/auth"
+  NEXT_PUBLIC_FILE_UPLOADER_URL: "https://whispernotes.leeseng.net/api/upload"
+  NEXT_PUBLIC_VIDEO_PROCESSOR_URL: "https://whispernotes.leeseng.net/api/process"
   
   # NextAuth configuration
-  NEXTAUTH_URL: https://{{ .Values.ingress.host }}
-  AUTH_SERVICE_URL: http://{{ include "whispernotes.fullname" . }}-auth-service.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.ports.authService }}
+  NEXTAUTH_URL: "https://whispernotes.leeseng.net"
+  AUTH_SERVICE_URL: http://whispernotes-auth-service.whispernotes.svc.cluster.local:8000

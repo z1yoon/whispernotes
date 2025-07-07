@@ -4,7 +4,6 @@ global:
   namespace: whispernotes
   environment: main
   imageRegistry: harbor.leeseng.net/whispernotes
-  imagePullPolicy: Always
   imagePullSecrets:
     - name: harbor-credentials
 
@@ -16,8 +15,6 @@ storage:
     hostPath: /var/lib/whispernotes
   postgres:
     size: 10Gi
-  minio:
-    size: 50Gi
   redis:
     size: 5Gi
   rabbitmq:
@@ -27,37 +24,6 @@ storage:
   huggingfaceCache:
     size: 10Gi
 
-# Application configuration
-config:
-  database:
-    name: whisper_notes
-    user: whisper_user
-  redis:
-    port: 6379
-  rabbitmq:
-    port: 5672
-    user: whisper_user
-    vhost: "/"
-  minio:
-    # Use existing MinIO credentials
-    host: minio.minio.svc.cluster.local
-    port: 9000
-    accessKey: whisper_admin
-    bucket: whispernotes  # Create this bucket in existing MinIO
-    externalHost: minio.leeseng.net
-  qwen:
-    apiBase: https://test-llm.rdc.nie.edu.sg/api/v1/
-    model: DeepSeek-R1-Distill-Qwen-32B
-  auth:
-    jwtAlgorithm: HS256
-    jwtExpireMinutes: 1800
-    adminEmail: jiyoon.kim@nie.edu.sg
-    adminUsername: Amber
-  whisperx:
-    defaultLanguage: en
-    minSpeakers: 1
-    maxSpeakers: 10
-  logLevel: INFO
 
 # Services configuration
 services:
@@ -180,8 +146,6 @@ services:
 
 # Ingress configuration
 ingress:
-  enabled: true
-  className: nginx
   host: whispernotes.leeseng.net
   tls:
     enabled: true
@@ -199,8 +163,6 @@ ports:
   redis: 6379
   rabbitmq: 5672
   rabbitmqManagement: 15672
-  minio: 9000
-  minioConsole: 9001
   authService: 8000
   fileUploader: 8002
   videoProcessor: 8001

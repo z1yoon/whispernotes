@@ -19,7 +19,10 @@ export const metadata: Metadata = {
     "meeting notes",
   ],
   icons: {
-    icon: '/favicon.png',
+    icon: [
+      { url: '/favicon.ico', sizes: '16x16', type: 'image/x-icon' },
+      { url: '/favicon.png', sizes: '32x32', type: 'image/png' },
+    ],
     shortcut: '/favicon.png',
     apple: '/favicon.png',
   },
