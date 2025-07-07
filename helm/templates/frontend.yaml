@@ -26,9 +26,14 @@ spec:
         image: {{ .Values.global.imageRegistry }}/{{ .Values.services.frontend.image }}
         ports:
         - containerPort: {{ .Values.ports.frontend }}
+        env:
+        - name: DATABASE_URL
+          value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DB)"
+        - name: REDIS_URL
+          value: "redis://:$(REDIS_PASSWORD)@$(REDIS_HOST):$(REDIS_PORT)"
         envFrom:
         - configMapRef:
-            name: whispernotes-config
+            name: {{ include "whispernotes.configMapName" . }}
         - secretRef:
             name: {{ include "whispernotes.secretName" . }}
         resources:

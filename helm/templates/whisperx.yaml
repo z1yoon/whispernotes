@@ -28,9 +28,12 @@ spec:
         image: {{ .Values.global.imageRegistry }}/{{ .Values.services.whisperx.image }}
         ports:
         - containerPort: {{ .Values.ports.whisperx }}
+        env:
+        - name: REDIS_URL
+          value: "redis://:$(REDIS_PASSWORD)@$(REDIS_HOST):$(REDIS_PORT)"
         envFrom:
         - configMapRef:
-            name: whispernotes-config
+            name: {{ include "whispernotes.configMapName" . }}
         - secretRef:
             name: {{ include "whispernotes.secretName" . }}
         volumeMounts:

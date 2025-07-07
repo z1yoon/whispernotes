@@ -27,7 +27,7 @@ spec:
         - containerPort: {{ .Values.ports.rabbitmqManagement }}
         envFrom:
         - configMapRef:
-            name: whispernotes-config
+            name: {{ include "whispernotes.configMapName" . }}
         - secretRef:
             name: {{ include "whispernotes.secretName" . }}
         volumeMounts:

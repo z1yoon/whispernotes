@@ -30,7 +30,7 @@ spec:
           - $(REDIS_PASSWORD)
         envFrom:
         - configMapRef:
-            name: whispernotes-config
+            name: {{ include "whispernotes.configMapName" . }}
         - secretRef:
             name: {{ include "whispernotes.secretName" . }}
         volumeMounts:

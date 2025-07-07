@@ -56,4 +56,11 @@ Create the name for secrets
 {{- printf "%s-secrets" (include "whispernotes.name" .) }}
 {{- end }}
 
+{{/*
+Create the name for configmap
+*/}}
+{{- define "whispernotes.configMapName" -}}
+{{- printf "%s-config" (include "whispernotes.name" .) }}
+{{- end }}
+
 

@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: whispernotes-config
+  name: {{ include "whispernotes.configMapName" . }}
   namespace: whispernotes
   labels:
     {{- include "whispernotes.labels" . | nindent 4 }}
@@ -11,12 +11,10 @@ data:
   POSTGRES_USER: "whisper_user"
   POSTGRES_HOST: whispernotes-postgres.whispernotes.svc.cluster.local
   POSTGRES_PORT: "5432"
-  # DATABASE_URL will be constructed by the application using these components + POSTGRES_PASSWORD from secrets
   
   # Redis
   REDIS_HOST: whispernotes-redis.whispernotes.svc.cluster.local
   REDIS_PORT: "6379"
-  # REDIS_URL will be constructed by the application using these components + REDIS_PASSWORD from secrets
   
   # RabbitMQ
   RABBITMQ_HOST: whispernotes-rabbitmq.whispernotes.svc.cluster.local

@@ -26,7 +26,7 @@ spec:
         - containerPort: {{ .Values.ports.postgres }}
         envFrom:
         - configMapRef:
-            name: whispernotes-config
+            name: {{ include "whispernotes.configMapName" . }}
         - secretRef:
             name: {{ include "whispernotes.secretName" . }}
         volumeMounts:
