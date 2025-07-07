@@ -37,10 +37,10 @@ ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
 ENV CUDA_LAUNCH_BLOCKING=0
 
-# Verify CUDA and pre-download WhisperX model
+# Verify CUDA (skip model pre-download to avoid build failures)
 RUN python -c "import torch; print('PyTorch version:', torch.__version__); print('CUDA available:', torch.cuda.is_available())" && \
-    python -c "import whisperx; print('Downloading large-v2 model...'); model = whisperx.load_model('large-v2', device='cpu', compute_type='int8'); print('Model downloaded successfully')" || \
-    echo "Model pre-download failed, will download at runtime"
+    python -c "import whisperx; print('WhisperX imported successfully')" && \
+    echo "Model will be downloaded at runtime"
 
 # Create non-root user for security
 RUN useradd -m -u 1000 whisperx && \

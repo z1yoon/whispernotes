@@ -46,7 +46,7 @@ data:
   # WhisperX Configuration
   DEVICE: "cuda"
   COMPUTE_TYPE: "float16"
-  BATCH_SIZE: "8"
+  BATCH_SIZE: "4"
   DEFAULT_LANGUAGE: "en"
   MIN_SPEAKERS: "1"
   MAX_SPEAKERS: "10"

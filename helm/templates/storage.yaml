@@ -32,21 +32,7 @@ spec:
       storage: {{ .Values.storage.postgres.size }}
   storageClassName: {{ .Values.storage.storageClass }}
 ---
-# MinIO PVC - Disabled (using existing MinIO in minio namespace)
-# {{- if .Values.services.minio.enabled }}
-# apiVersion: v1
-# kind: PersistentVolumeClaim
-# metadata:
-#   name: {{ include "whispernotes.fullname" . }}-minio-pvc
-#   namespace: {{ .Values.global.namespace }}
-# spec:
-#   accessModes:
-#     - ReadWriteOnce
-#   resources:
-#     requests:
-#       storage: {{ .Values.storage.minio.size }}
-#   storageClassName: {{ .Values.storage.storageClass }}
-# {{- end }}
+# MinIO PVC - Disabled (using existing MinIO at minio.leeseng.net)
 ---
 # Redis PVC
 apiVersion: v1
