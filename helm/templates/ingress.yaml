@@ -36,8 +36,8 @@ spec:
       
       # NextAuth.js authentication routes (handled by Next.js frontend)
       # These handle: /api/auth/signin, /api/auth/signout, /api/auth/session, etc.
-      - path: /api/auth
-        pathType: Prefix
+      - path: /api/auth(/|$)(.*)
+        pathType: ImplementationSpecific
         backend:
           service:
             name: {{ include "whispernotes.fullname" . }}-frontend
