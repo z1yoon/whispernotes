@@ -14,12 +14,10 @@ data:
   POSTGRES_USER: "whisper_user"
   POSTGRES_HOST: whispernotes-postgres.whispernotes.svc.cluster.local
   POSTGRES_PORT: "5432"
-  DATABASE_URL: postgresql://whisper_user:${POSTGRES_PASSWORD}@whispernotes-postgres.whispernotes.svc.cluster.local:5432/whisper_notes
   
   # Redis
   REDIS_HOST: whispernotes-redis.whispernotes.svc.cluster.local
   REDIS_PORT: "6379"
-  REDIS_URL: redis://:${REDIS_PASSWORD}@whispernotes-redis.whispernotes.svc.cluster.local:6379/0
   
   # RabbitMQ
   RABBITMQ_HOST: whispernotes-rabbitmq.whispernotes.svc.cluster.local
