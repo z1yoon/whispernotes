@@ -121,13 +121,13 @@ data:
     CREATE TRIGGER update_sessions_updated_at BEFORE UPDATE ON sessions
         FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-    -- Insert default admin user using postgres password
-    -- Note: POSTGRES_PASSWORD will be hashed with bcrypt by the application
+    -- Insert default admin user using environment variables from ConfigMap
+    -- Note: ADMIN_PASSWORD will be hashed with bcrypt by PostgreSQL
     INSERT INTO users (email, full_name, password_hash, is_admin) 
     VALUES (
-        'admin@whispernotes.com',
-        'System Administrator',
-        crypt('$POSTGRES_PASSWORD', gen_salt('bf')),
+        '$ADMIN_EMAIL',
+        '$ADMIN_USERNAME',
+        crypt('$ADMIN_PASSWORD', gen_salt('bf')),
         TRUE
     ) ON CONFLICT (email) DO NOTHING;
 EOSQL
