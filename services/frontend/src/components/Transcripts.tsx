@@ -20,7 +20,9 @@ import {
   Calendar,
   HardDrive,
   FileText,
-  Trash2
+  Trash2,
+  RotateCcw,
+  X
 } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
 import { useNotification } from './NotificationProvider';
@@ -568,6 +570,80 @@ const DeleteButton = styled.button`
   }
 `;
 
+const RetryButton = styled.button`
+  padding: 0.625rem 1rem;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  color: #FFFFFF;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  box-shadow: 0 6px 20px rgba(245, 158, 11, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  
+  svg {
+    color: #FFFFFF;
+    transition: all 0.2s ease;
+  }
+  
+  &:hover {
+    background: linear-gradient(135deg, #D97706 0%, #F59E0B 100%);
+    border-color: rgba(255, 255, 255, 0.5);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 28px rgba(245, 158, 11, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+    
+    svg {
+      transform: scale(1.1);
+    }
+  }
+  
+  &:active {
+    transform: translateY(0);
+  }
+`;
+
+const RemoveButton = styled.button`
+  padding: 0.625rem 1rem;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #6B7280 0%, #9CA3AF 100%);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  color: #FFFFFF;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  box-shadow: 0 6px 20px rgba(107, 114, 128, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  
+  svg {
+    color: #FFFFFF;
+    transition: all 0.2s ease;
+  }
+  
+  &:hover {
+    background: linear-gradient(135deg, #4B5563 0%, #6B7280 100%);
+    border-color: rgba(255, 255, 255, 0.5);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 28px rgba(107, 114, 128, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+    
+    svg {
+      transform: scale(1.1);
+    }
+  }
+  
+  &:active {
+    transform: translateY(0);
+  }
+`;
+
 const ActionButtons = styled.div`
   display: flex;
   gap: 1rem;
@@ -859,6 +935,76 @@ const Transcripts = () => {
     }
   };
 
+  const handleRetryTranscription = async (transcription: Transcription) => {
+    if (!window.confirm(`Retry transcription for "${transcription.filename}"?`)) {
+      return;
+    }
+
+    try {
+      const response = await httpClient.post(`/api/whisperx/retry/${transcription.sessionId}`);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: 'Failed to retry transcription' }));
+        throw new Error(errorData.detail || 'Failed to retry transcription');
+      }
+
+      // Update local state - change status to processing
+      setTranscriptions(prev => 
+        prev.map(t => 
+          t.sessionId === transcription.sessionId 
+            ? { ...t, status: 'processing', progress: 0 }
+            : t
+        )
+      );
+
+      // Update stats
+      setStats(prev => ({
+        ...prev,
+        processing: prev.processing + 1,
+        failed: Math.max(0, prev.failed - 1)
+      }));
+
+      notification?.success('Transcription retry initiated', 'Your file will be processed again');
+    } catch (error: any) {
+      console.error('Retry error:', error);
+      notification?.error('Failed to retry transcription', error.message);
+    }
+  };
+
+  const handleRemoveFailedTranscription = async (transcription: Transcription) => {
+    if (!window.confirm(`Remove failed transcription "${transcription.filename}"? This will permanently delete all related data.`)) {
+      return;
+    }
+
+    try {
+      const response = await httpClient.delete(`/api/whisperx/remove/${transcription.sessionId}`);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: 'Failed to remove transcription' }));
+        throw new Error(errorData.detail || 'Failed to remove transcription');
+      }
+
+      // Remove from local state
+      setTranscriptions(prev => prev.filter(t => t.sessionId !== transcription.sessionId));
+      
+      // Update stats
+      const newTranscriptions = transcriptions.filter(t => t.sessionId !== transcription.sessionId);
+      setStats({
+        total: newTranscriptions.length,
+        completed: newTranscriptions.filter((t: Transcription) => t.status === 'completed').length,
+        processing: newTranscriptions.filter((t: Transcription) => ['processing', 'transcribing', 'uploading', 'analyzing', 'pending'].includes(t.status)).length,
+        failed: newTranscriptions.filter((t: Transcription) => t.status === 'failed').length,
+        totalDuration: newTranscriptions.reduce((acc: number, t: Transcription) => acc + (t.duration || 0), 0),
+        totalSize: newTranscriptions.reduce((acc: number, t: Transcription) => acc + (t.fileSize || 0), 0)
+      });
+
+      notification?.success('Failed transcription removed successfully');
+    } catch (error: any) {
+      console.error('Remove error:', error);
+      notification?.error('Failed to remove transcription', error.message);
+    }
+  };
+
   const handleAdminPage = () => {
     if (mounted && router) {
       router.push('/admin');
@@ -1107,6 +1253,7 @@ const Transcripts = () => {
                     </div>
                   </TranscriptionDetails>
 
+                  {/* Action buttons for completed transcriptions */}
                   {transcription.hasTranscript && (
                     <ActionButtons>
                       <ViewButton
@@ -1127,6 +1274,24 @@ const Transcripts = () => {
                         <Trash2 size={16} />
                         Delete
                       </DeleteButton>
+                    </ActionButtons>
+                  )}
+
+                  {/* Action buttons for failed transcriptions */}
+                  {transcription.status === 'failed' && (
+                    <ActionButtons>
+                      <RetryButton
+                        onClick={() => handleRetryTranscription(transcription)}
+                      >
+                        <RotateCcw size={16} />
+                        Retry
+                      </RetryButton>
+                      <RemoveButton 
+                        onClick={() => handleRemoveFailedTranscription(transcription)}
+                      >
+                        <X size={16} />
+                        Remove
+                      </RemoveButton>
                     </ActionButtons>
                   )}
 
