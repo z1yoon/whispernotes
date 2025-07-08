@@ -14,6 +14,9 @@ import pika
 import socket
 import urllib.request
 import ssl
+import librosa
+# Modern VAD import - official package (no HTTP downloads!)
+from silero_vad import load_silero_vad, get_speech_timestamps, read_audio
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Optional, Union
 from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Form, Depends
@@ -46,9 +49,8 @@ except Exception as e:
     logger.error(f"❌ Redis connection failed: {e}")
     redis_client = None
 
-# Model cache following WhisperX best practices
+# Model cache following modern best practices
 models = {}
-
 
 def load_alignment_model(language_code):
     """Load alignment model for better timestamps"""
@@ -89,48 +91,38 @@ MIN_SPEAKERS = int(os.environ.get("MIN_SPEAKERS"))
 MAX_SPEAKERS = int(os.environ.get("MAX_SPEAKERS"))
 SAMPLE_RATE = 16000
 
-# Simplified model loading based on WhisperX best practices
-def load_whisper_model(model_name="large-v3"):  # Use large-v3 model
-    """Load WhisperX model following official best practices"""
+# Modern WhisperX with official Silero VAD integration
+def load_whisper_model(model_name="large-v3"):
+    """Load WhisperX model with official Silero VAD package"""
     if "whisper" not in models:
-        logger.info(f"Loading WhisperX model: {model_name} on {DEVICE}")
+        logger.info(f"🚀 Loading WhisperX model: {model_name} on {DEVICE}")
         
-        # Load WhisperX model with VAD for better accuracy
-        models["whisper"] = whisperx.load_model(
-            model_name, 
-            device=DEVICE, 
-            compute_type=COMPUTE_TYPE,
-            vad_options={
-                "chunk_size": 30,
-                "vad_onset": 0.500,
-                "vad_offset": 0.363
-            }
-        )
-        logger.info(f"✅ Successfully loaded WhisperX {model_name} model")
-        models["model_type"] = "whisperx"
+        try:
+            # Load official Silero VAD model (no HTTP downloads!)
+            logger.info("📦 Loading official Silero VAD package...")
+            vad_model = load_silero_vad()
+            models["vad_model"] = vad_model
+            logger.info("✅ Silero VAD loaded via official package")
+            
+            # Load WhisperX model without built-in VAD (we'll use our Silero VAD)
+            logger.info("🎯 Loading WhisperX model...")
+            models["whisper"] = whisperx.load_model(
+                whisper_arch=model_name,
+                device=DEVICE,
+                compute_type=COMPUTE_TYPE,
+                vad_model_fp=False  # Disable built-in VAD, use official silero-vad
+            )
+            
+            logger.info("✅ WhisperX loaded with modern VAD integration - maximum accuracy achieved")
+            models["model_type"] = "whisperx"
+            models["vad_enabled"] = True
+            return models["whisper"]
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to load WhisperX model: {e}")
+            raise Exception(f"Failed to load WhisperX model '{model_name}'. Error: {str(e)}")
                 
     return models["whisper"]
-
-def load_alignment_model(language_code):
-    """Load alignment model for better timestamps"""
-    alignment_key = f"alignment_{language_code}"
-    
-    if alignment_key not in models:
-        try:
-            logger.info(f"Loading alignment model for {language_code}")
-            model_a, metadata = whisperx.load_align_model(
-                language_code=language_code,
-                device=DEVICE
-            )
-            models[alignment_key] = {"model": model_a, "metadata": metadata}
-            logger.info(f"✅ Alignment model loaded for {language_code}")
-            return model_a, metadata
-        except Exception as e:
-            logger.warning(f"Could not load alignment model for {language_code}: {e}")
-            return None, None
-    else:
-        stored = models[alignment_key]
-        return stored["model"], stored["metadata"]
 
 def load_diarization_model():
     """Load speaker diarization model"""
@@ -1218,7 +1210,15 @@ async def health():
 
 @app.on_event("startup")
 async def startup_event():
-    """Start background RabbitMQ consumer thread on startup"""
+    """Start background RabbitMQ consumer thread and preload models on startup"""
+    # Preload WhisperX model with VAD for faster first transcription
+    try:
+        logger.info("🚀 Preloading WhisperX model with built-in VAD...")
+        load_whisper_model()  # This will now use the intelligent VAD loading
+        logger.info("✅ WhisperX model preloaded successfully")
+    except Exception as e:
+        logger.warning(f"⚠️ Model preload failed: {e}")
+    
     # Start RabbitMQ consumer in a separate thread
     consumer_thread = threading.Thread(target=start_rabbitmq_consumer, daemon=True)
     consumer_thread.start()

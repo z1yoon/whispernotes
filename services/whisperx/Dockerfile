@@ -1,62 +1,44 @@
-# WhisperX Dockerfile with RTX 5090 support (PyTorch 2.7.0 + CUDA 12.8)
+# Modern WhisperX Dockerfile with official Silero VAD
 FROM pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime
 
-# Set non-interactive environment
-ENV DEBIAN_FRONTEND=noninteractive
-ENV TZ=Asia/Singapore
+# Environment setup
+ENV DEBIAN_FRONTEND=noninteractive \
+    TZ=Asia/Singapore \
+    PYTHONUNBUFFERED=1 \
+    CUDA_VISIBLE_DEVICES=0
 
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies (single layer for efficiency)
 RUN apt-get update && apt-get install -y \
-    ffmpeg \
-    git \
-    curl \
-    libsndfile1 \
-    libgomp1 \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+    ffmpeg git curl libsndfile1 libgomp1 ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir --upgrade pip setuptools wheel
 
-# Upgrade pip and install core dependencies
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel
-
-# Copy requirements and install dependencies
-COPY whisperx/requirements.txt .
+# Install Python dependencies (includes official silero-vad)
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY whisperx/ .
-
-# Create necessary directories with proper permissions
+# Create directories and copy application
 RUN mkdir -p /app/models /tmp/whisper_temp
+COPY . .
 
-# Set environment variables for GPU optimization
-ENV CUDA_VISIBLE_DEVICES=0
-ENV NVIDIA_VISIBLE_DEVICES=all
-ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
-ENV CUDA_LAUNCH_BLOCKING=0
-ENV TORCH_CUDA_ARCH_LIST="12.0+PTX"
+# GPU optimization environment
+ENV NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility \
+    TORCH_CUDA_ARCH_LIST="12.0+PTX"
 
-# Verify CUDA (skip model pre-download to avoid build failures)
-RUN python -c "import torch; print('PyTorch version:', torch.__version__); print('CUDA available:', torch.cuda.is_available())" && \
-    python -c "import whisperx; print('WhisperX imported successfully')" && \
-    echo "Model will be downloaded at runtime"
+# Verify installation
+RUN python -c "import torch, whisperx, silero_vad; print('✅ All dependencies installed')"
 
-# Create non-root user for security
-RUN useradd -m -u 1000 whisperx && \
-    chown -R whisperx:whisperx /app
-
+# Security: non-root user
+RUN useradd -m -u 1000 whisperx && chown -R whisperx:whisperx /app
 USER whisperx
+RUN mkdir -p /home/whisperx/.cache
 
-# Create cache directory in user's home
-RUN mkdir -p /home/whisperx/.cache/huggingface
-
-# Expose port
+# Health check and startup
 EXPOSE 8003
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=15s --start-period=120s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=15s --start-period=60s \
     CMD curl -f http://localhost:8003/health || exit 1
 
-# Run application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8003", "--workers", "1", "--loop", "asyncio"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8003", "--workers", "1"]
