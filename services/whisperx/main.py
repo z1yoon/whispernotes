@@ -49,21 +49,6 @@ except Exception as e:
 # Model cache following WhisperX best practices
 models = {}
 
-def load_whisper_model(model_name="large-v2"):
-    """Load WhisperX model following official pattern"""
-    if "whisper" not in models:
-        logger.info(f"Loading WhisperX model: {model_name} on {DEVICE}")
-        try:
-            models["whisper"] = whisperx.load_model(
-                model_name, 
-                device=DEVICE, 
-                compute_type=COMPUTE_TYPE
-            )
-            logger.info(f"✅ WhisperX {model_name} model loaded successfully")
-        except Exception as e:
-            logger.error(f"Failed to load WhisperX model: {e}")
-            raise HTTPException(status_code=500, detail=f"Model loading failed: {str(e)}")
-    return models["whisper"]
 
 def load_alignment_model(language_code):
     """Load alignment model for better timestamps"""
@@ -86,26 +71,6 @@ def load_alignment_model(language_code):
         stored = models[alignment_key]
         return stored["model"], stored["metadata"]
 
-def load_diarization_model():
-    """Load speaker diarization model following WhisperX pattern"""
-    if not HF_TOKEN:
-        logger.warning("No HF_TOKEN provided, skipping diarization")
-        return None
-        
-    if "diarization" not in models:
-        try:
-            logger.info("Loading diarization model")
-            # Use the correct WhisperX diarization import
-            models["diarization"] = whisperx.diarize.DiarizationPipeline(
-                use_auth_token=HF_TOKEN,
-                device=DEVICE
-            )
-            logger.info("✅ Diarization model loaded")
-        except Exception as e:
-            logger.error(f"Failed to load diarization model: {e}")
-            return None
-            
-    return models["diarization"]
 
 # CORS middleware
 app.add_middleware(
@@ -125,64 +90,19 @@ MAX_SPEAKERS = int(os.environ.get("MAX_SPEAKERS"))
 SAMPLE_RATE = 16000
 
 # Simplified model loading based on WhisperX best practices
-def load_whisper_model(model_name="base"):  # Changed default from "medium" to "base"
-    """Load WhisperX model with faster-whisper fallback"""
+def load_whisper_model(model_name="large-v3"):  # Use large-v3 model
+    """Load WhisperX model following official best practices"""
     if "whisper" not in models:
-        logger.info(f"Loading whisper model: {model_name} on {DEVICE}")
+        logger.info(f"Loading WhisperX model: {model_name} on {DEVICE}")
         
-        # Try faster-whisper first (more reliable)
-        try:
-            import faster_whisper
-            logger.info("Attempting to load faster-whisper model")
-            models["whisper"] = faster_whisper.WhisperModel(
-                model_name,
-                device=DEVICE,
-                compute_type=COMPUTE_TYPE
-            )
-            logger.info(f"✅ Successfully loaded faster-whisper {model_name} model")
-            models["model_type"] = "faster_whisper"
-            return models["whisper"]
-            
-        except Exception as fw_error:
-            logger.warning(f"faster-whisper failed: {fw_error}")
-        
-        # Try WhisperX as fallback
-        try:
-            logger.info("Attempting to load WhisperX model as fallback")
-            models["whisper"] = whisperx.load_model(
-                model_name, 
-                device=DEVICE, 
-                compute_type=COMPUTE_TYPE,
-                language=None,  # Let WhisperX detect language
-                vad_filter=False  # Disable VAD to avoid download issues
-            )
-            logger.info(f"✅ Successfully loaded WhisperX {model_name} model")
-            models["model_type"] = "whisperx"
-            return models["whisper"]
-            
-        except Exception as wx_error:
-            logger.warning(f"WhisperX also failed: {wx_error}")
-        
-        # Final fallback: try base model if not already tried
-        if model_name != "base":
-            logger.info("Trying base model as final fallback...")
-            try:
-                import faster_whisper
-                models["whisper"] = faster_whisper.WhisperModel(
-                    "base",
-                    device=DEVICE,
-                    compute_type="int8"
-                )
-                logger.info("✅ Successfully loaded faster-whisper base model as fallback")
-                models["model_type"] = "faster_whisper"
-                return models["whisper"]
-            except Exception as fallback_error:
-                logger.error(f"❌ Base model fallback also failed: {fallback_error}")
-        
-        # All methods failed, use mock
-        logger.warning("All model loading methods failed - using mock transcription")
-        models["whisper"] = "mock_model"
-        models["model_type"] = "mock"
+        # Load WhisperX model directly
+        models["whisper"] = whisperx.load_model(
+            model_name, 
+            device=DEVICE, 
+            compute_type=COMPUTE_TYPE
+        )
+        logger.info(f"✅ Successfully loaded WhisperX {model_name} model")
+        models["model_type"] = "whisperx"
                 
     return models["whisper"]
 
@@ -210,12 +130,12 @@ def load_alignment_model(language_code):
 def load_diarization_model():
     """Load speaker diarization model"""
     if not HF_TOKEN:
-        logger.warning("No HF_TOKEN provided, using mock diarization")
-        return "mock_model"
+        logger.warning("No HF_TOKEN provided - skipping diarization")
+        return None
         
     if DEVICE == "cpu":
-        logger.info("Using mock diarization on CPU")
-        return "mock_model"
+        logger.info("CPU device detected - skipping diarization (requires GPU)")
+        return None
         
     if "diarization" not in models:
         try:
@@ -227,7 +147,7 @@ def load_diarization_model():
             logger.info("✅ Diarization model loaded")
         except Exception as e:
             logger.warning(f"Could not load diarization model: {e}")
-            return "mock_model"
+            return None
             
     return models["diarization"]
 

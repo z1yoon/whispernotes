@@ -28,8 +28,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY whisperx/ .
 
 # Create necessary directories with proper permissions
-RUN mkdir -p /app/models /tmp/whisper_temp /root/.cache/huggingface && \
-    chmod -R 755 /app/models /tmp/whisper_temp /root/.cache/huggingface
+RUN mkdir -p /app/models /tmp/whisper_temp
 
 # Set environment variables for GPU optimization
 ENV CUDA_VISIBLE_DEVICES=0
@@ -44,9 +43,12 @@ RUN python -c "import torch; print('PyTorch version:', torch.__version__); print
 
 # Create non-root user for security
 RUN useradd -m -u 1000 whisperx && \
-    chown -R whisperx:whisperx /app /root/.cache/huggingface
+    chown -R whisperx:whisperx /app
 
 USER whisperx
+
+# Create cache directory in user's home
+RUN mkdir -p /home/whisperx/.cache/huggingface
 
 # Expose port
 EXPOSE 8003

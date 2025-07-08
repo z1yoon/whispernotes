@@ -41,16 +41,16 @@ data:
   # WhisperX Configuration
   DEVICE: "cuda"
   COMPUTE_TYPE: "float16"
-  BATCH_SIZE: "4"
+  BATCH_SIZE: "8"
   DEFAULT_LANGUAGE: "en"
   MIN_SPEAKERS: "1"
   MAX_SPEAKERS: "10"
   SHOULD_MOCK_DIARIZATION: "false"
   
   # Hugging Face Configuration
-  HF_HOME: "/root/.cache/huggingface"
-  HF_HUB_CACHE: "/root/.cache/huggingface/hub"
-  TRANSFORMERS_CACHE: "/root/.cache/huggingface/transformers"
+  HF_HOME: "/home/whisperx/.cache/huggingface"
+  HF_HUB_CACHE: "/home/whisperx/.cache/huggingface/hub"
+  TRANSFORMERS_CACHE: "/home/whisperx/.cache/huggingface/transformers"
   HF_HUB_DOWNLOAD_TIMEOUT: "300"
   UI_SERVICE_URL: http://whispernotes-frontend.whispernotes.svc.cluster.local:3000
   
