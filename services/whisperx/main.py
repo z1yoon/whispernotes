@@ -11,15 +11,12 @@ import redis
 import httpx
 import logging
 import pika
-import socket
-import urllib.request
-import ssl
 import librosa
 # Modern VAD import - official package (no HTTP downloads!)
-from silero_vad import load_silero_vad, get_speech_timestamps, read_audio
+from silero_vad import load_silero_vad
 from datetime import datetime, timezone, timedelta
-from typing import List, Dict, Optional, Union
-from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Form, Depends
+from typing import List, Dict, Optional, Union, Any
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -49,28 +46,26 @@ except Exception as e:
     logger.error(f"❌ Redis connection failed: {e}")
     redis_client = None
 
-# Model cache following modern best practices
-models = {}
 
 def load_alignment_model(language_code):
     """Load alignment model for better timestamps"""
     alignment_key = f"alignment_{language_code}"
     
-    if alignment_key not in models:
+    if alignment_key not in model_manager._models:
         try:
             logger.info(f"Loading alignment model for {language_code}")
             model_a, metadata = whisperx.load_align_model(
                 language_code=language_code,
                 device=DEVICE
             )
-            models[alignment_key] = {"model": model_a, "metadata": metadata}
+            model_manager._models[alignment_key] = {"model": model_a, "metadata": metadata}
             logger.info(f"✅ Alignment model loaded for {language_code}")
             return model_a, metadata
         except Exception as e:
             logger.warning(f"Could not load alignment model for {language_code}: {e}")
             return None, None
     else:
-        stored = models[alignment_key]
+        stored = model_manager._models[alignment_key]
         return stored["model"], stored["metadata"]
 
 
@@ -91,38 +86,49 @@ MIN_SPEAKERS = int(os.environ.get("MIN_SPEAKERS"))
 MAX_SPEAKERS = int(os.environ.get("MAX_SPEAKERS"))
 SAMPLE_RATE = 16000
 
-# Modern WhisperX with official Silero VAD integration
-def load_whisper_model(model_name="large-v3"):
-    """Load WhisperX model with official Silero VAD package"""
-    if "whisper" not in models:
-        logger.info(f"🚀 Loading WhisperX model: {model_name} on {DEVICE}")
+class ModelManager:
+    """Simple model management for WhisperX and VAD"""
+    
+    def __init__(self):
+        self._models: Dict[str, Any] = {}
+    
+    def get_vad_model(self) -> Any:
+        """Get or load VAD model (simple and clean)"""
+        if "vad_model" not in self._models:
+            logger.info("📦 Loading Silero VAD...")
+            self._models["vad_model"] = load_silero_vad()
+            logger.info("✅ Silero VAD loaded")
+        return self._models["vad_model"]
+    
+    def get_whisper_model(self, model_name: str = "large-v3") -> Any:
+        """Get or load WhisperX model (simple and clean)"""
+        model_key = f"whisper_{model_name}"
         
-        try:
-            # Load official Silero VAD model (no HTTP downloads!)
-            logger.info("📦 Loading official Silero VAD package...")
-            vad_model = load_silero_vad()
-            models["vad_model"] = vad_model
-            logger.info("✅ Silero VAD loaded via official package")
+        if model_key not in self._models:
+            logger.info(f"🚀 Loading WhisperX {model_name}...")
             
-            # Load WhisperX model without built-in VAD (we'll use our Silero VAD)
-            logger.info("🎯 Loading WhisperX model...")
-            models["whisper"] = whisperx.load_model(
-                whisper_arch=model_name,
-                device=DEVICE,
-                compute_type=COMPUTE_TYPE,
-                vad_model_fp=False  # Disable built-in VAD, use official silero-vad
+            # Load VAD first
+            self.get_vad_model()
+            
+            # Load WhisperX without built-in VAD
+            self._models[model_key] = whisperx.load_model(
+                model_name, DEVICE, COMPUTE_TYPE, False
             )
-            
-            logger.info("✅ WhisperX loaded with modern VAD integration - maximum accuracy achieved")
-            models["model_type"] = "whisperx"
-            models["vad_enabled"] = True
-            return models["whisper"]
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to load WhisperX model: {e}")
-            raise Exception(f"Failed to load WhisperX model '{model_name}'. Error: {str(e)}")
-                
-    return models["whisper"]
+            logger.info("✅ WhisperX loaded")
+        
+        return self._models[model_key]
+    
+    def get_model_info(self) -> Dict[str, Any]:
+        """Get information about loaded models"""
+        return {
+            "loaded_models": list(self._models.keys()),
+            "vad_enabled": "vad_model" in self._models,
+            "whisper_models": [k for k in self._models.keys() if k.startswith("whisper_")]
+        }
+
+# Global model manager instance
+model_manager = ModelManager()
+
 
 def load_diarization_model():
     """Load speaker diarization model"""
@@ -134,10 +140,10 @@ def load_diarization_model():
         logger.info("CPU device detected - skipping diarization (requires GPU)")
         return None
         
-    if "diarization" not in models:
+    if "diarization" not in model_manager._models:
         try:
             logger.info("Loading diarization model")
-            models["diarization"] = whisperx.DiarizationPipeline(
+            model_manager._models["diarization"] = whisperx.DiarizationPipeline(
                 use_auth_token=HF_TOKEN,
                 device=DEVICE
             )
@@ -146,7 +152,7 @@ def load_diarization_model():
             logger.warning(f"Could not load diarization model: {e}")
             return None
             
-    return models["diarization"]
+    return model_manager._models["diarization"]
 
 
 # RabbitMQ configuration
@@ -246,7 +252,7 @@ async def send_progress_update(session_id: str, progress: float, message: str, s
                         "progress": progress,
                         "message": message,
                         "status": status,
-                        "timestamp": datetime.utcnow().isoformat()
+                        "timestamp": datetime.now(timezone(timedelta(hours=8))).isoformat()
                     })
                 )
         except Exception as redis_err:
@@ -431,7 +437,7 @@ def format_transcription_result(result, session_id: str, duration: float, speake
             "diarized_segments": diarized_segments,
             "word_segments": result.get("word_segments", []),
             "speaker_names": speaker_names,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone(timedelta(hours=8))).isoformat()
         }
         
         return formatted_result
@@ -633,7 +639,7 @@ async def transcribe_async(audio_path: str, session_id: str, participant_count: 
         
         # Load WhisperX model
         await send_progress_update(session_id, 65, "Loading WhisperX model...", "processing")
-        whisper_model = load_whisper_model()
+        whisper_model = model_manager.get_whisper_model()
         
         # Load audio
         audio = whisperx.load_audio(audio_path)
@@ -708,7 +714,7 @@ async def transcribe_async(audio_path: str, session_id: str, participant_count: 
             "speaker_count": participant_count,
             "transcript": formatted_result.get("segments", []),
             "created_at": datetime.now(timezone(timedelta(hours=8))).isoformat(),
-            "completed_at": datetime.utcnow().isoformat()
+            "completed_at": datetime.now(timezone(timedelta(hours=8))).isoformat()
         }
         
         # Try to get upload metadata
@@ -785,7 +791,7 @@ async def transcribe_async(audio_path: str, session_id: str, participant_count: 
             json.dumps({
                 "session_id": session_id,
                 "error": error_message,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone(timedelta(hours=8))).isoformat()
             })
         )
         
@@ -802,7 +808,6 @@ async def transcribe_async(audio_path: str, session_id: str, participant_count: 
 # API Routes
 @app.post("/transcribe")
 async def transcribe_audio_endpoint(
-    background_tasks: BackgroundTasks,
     audio: UploadFile = File(...),
     session_id: str = Form(...),
     participant_count: int = Form(2),
@@ -901,17 +906,22 @@ async def transcribe_audio_endpoint(
         )
         
         # Start background transcription
-        background_tasks.add_task(
-            transcribe_async,
-            temp_audio_path,
-            session_id,
-            participant_count,
-            language,
-            parsed_speaker_names
+        asyncio.create_task(
+            transcribe_async(
+                temp_audio_path,
+                session_id,
+                participant_count,
+                language,
+                parsed_speaker_names
+            )
         )
         
-        # Schedule cleanup
-        background_tasks.add_task(cleanup_temp_file, temp_audio_path, delay=3600)
+        # Schedule cleanup - create async cleanup task
+        async def delayed_cleanup():
+            await asyncio.sleep(3600)
+            cleanup_temp_file(temp_audio_path)
+        
+        asyncio.create_task(delayed_cleanup())
         
         return {
             "message": "Transcription started",
@@ -1003,7 +1013,7 @@ async def update_speaker_names(session_id: str, request: SpeakerUpdateRequest):
         raise HTTPException(status_code=500, detail=f"Failed to update speaker names: {str(e)}")
 
 @app.post("/retry/{session_id}")
-async def retry_failed_transcription(session_id: str, background_tasks: BackgroundTasks):
+async def retry_failed_transcription(session_id: str):
     """Retry a failed transcription"""
     try:
         # Check if there's error information
@@ -1187,6 +1197,9 @@ async def health():
     memory_info["available_ram"] = psutil.virtual_memory().available
     memory_info["ram_percent"] = psutil.virtual_memory().percent
     
+    # Check models using modern ModelManager
+    model_info = model_manager.get_model_info()
+    
     # Check Redis connection
     redis_status = "ok"
     try:
@@ -1198,11 +1211,12 @@ async def health():
         "status": "ok",
         "service": "whisper-transcriber",
         "version": "1.0.0",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone(timedelta(hours=8))).isoformat(),
         "memory": memory_info,
         "device": DEVICE,
         "compute_type": COMPUTE_TYPE,
         "batch_size": BATCH_SIZE,
+        "models": model_info,
         "dependencies": {
             "redis": redis_status,
         }
@@ -1213,8 +1227,8 @@ async def startup_event():
     """Start background RabbitMQ consumer thread and preload models on startup"""
     # Preload WhisperX model with VAD for faster first transcription
     try:
-        logger.info("🚀 Preloading WhisperX model with built-in VAD...")
-        load_whisper_model()  # This will now use the intelligent VAD loading
+        logger.info("🚀 Preloading WhisperX model with Silero VAD...")
+        model_manager.get_whisper_model()  # Direct model manager usage
         logger.info("✅ WhisperX model preloaded successfully")
     except Exception as e:
         logger.warning(f"⚠️ Model preload failed: {e}")
