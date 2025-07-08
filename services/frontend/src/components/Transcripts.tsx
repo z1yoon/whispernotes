@@ -419,6 +419,7 @@ const statusColors = {
   transcribing: { bg: 'rgba(168, 85, 247, 0.1)', color: '#C084FC', border: 'rgba(168, 85, 247, 0.3)' },
   uploading: { bg: 'rgba(124, 58, 237, 0.1)', color: '#8B5CF6', border: 'rgba(124, 58, 237, 0.3)' },
   failed: { bg: 'rgba(239, 68, 68, 0.1)', color: '#F87171', border: 'rgba(239, 68, 68, 0.3)' },
+  error: { bg: 'rgba(239, 68, 68, 0.1)', color: '#F87171', border: 'rgba(239, 68, 68, 0.3)' },
   default: { bg: 'rgba(139, 92, 246, 0.1)', color: '#A855F7', border: 'rgba(139, 92, 246, 0.3)' }
 };
 
@@ -848,7 +849,9 @@ const Transcripts = () => {
 
   const filteredTranscriptions = transcriptions.filter(transcription => {
     const matchesSearch = transcription.filename.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesFilter = filter === 'all' || transcription.status === filter;
+    const matchesFilter = filter === 'all' || 
+                         transcription.status === filter ||
+                         (filter === 'failed' && transcription.status === 'error');
     return matchesSearch && matchesFilter;
   });
 
@@ -923,7 +926,7 @@ const Transcripts = () => {
         total: newTranscriptions.length,
         completed: newTranscriptions.filter((t: Transcription) => t.status === 'completed').length,
         processing: newTranscriptions.filter((t: Transcription) => ['processing', 'transcribing', 'uploading', 'analyzing', 'pending'].includes(t.status)).length,
-        failed: newTranscriptions.filter((t: Transcription) => t.status === 'failed').length,
+        failed: newTranscriptions.filter((t: Transcription) => t.status === 'error').length,
         totalDuration: newTranscriptions.reduce((acc: number, t: Transcription) => acc + (t.duration || 0), 0),
         totalSize: newTranscriptions.reduce((acc: number, t: Transcription) => acc + (t.fileSize || 0), 0)
       });
@@ -993,7 +996,7 @@ const Transcripts = () => {
         total: newTranscriptions.length,
         completed: newTranscriptions.filter((t: Transcription) => t.status === 'completed').length,
         processing: newTranscriptions.filter((t: Transcription) => ['processing', 'transcribing', 'uploading', 'analyzing', 'pending'].includes(t.status)).length,
-        failed: newTranscriptions.filter((t: Transcription) => t.status === 'failed').length,
+        failed: newTranscriptions.filter((t: Transcription) => t.status === 'error').length,
         totalDuration: newTranscriptions.reduce((acc: number, t: Transcription) => acc + (t.duration || 0), 0),
         totalSize: newTranscriptions.reduce((acc: number, t: Transcription) => acc + (t.fileSize || 0), 0)
       });
@@ -1241,7 +1244,8 @@ const Transcripts = () => {
                     </div>
                     <div className="detail-item">
                       <Clock className="icon" size={16} />
-                      {transcription.duration ? formatDuration(transcription.duration) : 'Processing...'}
+                      {transcription.duration ? formatDuration(transcription.duration) : 
+                        transcription.status === 'error' ? 'Failed' : 'Processing...'}
                     </div>
                     <div className="detail-item">
                       <Users className="icon" size={16} />
@@ -1278,7 +1282,7 @@ const Transcripts = () => {
                   )}
 
                   {/* Action buttons for failed transcriptions */}
-                  {transcription.status === 'failed' && (
+                  {transcription.status === 'error' && (
                     <ActionButtons>
                       <RetryButton
                         onClick={() => handleRetryTranscription(transcription)}

@@ -16,12 +16,12 @@ RUN apt-get update && apt-get install -y \
     && pip install --no-cache-dir --upgrade pip setuptools wheel
 
 # Install Python dependencies (includes official silero-vad)
-COPY requirements.txt .
+COPY whisperx/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Create directories and copy application
 RUN mkdir -p /app/models /tmp/whisper_temp
-COPY . .
+COPY whisperx/ .
 
 # GPU optimization environment
 ENV NVIDIA_VISIBLE_DEVICES=all \
