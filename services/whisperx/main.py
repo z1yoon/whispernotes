@@ -95,7 +95,7 @@ def load_whisper_model(model_name="large-v3"):  # Use large-v3 model
     if "whisper" not in models:
         logger.info(f"Loading WhisperX model: {model_name} on {DEVICE}")
         
-        # Load WhisperX model directly
+        # Load WhisperX model directly following TBO_System approach
         models["whisper"] = whisperx.load_model(
             model_name, 
             device=DEVICE, 

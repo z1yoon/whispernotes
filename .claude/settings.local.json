@@ -40,7 +40,8 @@
       "Bash(helm template:*)",
       "Bash(git checkout:*)",
       "Bash(git stash:*)",
-      "Bash(kubectl logs:*)"
+      "Bash(kubectl logs:*)",
+      "WebFetch(domain:www.runpod.io)"
     ],
     "deny": []
   }

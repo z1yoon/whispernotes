@@ -1,5 +1,5 @@
-# Simplified WhisperX Dockerfile
-FROM pytorch/pytorch:2.1.2-cuda11.8-cudnn8-runtime
+# WhisperX Dockerfile with RTX 5090 support (PyTorch 2.7.0 + CUDA 12.8)
+FROM pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime
 
 # Set non-interactive environment
 ENV DEBIAN_FRONTEND=noninteractive
@@ -35,6 +35,7 @@ ENV CUDA_VISIBLE_DEVICES=0
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
 ENV CUDA_LAUNCH_BLOCKING=0
+ENV TORCH_CUDA_ARCH_LIST="12.0+PTX"
 
 # Verify CUDA (skip model pre-download to avoid build failures)
 RUN python -c "import torch; print('PyTorch version:', torch.__version__); print('CUDA available:', torch.cuda.is_available())" && \
