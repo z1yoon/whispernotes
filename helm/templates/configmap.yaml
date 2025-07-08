@@ -24,7 +24,7 @@ data:
   
   # MinIO Configuration
   MINIO_ENDPOINT: "minio.minio.svc.cluster.local:9000"  # Internal services use direct connection
-  MINIO_ACCESS_KEY: "whisper_admin"
+  MINIO_ACCESS_KEY: "admin"
   MINIO_BUCKET: "whispernotes"
   
   # Internal Services (Kubernetes service names with proper FQDN)

@@ -19,12 +19,9 @@ export const metadata: Metadata = {
     "meeting notes",
   ],
   icons: {
-    icon: [
-      { url: '/favicon.ico', sizes: '16x16', type: 'image/x-icon' },
-      { url: '/favicon.png', sizes: '32x32', type: 'image/png' },
-    ],
-    shortcut: '/favicon.png',
-    apple: '/favicon.png',
+    icon: '/favicon.ico?v=3',
+    shortcut: '/favicon.png?v=3',
+    apple: '/favicon.png?v=3',
   },
   manifest: '/manifest.json',
 };
@@ -40,12 +37,7 @@ export default function RootLayout({
       className={`${inter.variable} ${plusJakarta.variable} ${roboto.variable} ${robotoCondensed.variable}`}
     >
       <head>
-        {/* Favicon - PNG for better compatibility */}
-        <link rel="icon" href="/favicon.png" type="image/png" sizes="32x32" />
-        <link rel="shortcut icon" href="/favicon.png" type="image/png" />
-        {/* Apple touch icon */}
-        <link rel="apple-touch-icon" href="/favicon.png" sizes="180x180" />
-        {/* Theme color */}
+        {/* Theme color - favicon is handled by metadata */}
         <meta name="theme-color" content="#8850F2" />
       </head>
       <body className="min-h-screen bg-background font-sans antialiased">
