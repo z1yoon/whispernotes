@@ -9,7 +9,7 @@ whisperx==3.3.3
 torch>=2.0.0
 torchaudio>=2.0.0
 transformers==4.51.0
-numpy==1.26.4
+numpy>=2.0.2
 librosa>=0.10.1,<1.0.0
 soundfile>=0.12.1
 scipy>=1.9.0
