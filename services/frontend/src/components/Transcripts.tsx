@@ -939,15 +939,20 @@ const Transcripts = () => {
   };
 
   const handleRetryTranscription = async (transcription: Transcription) => {
+    console.log('Retry button clicked for session:', transcription.sessionId);
     if (!window.confirm(`Retry transcription for "${transcription.filename}"?`)) {
       return;
     }
 
     try {
-      const response = await httpClient.post(`/api/whisperx/retry/${transcription.sessionId}`);
+      console.log(`Attempting to retry transcription for session: ${transcription.sessionId}`);
+      const response = await httpClient.post(`/api/v1/transcribe/retry/${transcription.sessionId}`);
 
+      console.log(`Retry response status: ${response.status}`);
+      
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ detail: 'Failed to retry transcription' }));
+        console.error(`Retry failed with status ${response.status}:`, errorData);
         throw new Error(errorData.detail || 'Failed to retry transcription');
       }
 
@@ -967,6 +972,7 @@ const Transcripts = () => {
         failed: Math.max(0, prev.failed - 1)
       }));
 
+      console.log('Retry initiated successfully');
       notification?.success('Transcription retry initiated', 'Your file will be processed again');
     } catch (error: any) {
       console.error('Retry error:', error);
@@ -975,15 +981,20 @@ const Transcripts = () => {
   };
 
   const handleRemoveFailedTranscription = async (transcription: Transcription) => {
+    console.log('Remove button clicked for session:', transcription.sessionId);
     if (!window.confirm(`Remove failed transcription "${transcription.filename}"? This will permanently delete all related data.`)) {
       return;
     }
 
     try {
-      const response = await httpClient.delete(`/api/whisperx/remove/${transcription.sessionId}`);
+      console.log(`Attempting to remove transcription for session: ${transcription.sessionId}`);
+      const response = await httpClient.delete(`/api/v1/transcribe/remove/${transcription.sessionId}`);
 
+      console.log(`Remove response status: ${response.status}`);
+      
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ detail: 'Failed to remove transcription' }));
+        console.error(`Remove failed with status ${response.status}:`, errorData);
         throw new Error(errorData.detail || 'Failed to remove transcription');
       }
 
@@ -1001,6 +1012,7 @@ const Transcripts = () => {
         totalSize: newTranscriptions.reduce((acc: number, t: Transcription) => acc + (t.fileSize || 0), 0)
       });
 
+      console.log('Remove completed successfully');
       notification?.success('Failed transcription removed successfully');
     } catch (error: any) {
       console.error('Remove error:', error);

@@ -6,10 +6,9 @@ httpx==0.25.0
 
 # Audio processing and ML dependencies
 whisperx==3.1.1
-silero-vad==5.1.2  # 🎯 Official Silero VAD package - eliminates HTTP 301 errors
+pyannote.audio>=3.1.1,<4.0.0  # 🎯 HuggingFace pyannote VAD - more reliable than built-in
 transformers>=4.35.0,<5.0.0
 faster-whisper>=0.10.0,<1.0.0
-pyannote.audio>=3.1.1,<4.0.0
 librosa>=0.10.1,<1.0.0
 numpy>=1.21.0,<2.0.0
 soundfile>=0.12.1
@@ -33,3 +32,6 @@ psutil>=5.9.0
 
 # Audio codec support
 ffmpeg-python>=0.2.0
+
+# PostgreSQL async database operations
+asyncpg>=0.28.0
