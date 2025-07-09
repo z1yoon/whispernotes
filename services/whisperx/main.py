@@ -124,11 +124,12 @@ def load_whisper_model(model_name="large-v3"):
         vad_model = load_pyannote_vad_model()
         models["vad_model"] = vad_model
         
-        # Load WhisperX model (VAD is applied during transcription)
+        # Load WhisperX model WITHOUT built-in VAD (we use separate pyannote VAD)
         models["whisper"] = whisperx.load_model(
             model_name,
             device=DEVICE,
-            compute_type=COMPUTE_TYPE
+            compute_type=COMPUTE_TYPE,
+            vad_options=None  # Disable built-in VAD to avoid 301 error
         )
         
         logger.info("✅ WhisperX model loaded with separate VAD model")
@@ -358,7 +359,7 @@ def create_transcription_data(session_id: str, formatted_result: dict, participa
     }
 
 async def transcribe_with_whisperx(audio_path: str, session_id: str, language: str = None):
-    """Transcribe audio using WhisperX with VAD preprocessing"""
+    """Transcribe audio using WhisperX with separate pyannote VAD for better accuracy"""
     await send_progress_update(session_id, 70, "Transcribing audio...", "processing")
     
     # Load models
@@ -368,16 +369,71 @@ async def transcribe_with_whisperx(audio_path: str, session_id: str, language: s
     # Load audio
     audio = whisperx.load_audio(audio_path)
     
-    # Apply VAD preprocessing if available
+    # Apply separate VAD preprocessing for better accuracy
     if vad_model:
         try:
-            # Apply VAD to detect speech segments
-            vad_segments = vad_model({"waveform": torch.tensor(audio).unsqueeze(0), "sample_rate": 16000})
-            logger.info(f"VAD detected {len(vad_segments)} speech segments")
+            await send_progress_update(session_id, 72, "Applying VAD preprocessing...", "processing")
+            
+            # Create audio format compatible with pyannote
+            from pyannote.core import Segment
+            import torch
+            
+            # Convert to pyannote format
+            waveform = torch.tensor(audio).unsqueeze(0)
+            audio_in_memory = {"waveform": waveform, "sample_rate": 16000}
+            
+            # Apply VAD to get speech segments
+            vad_segments = vad_model(audio_in_memory)
+            
+            # Convert to list of speech segments
+            speech_segments = []
+            for segment in vad_segments.get_timeline():
+                speech_segments.append({
+                    "start": segment.start,
+                    "end": segment.end
+                })
+            
+            logger.info(f"VAD detected {len(speech_segments)} speech segments")
+            
+            # Only transcribe speech segments for better accuracy
+            if speech_segments:
+                await send_progress_update(session_id, 75, "Transcribing speech segments...", "processing")
+                
+                all_results = []
+                for i, segment in enumerate(speech_segments):
+                    # Extract audio segment
+                    start_sample = int(segment["start"] * 16000)
+                    end_sample = int(segment["end"] * 16000)
+                    segment_audio = audio[start_sample:end_sample]
+                    
+                    # Only process segments longer than 0.1 seconds
+                    if len(segment_audio) > 1600:  # 0.1 seconds at 16kHz
+                        segment_result = whisper_model.transcribe(
+                            segment_audio, 
+                            batch_size=BATCH_SIZE, 
+                            language=language
+                        )
+                        
+                        # Adjust timestamps to global timeline
+                        for seg in segment_result.get("segments", []):
+                            seg["start"] += segment["start"]
+                            seg["end"] += segment["start"]
+                        
+                        all_results.extend(segment_result.get("segments", []))
+                
+                # Return combined results
+                result = {
+                    "segments": all_results,
+                    "language": language or "en"
+                }
+                logger.info(f"VAD-optimized transcription completed with {len(all_results)} segments")
+                return result
+            
         except Exception as e:
-            logger.warning(f"VAD preprocessing failed, proceeding without VAD: {e}")
+            logger.warning(f"VAD preprocessing failed, using standard transcription: {e}")
     
-    # Transcribe with WhisperX
+    # Fallback to standard transcription if VAD fails or no speech detected
+    await send_progress_update(session_id, 75, "Transcribing audio (standard)...", "processing")
     result = whisper_model.transcribe(audio, batch_size=BATCH_SIZE, language=language)
     return result
 
@@ -1240,14 +1296,71 @@ async def remove_transcription(session_id: str):
         logger.info(f"Starting removal process for session: {session_id}")
         
         # Check if transcription exists (either active or failed)
-        transcription_exists = (
-            redis_client.get(f"transcription:{session_id}") or
-            redis_client.get(f"transcription_error:{session_id}") or
-            redis_client.get(f"upload_session:{session_id}")
-        )
+        # Check multiple Redis keys and also PostgreSQL to be thorough
+        redis_keys_to_check = [
+            f"transcription:{session_id}",
+            f"transcription_error:{session_id}",
+            f"upload_session:{session_id}",
+            f"upload_metadata:{session_id}",
+            f"processing_metadata:{session_id}",
+            f"session_metadata:{session_id}",
+            f"transcribing:{session_id}",
+            f"transcription_progress:{session_id}"
+        ]
         
-        if not transcription_exists:
-            raise HTTPException(status_code=404, detail="Transcription session not found")
+        # Check if any Redis key exists
+        redis_exists = any(redis_client.get(key) for key in redis_keys_to_check)
+        
+        # Check if session exists in PostgreSQL
+        postgres_exists = False
+        if DATABASE_URL:
+            try:
+                conn = await get_db_connection()
+                if conn:
+                    postgres_exists = await conn.fetchval(
+                        "SELECT EXISTS(SELECT 1 FROM sessions WHERE id = $1::uuid)",
+                        session_id
+                    )
+                    await conn.close()
+            except Exception as e:
+                logger.warning(f"Failed to check PostgreSQL for session {session_id}: {e}")
+        
+        # If neither Redis nor PostgreSQL has the session, check MinIO as last resort
+        minio_exists = False
+        if not redis_exists and not postgres_exists and MINIO_ENDPOINT:
+            try:
+                from minio import Minio
+                minio_client = Minio(
+                    MINIO_ENDPOINT,
+                    access_key=MINIO_ACCESS_KEY,
+                    secret_key=MINIO_SECRET_KEY,
+                    secure=False
+                )
+                # Check if session directory exists in MinIO
+                objects = list(minio_client.list_objects(MINIO_BUCKET, prefix=f"{session_id}/", recursive=True))
+                minio_exists = len(objects) > 0
+            except Exception as e:
+                logger.warning(f"Failed to check MinIO for session {session_id}: {e}")
+        
+        # If session doesn't exist anywhere, try cleanup anyway (in case of orphaned data)
+        if not redis_exists and not postgres_exists and not minio_exists:
+            logger.info(f"Session {session_id} not found in Redis, PostgreSQL, or MinIO")
+            # Still attempt cleanup in case there are orphaned files
+            logger.info(f"Attempting cleanup of potential orphaned data for session {session_id}")
+            removed_items = await cleanup_all_session_data(session_id)
+            if removed_items:
+                logger.info(f"Cleaned up orphaned data for session {session_id}: {', '.join(removed_items)}")
+                return {
+                    "status": "success", 
+                    "message": "Cleaned up orphaned session data",
+                    "session_id": session_id,
+                    "removed_items": removed_items,
+                    "timestamp": datetime.now(SINGAPORE_TZ).isoformat()
+                }
+            else:
+                raise HTTPException(status_code=404, detail="Transcription session not found")
+        
+        logger.info(f"Session {session_id} found: Redis={redis_exists}, PostgreSQL={postgres_exists}, MinIO={minio_exists}")
         
         # Log removal attempt in PostgreSQL
         await log_processing_event_in_db(
