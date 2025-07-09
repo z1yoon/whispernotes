@@ -49,9 +49,15 @@ DEFAULT_VIDEO_TYPE = "video/mp4"
 TEMP_DIR = "/tmp/whisper_temp"
 SESSION_EXPIRY = 24 * 3600  # 24 hours
 
-# Configuration
+# Configuration optimized for RTX 5090
 DEVICE = os.environ.get("DEVICE", "cuda" if torch.cuda.is_available() else "cpu")
 COMPUTE_TYPE = os.environ.get("COMPUTE_TYPE", "float16")
+
+# Enable RTX 5090 optimizations
+if torch.cuda.is_available():
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cudnn.allow_tf32 = True
+    torch.backends.cudnn.benchmark = True
 BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "8"))
 DEFAULT_LANGUAGE = os.environ.get("DEFAULT_LANGUAGE", "en")
 HF_TOKEN = os.environ.get("HF_TOKEN")
@@ -575,6 +581,14 @@ def process_upload_message(ch, method, properties, body):
         
     except Exception as e:
         logger.error(f"Error processing message: {e}")
+        # Set status to error when message processing fails
+        try:
+            data = json.loads(body)
+            session_id = data.get("session_id")
+            if session_id:
+                asyncio.run(send_progress_update(session_id, 0, f"Processing failed: {str(e)}", "error"))
+        except Exception as parse_error:
+            logger.error(f"Could not parse message body for error reporting: {parse_error}")
         ch.basic_ack(delivery_tag=method.delivery_tag)
 
 def start_rabbitmq_consumer():
@@ -605,6 +619,103 @@ def start_rabbitmq_consumer():
         
     except Exception as e:
         logger.error(f"Error starting RabbitMQ consumer: {e}")
+
+def start_cleanup_task():
+    """Start background task to clean up stuck processing states"""
+    import time
+    
+    while True:
+        try:
+            # Check for stuck processing states every 5 minutes
+            cleanup_stuck_sessions()
+            time.sleep(300)  # 5 minutes
+        except Exception as e:
+            logger.error(f"Error in cleanup task: {e}")
+            time.sleep(60)  # Wait 1 minute before retrying
+
+def cleanup_stuck_sessions():
+    """Clean up sessions that have been processing for too long"""
+    if not redis_client:
+        return
+        
+    try:
+        # Find all transcription progress keys
+        progress_keys = redis_client.keys("transcription_progress:*")
+        current_time = datetime.now(timezone.utc)
+        
+        for key in progress_keys:
+            try:
+                progress_data = redis_client.get(key)
+                if progress_data:
+                    progress_info = json.loads(progress_data)
+                    
+                    # Check if status is "processing"
+                    if progress_info.get("status") == "processing":
+                        # Check if it's been processing for more than 30 minutes
+                        updated_at = datetime.fromisoformat(progress_info.get("updated_at", ""))
+                        if updated_at.tzinfo is None:
+                            updated_at = updated_at.replace(tzinfo=timezone.utc)
+                            
+                        time_diff = (current_time - updated_at).total_seconds()
+                        
+                        if time_diff > 1800:  # 30 minutes
+                            session_id = key.split(":")[-1]
+                            logger.warning(f"Found stuck processing session: {session_id} (stuck for {time_diff:.0f} seconds)")
+                            
+                            # Set status to error
+                            asyncio.run(send_progress_update(
+                                session_id, 
+                                0, 
+                                "Processing timed out - session was stuck", 
+                                "error"
+                            ))
+                            
+            except Exception as e:
+                logger.error(f"Error checking progress key {key}: {e}")
+                
+    except Exception as e:
+        logger.error(f"Error in cleanup_stuck_sessions: {e}")
+
+async def force_minio_cleanup(session_id: str):
+    """Force cleanup of MinIO objects using direct API calls"""
+    if not MINIO_ENDPOINT:
+        return []
+    
+    removed_items = []
+    
+    try:
+        from minio import Minio
+        minio_client = Minio(
+            MINIO_ENDPOINT,
+            access_key=MINIO_ACCESS_KEY,
+            secret_key=MINIO_SECRET_KEY,
+            secure=False
+        )
+        
+        # Get all objects in the bucket
+        all_objects = list(minio_client.list_objects(MINIO_BUCKET, recursive=True))
+        objects_to_delete = []
+        
+        # Find all objects containing the session_id
+        for obj in all_objects:
+            if session_id in obj.object_name:
+                objects_to_delete.append(obj.object_name)
+        
+        # Delete objects one by one (more reliable than bulk delete)
+        for obj_name in objects_to_delete:
+            try:
+                minio_client.remove_object(MINIO_BUCKET, obj_name)
+                logger.info(f"Deleted MinIO object: {obj_name}")
+                removed_items.append(f"MinIO: {obj_name}")
+            except Exception as e:
+                logger.error(f"Failed to delete MinIO object {obj_name}: {e}")
+        
+        logger.info(f"MinIO cleanup completed. Removed {len(removed_items)} objects")
+        
+    except Exception as e:
+        logger.error(f"Error in force_minio_cleanup: {e}")
+    
+    return removed_items
 
 # Store running tasks to prevent garbage collection
 running_tasks = set()
@@ -1203,11 +1314,50 @@ async def retry_transcription(session_id: str):
 
 @app.delete("/remove/{session_id}")
 async def remove_transcription(session_id: str):
-    """Simple remove endpoint - check MinIO first, then clean up everything"""
+    """Remove transcription session - check multiple sources before cleanup"""
     try:
         logger.info(f"Starting removal process for session: {session_id}")
         
-        # 1. Check MinIO first (this is where uploads go)
+        # 1. Check if session exists in multiple places
+        exists_somewhere = False
+        
+        # Check Redis first (fastest)
+        redis_exists = False
+        if redis_client:
+            redis_keys_to_check = [
+                f"transcription:{session_id}",
+                f"transcription_error:{session_id}",
+                f"upload_session:{session_id}",
+                f"upload_metadata:{session_id}",
+                f"processing_metadata:{session_id}",
+                f"session_metadata:{session_id}",
+                f"transcribing:{session_id}",
+                f"transcription_progress:{session_id}"
+            ]
+            
+            for key in redis_keys_to_check:
+                if redis_client.get(key):
+                    redis_exists = True
+                    logger.info(f"Found session {session_id} in Redis key: {key}")
+                    break
+        
+        # Check PostgreSQL
+        postgres_exists = False
+        if DATABASE_URL:
+            try:
+                conn = await get_db_connection()
+                if conn:
+                    postgres_exists = await conn.fetchval(
+                        "SELECT EXISTS(SELECT 1 FROM sessions WHERE id = $1::uuid)",
+                        session_id
+                    )
+                    await conn.close()
+                    if postgres_exists:
+                        logger.info(f"Found session {session_id} in PostgreSQL")
+            except Exception as e:
+                logger.warning(f"Failed to check PostgreSQL for session {session_id}: {e}")
+        
+        # Check MinIO (more comprehensive check)
         minio_exists = False
         if MINIO_ENDPOINT:
             try:
@@ -1219,41 +1369,52 @@ async def remove_transcription(session_id: str):
                     secure=False
                 )
                 
-                # Check for session-specific objects
-                objects = list(minio_client.list_objects(MINIO_BUCKET, prefix=f"{session_id}/", recursive=True))
-                minio_exists = len(objects) > 0
+                # Check multiple object patterns
+                patterns_to_check = [
+                    f"{session_id}/",  # Main upload files
+                    f"transcript_edits/{session_id}/",  # Transcript edits
+                ]
                 
-                # If not found with session prefix, check all objects to see what's there
+                for pattern in patterns_to_check:
+                    objects = list(minio_client.list_objects(MINIO_BUCKET, prefix=pattern, recursive=True))
+                    if len(objects) > 0:
+                        minio_exists = True
+                        logger.info(f"Found {len(objects)} objects in MinIO with pattern: {pattern}")
+                        break
+                
+                # If not found with patterns, check for any object containing session_id
                 if not minio_exists:
-                    logger.info(f"Session {session_id} not found with prefix. Checking all objects...")
+                    logger.info(f"Session {session_id} not found with standard patterns. Checking all objects...")
                     all_objects = list(minio_client.list_objects(MINIO_BUCKET, recursive=True))
                     logger.info(f"Found {len(all_objects)} total objects in bucket")
                     
-                    # Show first 10 objects to debug
-                    for i, obj in enumerate(all_objects[:10]):
-                        logger.info(f"Object {i+1}: {obj.object_name}")
-                        
                     # Check if any object contains this session_id
                     for obj in all_objects:
                         if session_id in obj.object_name:
                             logger.info(f"Found session {session_id} in object: {obj.object_name}")
                             minio_exists = True
                             break
-                else:
-                    logger.info(f"MinIO check for session {session_id}: found {len(objects)} objects")
-                    for obj in objects:
-                        logger.info(f"Found object: {obj.object_name}")
                     
             except Exception as e:
                 logger.warning(f"Failed to check MinIO for session {session_id}: {e}")
         
-        # 2. If nothing in MinIO, return 404
-        if not minio_exists:
-            logger.info(f"Session {session_id} not found in MinIO")
+        # Determine if session exists anywhere
+        exists_somewhere = redis_exists or postgres_exists or minio_exists
+        
+        logger.info(f"Session {session_id} existence check: Redis={redis_exists}, PostgreSQL={postgres_exists}, MinIO={minio_exists}")
+        
+        # 2. If session doesn't exist anywhere, return 404
+        if not exists_somewhere:
+            logger.info(f"Session {session_id} not found in any system (Redis, PostgreSQL, MinIO)")
             raise HTTPException(status_code=404, detail="Transcription session not found")
         
-        # 3. Clean up everything
+        # 3. Clean up everything (even if partially exists)
         removed_items = await cleanup_all_session_data(session_id)
+        
+        # 3.1 Force MinIO cleanup using direct API calls
+        minio_removed = await force_minio_cleanup(session_id)
+        if minio_removed:
+            removed_items.extend(minio_removed)
         
         # 4. Delete from PostgreSQL
         db_removed = await delete_session_from_db(session_id)
@@ -1346,6 +1507,11 @@ async def startup_event():
     consumer_thread = threading.Thread(target=start_rabbitmq_consumer, daemon=True)
     consumer_thread.start()
     logger.info("Started RabbitMQ consumer thread")
+    
+    # Start cleanup task for stuck processing states
+    cleanup_thread = threading.Thread(target=start_cleanup_task, daemon=True)
+    cleanup_thread.start()
+    logger.info("Started cleanup task for stuck processing states")
 
 if __name__ == "__main__":
     import uvicorn

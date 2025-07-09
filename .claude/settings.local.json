@@ -43,7 +43,9 @@
       "Bash(kubectl logs:*)",
       "WebFetch(domain:www.runpod.io)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "WebFetch(domain:pypi.org)"
+      "WebFetch(domain:pypi.org)",
+      "WebFetch(domain:docs.salad.com)",
+      "WebFetch(domain:min.io)"
     ],
     "deny": []
   }

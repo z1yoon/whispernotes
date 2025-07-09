@@ -15,6 +15,9 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/* \
     && pip install --no-cache-dir --upgrade pip setuptools wheel
 
+# Fix cuDNN compatibility for pyannote models
+RUN ln -sf /usr/local/cuda/lib64/libcudnn_ops_infer.so.9 /usr/local/cuda/lib64/libcudnn_ops_infer.so.8 2>/dev/null || true
+
 # Install Python dependencies (includes official silero-vad)
 COPY whisperx/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
@@ -23,10 +26,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN mkdir -p /app/models /tmp/whisper_temp
 COPY whisperx/ .
 
-# GPU optimization environment
+# GPU optimization environment for RTX 5090 (Blackwell architecture)
 ENV NVIDIA_VISIBLE_DEVICES=all \
     NVIDIA_DRIVER_CAPABILITIES=compute,utility \
-    TORCH_CUDA_ARCH_LIST="12.0+PTX"
+    TORCH_CUDA_ARCH_LIST="8.9+PTX" \
+    CUDA_LAUNCH_BLOCKING=0 \
+    TORCH_ALLOW_TF32_CUBLAS_OVERRIDE=1
 
 # Verify installation
 RUN python -c "import torch, whisperx; print('✅ All dependencies installed')"

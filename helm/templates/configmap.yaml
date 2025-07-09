@@ -38,10 +38,10 @@ data:
   QWEN_MODEL: "DeepSeek-R1-Distill-Qwen-32B"
   # Note: QWEN_API_KEY should be provided via secrets
   
-  # WhisperX Configuration
+  # WhisperX Configuration optimized for RTX 5090
   DEVICE: "cuda"
   COMPUTE_TYPE: "float16"
-  BATCH_SIZE: "8"
+  BATCH_SIZE: "16"
   DEFAULT_LANGUAGE: "en"
   MIN_SPEAKERS: "1"
   MAX_SPEAKERS: "10"
