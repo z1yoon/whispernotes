@@ -1,6 +1,9 @@
 FROM python:3.11-slim
 
-# Set working directory
+# Set non-interactive environment
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Asia/Singapore
+
 WORKDIR /app
 
 # Install system dependencies
@@ -10,7 +13,7 @@ RUN apt-get update && apt-get install -y \
 
 # Copy requirements and install Python dependencies
 COPY file-uploader/requirements.txt .
-RUN pip install --no-cache-dir --root-user-action=ignore -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy shared utilities first
 COPY shared_utils.py .
