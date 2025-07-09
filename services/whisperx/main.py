@@ -50,7 +50,8 @@ SESSION_EXPIRY = 24 * 3600  # 24 hours
 # Configuration
 DEVICE = os.environ.get("DEVICE", "cuda" if torch.cuda.is_available() else "cpu")
 COMPUTE_TYPE = os.environ.get("COMPUTE_TYPE", "float16")
-BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "16"))
+BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "8"))
+DEFAULT_LANGUAGE = os.environ.get("DEFAULT_LANGUAGE", "en")
 HF_TOKEN = os.environ.get("HF_TOKEN")
 MIN_SPEAKERS = int(os.environ.get("MIN_SPEAKERS", "1"))
 MAX_SPEAKERS = int(os.environ.get("MAX_SPEAKERS", "10"))
@@ -88,50 +89,21 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 # Model cache
 models = {}
 
-def load_pyannote_vad_model():
-    """Load pyannote VAD model from HuggingFace"""
-    if not HF_TOKEN:
-        raise ValueError("HF_TOKEN is required for pyannote VAD model")
-    
-    try:
-        from pyannote.audio import Pipeline
-        
-        logger.info("📥 Loading pyannote/voice-activity-detection model...")
-        
-        # Load the VAD pipeline
-        vad_pipeline = Pipeline.from_pretrained(
-            "pyannote/voice-activity-detection",
-            use_auth_token=HF_TOKEN
-        )
-        
-        # Move to device
-        if torch.cuda.is_available() and DEVICE != "cpu":
-            vad_pipeline = vad_pipeline.to(torch.device(DEVICE))
-        
-        logger.info("✅ pyannote VAD model loaded successfully")
-        return vad_pipeline
-        
-    except Exception as e:
-        logger.error(f"❌ Failed to load pyannote VAD model: {e}")
-        raise
 
 def load_whisper_model(model_name="large-v3"):
-    """Load WhisperX model (VAD is applied separately)"""
+    """Load WhisperX model following official documentation"""
     if "whisper" not in models:
         logger.info(f"Loading WhisperX model: {model_name} on {DEVICE}")
         
-        # Load pyannote VAD model separately
-        vad_model = load_pyannote_vad_model()
-        models["vad_model"] = vad_model
-        
-        # Load WhisperX model WITHOUT built-in VAD (we use separate pyannote VAD)
+        # Load model following official WhisperX documentation
         models["whisper"] = whisperx.load_model(
             model_name,
             device=DEVICE,
-            compute_type=COMPUTE_TYPE
+            compute_type=COMPUTE_TYPE,
+            language=DEFAULT_LANGUAGE
         )
         
-        logger.info("✅ WhisperX model loaded with separate VAD model")
+        logger.info("✅ WhisperX model loaded successfully")
                 
     return models["whisper"]
 
@@ -162,16 +134,12 @@ def load_diarization_model():
         raise ValueError("HF_TOKEN is required for diarization model")
         
     if "diarization" not in models:
-        try:
-            logger.info("Loading diarization model")
-            models["diarization"] = whisperx.DiarizationPipeline(
-                use_auth_token=HF_TOKEN,
-                device=DEVICE
-            )
-            logger.info("✅ Diarization model loaded")
-        except Exception as e:
-            logger.error(f"Failed to load diarization model: {e}")
-            raise
+        logger.info("Loading diarization model")
+        models["diarization"] = whisperx.DiarizationPipeline(
+            use_auth_token=HF_TOKEN,
+            device=DEVICE
+        )
+        logger.info("✅ Diarization model loaded")
             
     return models["diarization"]
 
@@ -358,82 +326,20 @@ def create_transcription_data(session_id: str, formatted_result: dict, participa
     }
 
 async def transcribe_with_whisperx(audio_path: str, session_id: str, language: str = None):
-    """Transcribe audio using WhisperX with separate pyannote VAD for better accuracy"""
+    """Transcribe audio using WhisperX following official documentation"""
     await send_progress_update(session_id, 70, "Transcribing audio...", "processing")
     
     # Load models
     whisper_model = load_whisper_model()
-    vad_model = models.get("vad_model")
     
     # Load audio
     audio = whisperx.load_audio(audio_path)
     
-    # Apply separate VAD preprocessing for better accuracy
-    if vad_model:
-        try:
-            await send_progress_update(session_id, 72, "Applying VAD preprocessing...", "processing")
-            
-            # Create audio format compatible with pyannote
-            from pyannote.core import Segment
-            import torch
-            
-            # Convert to pyannote format
-            waveform = torch.tensor(audio).unsqueeze(0)
-            audio_in_memory = {"waveform": waveform, "sample_rate": 16000}
-            
-            # Apply VAD to get speech segments
-            vad_segments = vad_model(audio_in_memory)
-            
-            # Convert to list of speech segments
-            speech_segments = []
-            for segment in vad_segments.get_timeline():
-                speech_segments.append({
-                    "start": segment.start,
-                    "end": segment.end
-                })
-            
-            logger.info(f"VAD detected {len(speech_segments)} speech segments")
-            
-            # Only transcribe speech segments for better accuracy
-            if speech_segments:
-                await send_progress_update(session_id, 75, "Transcribing speech segments...", "processing")
-                
-                all_results = []
-                for i, segment in enumerate(speech_segments):
-                    # Extract audio segment
-                    start_sample = int(segment["start"] * 16000)
-                    end_sample = int(segment["end"] * 16000)
-                    segment_audio = audio[start_sample:end_sample]
-                    
-                    # Only process segments longer than 0.1 seconds
-                    if len(segment_audio) > 1600:  # 0.1 seconds at 16kHz
-                        segment_result = whisper_model.transcribe(
-                            segment_audio, 
-                            batch_size=BATCH_SIZE, 
-                            language=language
-                        )
-                        
-                        # Adjust timestamps to global timeline
-                        for seg in segment_result.get("segments", []):
-                            seg["start"] += segment["start"]
-                            seg["end"] += segment["start"]
-                        
-                        all_results.extend(segment_result.get("segments", []))
-                
-                # Return combined results
-                result = {
-                    "segments": all_results,
-                    "language": language or "en"
-                }
-                logger.info(f"VAD-optimized transcription completed with {len(all_results)} segments")
-                return result
-            
-        except Exception as e:
-            logger.warning(f"VAD preprocessing failed, using standard transcription: {e}")
-    
-    # Fallback to standard transcription if VAD fails or no speech detected
-    await send_progress_update(session_id, 75, "Transcribing audio (standard)...", "processing")
+    # Transcribe with WhisperX
+    await send_progress_update(session_id, 75, "Transcribing audio...", "processing")
     result = whisper_model.transcribe(audio, batch_size=BATCH_SIZE, language=language)
+    
+    logger.info(f"Transcription completed with {len(result.get('segments', []))} segments")
     return result
 
 async def align_transcription_segments(result: dict, detected_language: str, audio_path: str, session_id: str):
@@ -455,7 +361,7 @@ async def perform_speaker_diarization(audio_path: str, participant_count: int, r
         diarization_model = load_diarization_model()
         
         # Run diarization
-        diarize_segments = diarization_model(audio_path, min_speakers=1, max_speakers=participant_count)
+        diarize_segments = diarization_model(audio_path, min_speakers=MIN_SPEAKERS, max_speakers=min(participant_count, MAX_SPEAKERS))
         
         # Assign speakers to words
         result = whisperx.assign_word_speakers(diarize_segments, result)
@@ -1308,9 +1214,32 @@ async def remove_transcription(session_id: str):
                     secret_key=MINIO_SECRET_KEY,
                     secure=False
                 )
+                
+                # Check for session-specific objects
                 objects = list(minio_client.list_objects(MINIO_BUCKET, prefix=f"{session_id}/", recursive=True))
                 minio_exists = len(objects) > 0
-                logger.info(f"MinIO check for session {session_id}: found {len(objects)} objects")
+                
+                # If not found with session prefix, check all objects to see what's there
+                if not minio_exists:
+                    logger.info(f"Session {session_id} not found with prefix. Checking all objects...")
+                    all_objects = list(minio_client.list_objects(MINIO_BUCKET, recursive=True))
+                    logger.info(f"Found {len(all_objects)} total objects in bucket")
+                    
+                    # Show first 10 objects to debug
+                    for i, obj in enumerate(all_objects[:10]):
+                        logger.info(f"Object {i+1}: {obj.object_name}")
+                        
+                    # Check if any object contains this session_id
+                    for obj in all_objects:
+                        if session_id in obj.object_name:
+                            logger.info(f"Found session {session_id} in object: {obj.object_name}")
+                            minio_exists = True
+                            break
+                else:
+                    logger.info(f"MinIO check for session {session_id}: found {len(objects)} objects")
+                    for obj in objects:
+                        logger.info(f"Found object: {obj.object_name}")
+                    
             except Exception as e:
                 logger.warning(f"Failed to check MinIO for session {session_id}: {e}")
         
@@ -1369,7 +1298,6 @@ async def health():
     # Check loaded models
     model_info = {
         "whisper_loaded": "whisper" in models,
-        "vad_loaded": "vad_model" in models,
         "diarization_loaded": "diarization" in models,
         "alignment_models": [k for k in models.keys() if k.startswith("alignment_")]
     }
@@ -1389,6 +1317,9 @@ async def health():
         "device": DEVICE,
         "compute_type": COMPUTE_TYPE,
         "batch_size": BATCH_SIZE,
+        "default_language": DEFAULT_LANGUAGE,
+        "min_speakers": MIN_SPEAKERS,
+        "max_speakers": MAX_SPEAKERS,
         "models": model_info,
         "dependencies": {
             "redis": redis_status,
@@ -1400,12 +1331,11 @@ async def health():
 async def startup_event():
     """Startup event - preload models and start consumer"""
     try:
-        logger.info("🚀 Preloading pyannote VAD model...")
-        vad_model = load_pyannote_vad_model()
-        models["vad_model"] = vad_model
-        logger.info("✅ pyannote VAD model preloaded successfully")
+        logger.info("🚀 Preloading WhisperX model...")
+        whisper_model = load_whisper_model()
+        logger.info("✅ WhisperX model preloaded successfully")
     except Exception as e:
-        logger.error(f"❌ Failed to preload VAD model: {e}")
+        logger.error(f"❌ Failed to preload WhisperX model: {e}")
         raise
     
     # Start RabbitMQ consumer

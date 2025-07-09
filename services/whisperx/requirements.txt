@@ -5,8 +5,7 @@ python-multipart==0.0.6
 httpx==0.25.0
 
 # Audio processing and ML dependencies
-whisperx==3.1.1
-pyannote.audio>=3.1.1,<4.0.0  # 🎯 HuggingFace pyannote VAD - more reliable than built-in
+whisperx==3.1.5
 transformers>=4.35.0,<5.0.0
 faster-whisper>=0.10.0,<1.0.0
 librosa>=0.10.1,<1.0.0
