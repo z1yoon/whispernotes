@@ -116,23 +116,22 @@ def load_pyannote_vad_model():
         raise
 
 def load_whisper_model(model_name="large-v3"):
-    """Load WhisperX model with pyannote VAD"""
+    """Load WhisperX model (VAD is applied separately)"""
     if "whisper" not in models:
         logger.info(f"Loading WhisperX model: {model_name} on {DEVICE}")
         
-        # Load pyannote VAD model
+        # Load pyannote VAD model separately
         vad_model = load_pyannote_vad_model()
         models["vad_model"] = vad_model
         
-        # Load WhisperX model with pyannote VAD
+        # Load WhisperX model (VAD is applied during transcription)
         models["whisper"] = whisperx.load_model(
             model_name,
             device=DEVICE,
-            compute_type=COMPUTE_TYPE,
-            vad_model=vad_model
+            compute_type=COMPUTE_TYPE
         )
         
-        logger.info("✅ WhisperX model loaded with pyannote VAD")
+        logger.info("✅ WhisperX model loaded with separate VAD model")
                 
     return models["whisper"]
 
@@ -359,10 +358,26 @@ def create_transcription_data(session_id: str, formatted_result: dict, participa
     }
 
 async def transcribe_with_whisperx(audio_path: str, session_id: str, language: str = None):
-    """Transcribe audio using WhisperX"""
+    """Transcribe audio using WhisperX with VAD preprocessing"""
     await send_progress_update(session_id, 70, "Transcribing audio...", "processing")
+    
+    # Load models
     whisper_model = load_whisper_model()
+    vad_model = models.get("vad_model")
+    
+    # Load audio
     audio = whisperx.load_audio(audio_path)
+    
+    # Apply VAD preprocessing if available
+    if vad_model:
+        try:
+            # Apply VAD to detect speech segments
+            vad_segments = vad_model({"waveform": torch.tensor(audio).unsqueeze(0), "sample_rate": 16000})
+            logger.info(f"VAD detected {len(vad_segments)} speech segments")
+        except Exception as e:
+            logger.warning(f"VAD preprocessing failed, proceeding without VAD: {e}")
+    
+    # Transcribe with WhisperX
     result = whisper_model.transcribe(audio, batch_size=BATCH_SIZE, language=language)
     return result
 
