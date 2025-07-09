@@ -5,11 +5,12 @@ python-multipart==0.0.6
 httpx==0.25.0
 
 # Audio processing and ML dependencies
-whisperx==3.1.5
-transformers>=4.35.0,<5.0.0
-faster-whisper==1.0.1
+whisperx==3.3.3
+torch>=2.0.0
+torchaudio>=2.0.0
+transformers==4.51.0
+numpy==1.26.4
 librosa>=0.10.1,<1.0.0
-numpy>=1.21.0,<2.0.0
 soundfile>=0.12.1
 scipy>=1.9.0
 speechbrain>=0.5.12
@@ -34,3 +35,4 @@ ffmpeg-python>=0.2.0
 
 # PostgreSQL async database operations
 asyncpg>=0.28.0
+

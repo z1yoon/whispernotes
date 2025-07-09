@@ -3,7 +3,6 @@ import gc
 import json
 import torch
 import asyncio
-import whisperx
 import tempfile
 import threading
 import redis
@@ -25,6 +24,9 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger("whisperx")
+
+# Import WhisperX
+import whisperx
 
 # Singapore timezone (UTC+8)
 SINGAPORE_TZ = timezone(timedelta(hours=8))
@@ -96,12 +98,7 @@ def load_whisper_model(model_name="large-v3"):
         logger.info(f"Loading WhisperX model: {model_name} on {DEVICE}")
         
         # Load model following official WhisperX documentation
-        models["whisper"] = whisperx.load_model(
-            model_name,
-            device=DEVICE,
-            compute_type=COMPUTE_TYPE,
-            language=DEFAULT_LANGUAGE
-        )
+        models["whisper"] = whisperx.load_model(model_name, DEVICE, compute_type=COMPUTE_TYPE)
         
         logger.info("✅ WhisperX model loaded successfully")
                 
@@ -329,41 +326,48 @@ async def transcribe_with_whisperx(audio_path: str, session_id: str, language: s
     """Transcribe audio using WhisperX following official documentation"""
     await send_progress_update(session_id, 70, "Transcribing audio...", "processing")
     
-    # Load models
-    whisper_model = load_whisper_model()
+    # Load model following official WhisperX documentation
+    model = whisperx.load_model("large-v3", DEVICE, compute_type=COMPUTE_TYPE)
     
-    # Load audio
+    # Load audio following official WhisperX documentation
     audio = whisperx.load_audio(audio_path)
     
-    # Transcribe with WhisperX
+    # Transcribe following official WhisperX documentation
     await send_progress_update(session_id, 75, "Transcribing audio...", "processing")
-    result = whisper_model.transcribe(audio, batch_size=BATCH_SIZE, language=language)
+    result = model.transcribe(audio, batch_size=BATCH_SIZE)
     
     logger.info(f"Transcription completed with {len(result.get('segments', []))} segments")
     return result
 
 async def align_transcription_segments(result: dict, detected_language: str, audio_path: str, session_id: str):
-    """Align transcription for better timestamps"""
+    """Align transcription for better timestamps following official WhisperX documentation"""
     await send_progress_update(session_id, 80, "Improving timestamps...", "processing")
-    model_a, metadata = load_alignment_model(detected_language)
+    
+    # Load alignment model following official WhisperX documentation
+    model_a, metadata = whisperx.load_align_model(language_code=detected_language, device=DEVICE)
     
     if model_a and metadata:
         audio = whisperx.load_audio(audio_path)
-        result = whisperx.align(result["segments"], model_a, metadata, audio, device=DEVICE)
+        result = whisperx.align(result["segments"], model_a, metadata, audio, DEVICE)
     
     return result
 
 async def perform_speaker_diarization(audio_path: str, participant_count: int, result: dict, 
                                     speaker_names: List[str], session_id: str):
-    """Perform speaker diarization if multiple participants"""
-    if participant_count > 1:
+    """Perform speaker diarization following official WhisperX documentation"""
+    if participant_count > 1 and HF_TOKEN:
         await send_progress_update(session_id, 85, "Identifying speakers...", "processing")
-        diarization_model = load_diarization_model()
         
-        # Run diarization
-        diarize_segments = diarization_model(audio_path, min_speakers=MIN_SPEAKERS, max_speakers=min(participant_count, MAX_SPEAKERS))
+        # Load diarization pipeline following official WhisperX documentation
+        diarize_model = whisperx.DiarizationPipeline(use_auth_token=HF_TOKEN, device=DEVICE)
         
-        # Assign speakers to words
+        # Load audio for diarization
+        audio = whisperx.load_audio(audio_path)
+        
+        # Run diarization following official WhisperX documentation
+        diarize_segments = diarize_model(audio, min_speakers=MIN_SPEAKERS, max_speakers=min(participant_count, MAX_SPEAKERS))
+        
+        # Assign speakers to words following official WhisperX documentation
         result = whisperx.assign_word_speakers(diarize_segments, result)
         
         # Map speaker names if provided
