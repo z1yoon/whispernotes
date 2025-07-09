@@ -129,7 +129,7 @@ def load_whisper_model(model_name="large-v3"):
             model_name,
             device=DEVICE,
             compute_type=COMPUTE_TYPE,
-            vad_options=None  # Disable built-in VAD to avoid 301 error
+            vad_filter=False  # Disable built-in VAD to avoid 301 error
         )
         
         logger.info("✅ WhisperX model loaded with separate VAD model")
@@ -1309,7 +1309,16 @@ async def remove_transcription(session_id: str):
         ]
         
         # Check if any Redis key exists
-        redis_exists = any(redis_client.get(key) for key in redis_keys_to_check)
+        redis_exists = False
+        found_keys = []
+        if redis_client:
+            for key in redis_keys_to_check:
+                if redis_client.get(key):
+                    redis_exists = True
+                    found_keys.append(key)
+            logger.info(f"Redis check for session {session_id}: found keys {found_keys}")
+        else:
+            logger.warning(f"Redis client is None, cannot check keys for session {session_id}")
         
         # Check if session exists in PostgreSQL
         postgres_exists = False
@@ -1325,9 +1334,9 @@ async def remove_transcription(session_id: str):
             except Exception as e:
                 logger.warning(f"Failed to check PostgreSQL for session {session_id}: {e}")
         
-        # If neither Redis nor PostgreSQL has the session, check MinIO as last resort
+        # Check MinIO for session files (regardless of Redis/PostgreSQL status)
         minio_exists = False
-        if not redis_exists and not postgres_exists and MINIO_ENDPOINT:
+        if MINIO_ENDPOINT:
             try:
                 from minio import Minio
                 minio_client = Minio(
@@ -1339,10 +1348,11 @@ async def remove_transcription(session_id: str):
                 # Check if session directory exists in MinIO
                 objects = list(minio_client.list_objects(MINIO_BUCKET, prefix=f"{session_id}/", recursive=True))
                 minio_exists = len(objects) > 0
+                logger.info(f"MinIO check for session {session_id}: found {len(objects)} objects")
             except Exception as e:
                 logger.warning(f"Failed to check MinIO for session {session_id}: {e}")
         
-        # If session doesn't exist anywhere, try cleanup anyway (in case of orphaned data)
+        # If session doesn't exist anywhere, still try cleanup (in case of orphaned data)
         if not redis_exists and not postgres_exists and not minio_exists:
             logger.info(f"Session {session_id} not found in Redis, PostgreSQL, or MinIO")
             # Still attempt cleanup in case there are orphaned files
