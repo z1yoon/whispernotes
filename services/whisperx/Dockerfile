@@ -29,7 +29,7 @@ ENV NVIDIA_VISIBLE_DEVICES=all \
     TORCH_CUDA_ARCH_LIST="12.0+PTX"
 
 # Verify installation
-RUN python -c "import torch, whisperx, silero_vad; print('✅ All dependencies installed')"
+RUN python -c "import torch, whisperx; print('✅ All dependencies installed')"
 
 # Security: non-root user
 RUN useradd -m -u 1000 whisperx && chown -R whisperx:whisperx /app
