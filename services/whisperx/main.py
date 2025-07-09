@@ -128,8 +128,7 @@ def load_whisper_model(model_name="large-v3"):
         models["whisper"] = whisperx.load_model(
             model_name,
             device=DEVICE,
-            compute_type=COMPUTE_TYPE,
-            vad_filter=False  # Disable built-in VAD to avoid 301 error
+            compute_type=COMPUTE_TYPE
         )
         
         logger.info("✅ WhisperX model loaded with separate VAD model")
@@ -907,12 +906,15 @@ async def cleanup_all_session_data(session_id: str) -> list:
     
     # Remove from Redis
     redis_removed = 0
-    for key in redis_keys:
-        try:
-            if redis_client.delete(key):
-                redis_removed += 1
-        except Exception as e:
-            logger.warning(f"Failed to delete Redis key {key}: {e}")
+    if redis_client:
+        for key in redis_keys:
+            try:
+                if redis_client.delete(key):
+                    redis_removed += 1
+            except Exception as e:
+                logger.warning(f"Failed to delete Redis key {key}: {e}")
+    else:
+        logger.warning("Redis client is None, skipping Redis cleanup")
     
     if redis_removed > 0:
         removed_items.append(f"Redis: {redis_removed} keys")
@@ -1291,50 +1293,11 @@ async def retry_transcription(session_id: str):
 
 @app.delete("/remove/{session_id}")
 async def remove_transcription(session_id: str):
-    """Remove transcription and perform comprehensive cleanup"""
+    """Simple remove endpoint - check MinIO first, then clean up everything"""
     try:
         logger.info(f"Starting removal process for session: {session_id}")
         
-        # Check if transcription exists (either active or failed)
-        # Check multiple Redis keys and also PostgreSQL to be thorough
-        redis_keys_to_check = [
-            f"transcription:{session_id}",
-            f"transcription_error:{session_id}",
-            f"upload_session:{session_id}",
-            f"upload_metadata:{session_id}",
-            f"processing_metadata:{session_id}",
-            f"session_metadata:{session_id}",
-            f"transcribing:{session_id}",
-            f"transcription_progress:{session_id}"
-        ]
-        
-        # Check if any Redis key exists
-        redis_exists = False
-        found_keys = []
-        if redis_client:
-            for key in redis_keys_to_check:
-                if redis_client.get(key):
-                    redis_exists = True
-                    found_keys.append(key)
-            logger.info(f"Redis check for session {session_id}: found keys {found_keys}")
-        else:
-            logger.warning(f"Redis client is None, cannot check keys for session {session_id}")
-        
-        # Check if session exists in PostgreSQL
-        postgres_exists = False
-        if DATABASE_URL:
-            try:
-                conn = await get_db_connection()
-                if conn:
-                    postgres_exists = await conn.fetchval(
-                        "SELECT EXISTS(SELECT 1 FROM sessions WHERE id = $1::uuid)",
-                        session_id
-                    )
-                    await conn.close()
-            except Exception as e:
-                logger.warning(f"Failed to check PostgreSQL for session {session_id}: {e}")
-        
-        # Check MinIO for session files (regardless of Redis/PostgreSQL status)
+        # 1. Check MinIO first (this is where uploads go)
         minio_exists = False
         if MINIO_ENDPOINT:
             try:
@@ -1345,85 +1308,33 @@ async def remove_transcription(session_id: str):
                     secret_key=MINIO_SECRET_KEY,
                     secure=False
                 )
-                # Check if session directory exists in MinIO
                 objects = list(minio_client.list_objects(MINIO_BUCKET, prefix=f"{session_id}/", recursive=True))
                 minio_exists = len(objects) > 0
                 logger.info(f"MinIO check for session {session_id}: found {len(objects)} objects")
             except Exception as e:
                 logger.warning(f"Failed to check MinIO for session {session_id}: {e}")
         
-        # If session doesn't exist anywhere, still try cleanup (in case of orphaned data)
-        if not redis_exists and not postgres_exists and not minio_exists:
-            logger.info(f"Session {session_id} not found in Redis, PostgreSQL, or MinIO")
-            # Still attempt cleanup in case there are orphaned files
-            logger.info(f"Attempting cleanup of potential orphaned data for session {session_id}")
-            removed_items = await cleanup_all_session_data(session_id)
-            if removed_items:
-                logger.info(f"Cleaned up orphaned data for session {session_id}: {', '.join(removed_items)}")
-                return {
-                    "status": "success", 
-                    "message": "Cleaned up orphaned session data",
-                    "session_id": session_id,
-                    "removed_items": removed_items,
-                    "timestamp": datetime.now(SINGAPORE_TZ).isoformat()
-                }
-            else:
-                raise HTTPException(status_code=404, detail="Transcription session not found")
+        # 2. If nothing in MinIO, return 404
+        if not minio_exists:
+            logger.info(f"Session {session_id} not found in MinIO")
+            raise HTTPException(status_code=404, detail="Transcription session not found")
         
-        logger.info(f"Session {session_id} found: Redis={redis_exists}, PostgreSQL={postgres_exists}, MinIO={minio_exists}")
-        
-        # Log removal attempt in PostgreSQL
-        await log_processing_event_in_db(
-            session_id, 
-            "removal", 
-            "started", 
-            "User requested session removal"
-        )
-        
-        # Check if currently processing and abort if needed
-        processing_key = f"transcribing:{session_id}"
-        if redis_client.get(processing_key):
-            logger.warning(f"Removing session {session_id} that is currently processing")
-            # Send abort signal if possible (this would require RabbitMQ management)
-            await update_transcription_status(
-                session_id, 
-                "cancelled", 
-                "Transcription cancelled by user", 
-                0
-            )
-        
-        # Perform comprehensive cleanup
+        # 3. Clean up everything
         removed_items = await cleanup_all_session_data(session_id)
         
-        # Notify other services about removal
+        # 4. Delete from PostgreSQL
+        db_removed = await delete_session_from_db(session_id)
+        if db_removed:
+            removed_items.append("PostgreSQL: sessions, files, processing_logs")
+        
+        # 5. Notify frontend to remove from UI
         try:
-            # Notify file uploader service
             async with httpx.AsyncClient(timeout=10.0) as client:
                 await client.delete(f"{FILE_UPLOADER_URL}/api/v1/transcripts/{session_id}")
         except Exception as e:
             logger.warning(f"Failed to notify file uploader service: {e}")
         
-        try:
-            # Notify LLM service to clean up analysis data
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                await client.delete(f"{LLM_SERVICE_URL}/analysis/{session_id}")
-        except Exception as e:
-            logger.warning(f"Failed to notify LLM service: {e}")
-        
         logger.info(f"Successfully removed session {session_id}: {', '.join(removed_items)}")
-        
-        # Remove from PostgreSQL (this includes proper cascade deletion)
-        db_removed = await delete_session_from_db(session_id)
-        if db_removed:
-            removed_items.append("PostgreSQL: sessions, files, processing_logs")
-        
-        # Log successful removal
-        await log_processing_event_in_db(
-            session_id, 
-            "removal", 
-            "completed", 
-            f"Session removed successfully. Items: {', '.join(removed_items)}"
-        )
         
         return {
             "status": "success", 
@@ -1437,16 +1348,6 @@ async def remove_transcription(session_id: str):
         raise
     except Exception as e:
         logger.error(f"Error removing transcription {session_id}: {e}")
-        
-        # Log removal failure
-        await log_processing_event_in_db(
-            session_id, 
-            "removal", 
-            "failed", 
-            f"Removal failed: {str(e)}",
-            {"error": str(e)}
-        )
-        
         raise HTTPException(status_code=500, detail=f"Failed to remove transcription: {str(e)}")
 
 @app.get("/health")
