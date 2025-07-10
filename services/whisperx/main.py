@@ -354,9 +354,10 @@ async def perform_speaker_diarization(audio_path: str, participant_count: int, r
         audio = whisperx.load_audio(audio_path)
         
         # Run diarization following official WhisperX documentation with improved parameters
-        # Use more sensitive parameters for better speaker detection
-        max_speakers_param = min(max(participant_count, 2), MAX_SPEAKERS)  # Ensure at least 2 speakers if participant_count > 1
-        diarize_segments = diarize_model(audio, min_speakers=min(2, participant_count), max_speakers=max_speakers_param)
+        # Use user-specified speaker count, minimum 1 speaker
+        min_speakers_param = min(max(participant_count, 1), MAX_SPEAKERS)
+        max_speakers_param = min(max(participant_count, 1), MAX_SPEAKERS)
+        diarize_segments = diarize_model(audio, min_speakers=min_speakers_param, max_speakers=max_speakers_param)
         
         # Assign speakers to words following official WhisperX documentation
         result = whisperx.assign_word_speakers(diarize_segments, result)
@@ -494,9 +495,9 @@ def process_upload_message(ch, method, properties, body):
         if is_media_file(original_filename):
             logger.info(f"Processing media file: {original_filename}")
             
-            # Create download path
+            # Create download path - use original filename
             os.makedirs(TEMP_DIR, exist_ok=True)
-            download_path = os.path.join(TEMP_DIR, f"{session_id}_{original_filename}")
+            download_path = os.path.join(TEMP_DIR, original_filename)
             
             # Download file
             if not download_from_minio(object_name, download_path):
@@ -665,8 +666,8 @@ async def transcribe_audio_endpoint(
             except json.JSONDecodeError:
                 logger.warning(f"Failed to parse speaker names: {speaker_names}")
         
-        # Save uploaded file
-        temp_audio_path = f"{TEMP_DIR}/{session_id}_{audio.filename}"
+        # Save uploaded file - keep exact original filename
+        temp_audio_path = f"{TEMP_DIR}/{audio.filename}"
         os.makedirs(TEMP_DIR, exist_ok=True)
         
         with open(temp_audio_path, "wb") as temp_file:

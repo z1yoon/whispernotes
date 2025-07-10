@@ -1191,10 +1191,10 @@ async def delete_transcript(session_id: str, user_id: str = None):
         if user_id and transcription.get("user_id") != user_id:
             raise HTTPException(status_code=403, detail="Unauthorized to delete this transcript")
         
-        # Delete from Redis
+        # Delete main transcript key
         redis_client.delete(transcription_key)
         
-        # Also clean up any related keys
+        # Clean up all related keys including processing status
         related_keys = [
             f"upload_session:{session_id}",
             f"upload_progress:{session_id}",
@@ -1203,25 +1203,25 @@ async def delete_transcript(session_id: str, user_id: str = None):
             f"session_metadata:{session_id}",
             f"transcription_error:{session_id}",
             f"transcribing:{session_id}",
-            f"llm_analysis:{session_id}"
+            f"llm_analysis:{session_id}",
+            f"processing:{session_id}",
+            f"progress:{session_id}"
         ]
         
         for key in related_keys:
             try:
                 redis_client.delete(key)
-            except Exception as e:
-                logger.warning(f"Failed to delete related key {key}: {e}")
+            except Exception:
+                pass
         
-        # Try to delete from MinIO if object_name exists
-        try:
-            object_name = transcription.get("object_name")
-            if object_name and minio_client:
+        # Delete from MinIO if object exists
+        object_name = transcription.get("object_name")
+        if object_name and minio_client:
+            try:
                 minio_client.remove_object(MINIO_BUCKET, object_name)
-                logger.info(f"Deleted file {object_name} from MinIO")
-        except Exception as e:
-            logger.warning(f"Failed to delete file from MinIO: {e}")
+            except Exception:
+                pass
         
-        logger.info(f"Successfully deleted transcript for session {session_id}")
         return {"message": "Transcript deleted successfully"}
         
     except HTTPException:

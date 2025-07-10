@@ -256,16 +256,18 @@ async def process_video_async(file_path: str, session_id: str, participant_count
         
         await send_progress_update(session_id, 25, "Extracting audio track...", "processing")
         
-        # Extract audio
-        audio_filename = f"{session_id}_audio.wav"
+        # Extract audio - keep original filename format
+        original_name_base = os.path.splitext(original_filename)[0] if original_filename else session_id
+        original_ext = os.path.splitext(original_filename)[1] if original_filename else '.wav'
+        audio_filename = f"{original_name_base}_temp.wav"
         audio_path = os.path.join(TEMP_DIR, audio_filename)
         
         extract_audio(file_path, audio_path)
         
         await send_progress_update(session_id, 40, "Enhancing audio quality...", "processing")
         
-        # Enhance audio for better speech recognition
-        enhanced_audio_path = os.path.join(PROCESSED_DIR, f"{session_id}_enhanced.wav")
+        # Enhance audio for better speech recognition - keep original filename format
+        enhanced_audio_path = os.path.join(PROCESSED_DIR, f"{original_name_base}{original_ext}")
         enhance_audio_for_speech(audio_path, enhanced_audio_path)
         
         # Clean up temporary audio file
