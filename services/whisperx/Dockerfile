@@ -1,5 +1,5 @@
-# Modern WhisperX Dockerfile with CUDA 12.4 and cuDNN 8.x
-FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+# Modern WhisperX Dockerfile with CUDA 12.1 and cuDNN 8.x
+FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
 
 # Environment setup
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -17,8 +17,8 @@ RUN apt-get update && apt-get install -y \
     && ln -s /usr/bin/python3 /usr/bin/python \
     && pip install --no-cache-dir --upgrade pip setuptools wheel
 
-# Install PyTorch with CUDA 12.4 support
-RUN pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+# Install PyTorch with CUDA 12.1 support (better RTX 5090 compatibility)
+RUN pip install --no-cache-dir torch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 --index-url https://download.pytorch.org/whl/cu121
 # Install Python dependencies (includes official silero-vad)
 COPY whisperx/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
@@ -27,10 +27,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN mkdir -p /app/models /tmp/whisper_temp
 COPY whisperx/ .
 
-# GPU optimization environment for RTX 5090 (Blackwell architecture)
+# GPU optimization environment (compatible with RTX 30/40/50 series)
 ENV NVIDIA_VISIBLE_DEVICES=all \
     NVIDIA_DRIVER_CAPABILITIES=compute,utility \
-    TORCH_CUDA_ARCH_LIST="8.9+PTX" \
+    TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9+PTX" \
     CUDA_LAUNCH_BLOCKING=0 \
     TORCH_ALLOW_TF32_CUBLAS_OVERRIDE=1
 
