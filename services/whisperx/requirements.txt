@@ -4,20 +4,27 @@ uvicorn[standard]==0.24.0
 python-multipart==0.0.6
 httpx==0.25.0
 
-# Audio processing and ML dependencies
-whisperx==3.3.3
-torch>=2.0.0
-torchaudio>=2.0.0
-transformers==4.51.0
+# RTX 5090 Compatible AI and ML dependencies - Fixed version constraints
+whisperx==3.3.4
+ctranslate2<4.5.0
+faster-whisper>=1.1.1
+torch>=2.7.0
+torchaudio>=2.7.0
+transformers>=4.48.0
 numpy>=2.0.2
-librosa>=0.10.1,<1.0.0
+librosa>=0.10.0
 soundfile>=0.12.1
 scipy>=1.9.0
-speechbrain>=0.5.12
+scikit-learn>=1.1.0
+speechbrain>=0.5.16
+pandas>=2.0.0
+pyannote-audio>=3.3.2
+onnxruntime-gpu>=1.19.0
+nltk>=3.9.1
 
-# GPU acceleration
+# GPU acceleration with version constraints
 accelerate>=0.25.0
-optimum>=1.15.0
+pytorch-lightning>=2.1.0
 
 # Message queue and storage
 pika==1.3.2

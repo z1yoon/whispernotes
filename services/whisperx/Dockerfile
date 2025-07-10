@@ -1,5 +1,5 @@
-# Modern WhisperX Dockerfile with CUDA 12.1 and cuDNN 8.x
-FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
+# RTX 5090 Compatible WhisperX Dockerfile for Production
+FROM pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime
 
 # Environment setup
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -9,16 +9,22 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 WORKDIR /app
 
-# Install system dependencies including Python
+# Install system dependencies (minimal for production)
 RUN apt-get update && apt-get install -y \
-    python3 python3-pip python3-dev \
     ffmpeg git curl libsndfile1 libgomp1 ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
-    && ln -s /usr/bin/python3 /usr/bin/python \
     && pip install --no-cache-dir --upgrade pip setuptools wheel
 
-# Install PyTorch with CUDA 12.1 support (better RTX 5090 compatibility)
-RUN pip install --no-cache-dir torch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 --index-url https://download.pytorch.org/whl/cu121
+# Fix cuDNN library compatibility (cuDNN 8 to cuDNN 9 mapping for RTX 5090)
+# Create proper symbolic links with absolute paths
+RUN mkdir -p /usr/local/cuda/lib64 && \
+    ln -sf /opt/conda/lib/python3.11/site-packages/nvidia/cudnn/lib/libcudnn.so.9 /usr/local/cuda/lib64/libcudnn.so.8 && \
+    ln -sf /opt/conda/lib/python3.11/site-packages/nvidia/cudnn/lib/libcudnn_ops.so.9 /usr/local/cuda/lib64/libcudnn_ops_infer.so.8 && \
+    ln -sf /opt/conda/lib/python3.11/site-packages/nvidia/cudnn/lib/libcudnn_ops.so.9 /usr/local/cuda/lib64/libcudnn_ops_train.so.8 && \
+    ln -sf /opt/conda/lib/python3.11/site-packages/nvidia/cudnn/lib/libcudnn_adv.so.9 /usr/local/cuda/lib64/libcudnn_adv_infer.so.8 && \
+    ln -sf /opt/conda/lib/python3.11/site-packages/nvidia/cudnn/lib/libcudnn_adv.so.9 /usr/local/cuda/lib64/libcudnn_adv_train.so.8 && \
+    ln -sf /opt/conda/lib/python3.11/site-packages/nvidia/cudnn/lib/libcudnn_cnn.so.9 /usr/local/cuda/lib64/libcudnn_cnn_infer.so.8 && \
+    ln -sf /opt/conda/lib/python3.11/site-packages/nvidia/cudnn/lib/libcudnn_cnn.so.9 /usr/local/cuda/lib64/libcudnn_cnn_train.so.8
 # Install Python dependencies (includes official silero-vad)
 COPY whisperx/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
@@ -27,15 +33,24 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN mkdir -p /app/models /tmp/whisper_temp
 COPY whisperx/ .
 
-# GPU optimization environment (compatible with RTX 30/40/50 series)
+# GPU optimization environment for RTX 5090 with cuDNN library paths
 ENV NVIDIA_VISIBLE_DEVICES=all \
     NVIDIA_DRIVER_CAPABILITIES=compute,utility \
-    TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9+PTX" \
+    TORCH_CUDA_ARCH_LIST="12.0+PTX" \
     CUDA_LAUNCH_BLOCKING=0 \
-    TORCH_ALLOW_TF32_CUBLAS_OVERRIDE=1
+    TORCH_ALLOW_TF32_CUBLAS_OVERRIDE=1 \
+    LD_LIBRARY_PATH="/opt/conda/lib/python3.11/site-packages/nvidia/cudnn/lib:/usr/local/cuda/lib64:/opt/conda/lib:$LD_LIBRARY_PATH" \
+    TRANSFORMERS_CACHE="/app/.cache/huggingface" \
+    HF_HOME="/app/.cache/huggingface" \
+    TRANSFORMERS_OFFLINE=0
 
 # Verify installation
 RUN python -c "import torch, whisperx; print('✅ All dependencies installed')"
+
+# Create necessary directories with proper permissions
+RUN mkdir -p /app/.cache/huggingface/hub && \
+    chmod -R 777 /app/.cache && \
+    chown -R root:root /app/.cache
 
 # Security: non-root user
 RUN useradd -m -u 1000 whisperx && chown -R whisperx:whisperx /app
