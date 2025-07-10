@@ -1,5 +1,5 @@
-# Modern WhisperX Dockerfile with official Silero VAD
-FROM pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime
+# Modern WhisperX Dockerfile with CUDA 12.4 and cuDNN 8.x
+FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
 
 # Environment setup
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -9,15 +9,16 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 WORKDIR /app
 
-# Install system dependencies (single layer for efficiency)
+# Install system dependencies including Python
 RUN apt-get update && apt-get install -y \
+    python3 python3-pip python3-dev \
     ffmpeg git curl libsndfile1 libgomp1 ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
+    && ln -s /usr/bin/python3 /usr/bin/python \
     && pip install --no-cache-dir --upgrade pip setuptools wheel
 
-# Fix cuDNN compatibility for pyannote models
-RUN ln -sf /usr/local/cuda/lib64/libcudnn_ops_infer.so.9 /usr/local/cuda/lib64/libcudnn_ops_infer.so.8 2>/dev/null || true
-
+# Install PyTorch with CUDA 12.4 support
+RUN pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
 # Install Python dependencies (includes official silero-vad)
 COPY whisperx/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
