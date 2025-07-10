@@ -45,7 +45,8 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "WebFetch(domain:pypi.org)",
       "WebFetch(domain:docs.salad.com)",
-      "WebFetch(domain:min.io)"
+      "WebFetch(domain:min.io)",
+      "Bash(claude auth login)"
     ],
     "deny": []
   }

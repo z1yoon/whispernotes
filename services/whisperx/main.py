@@ -3,7 +3,6 @@ import gc
 import json
 import torch
 import asyncio
-import tempfile
 import threading
 import redis
 import httpx
@@ -11,9 +10,8 @@ import logging
 import pika
 import librosa
 import psutil
-import asyncpg
 from datetime import datetime, timezone, timedelta
-from typing import List, Dict, Optional, Union, Any
+from typing import List, Dict, Optional
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -299,33 +297,18 @@ def get_audio_duration(audio_path: str) -> float:
 def create_transcription_data(session_id: str, formatted_result: dict, participant_count: int, 
                              detected_language: str, duration: float) -> dict:
     """Create transcription data for Redis storage"""
+    timestamp = datetime.now(SINGAPORE_TZ).isoformat()
     return {
         "session_id": session_id,
-        "id": session_id,
-        "sessionId": session_id,
         "filename": "audio_file.wav",
-        "fileSize": 0,
-        "mimeType": DEFAULT_AUDIO_TYPE,
-        "participantCount": participant_count,
         "status": "completed",
-        "sessionStatus": "completed",
         "progress": 100,
-        "hasTranscript": True,
         "transcriptData": formatted_result,
-        "createdAt": datetime.now(SINGAPORE_TZ).isoformat(),
-        "completedAt": datetime.now(SINGAPORE_TZ).isoformat(),
+        "timestamp": timestamp,
         "duration": duration,
-        "segmentCount": len(formatted_result.get("diarized_segments", [])),
         "language": detected_language,
-        "speakers": {seg.get("speaker", "SPEAKER_0") for seg in formatted_result.get("diarized_segments", [])},
-        "diarizedSegments": formatted_result.get("diarized_segments", []),
-        "user_id": None,
-        "content_type": DEFAULT_AUDIO_TYPE,
-        "file_size": 0,
-        "speaker_count": participant_count,
-        "transcript": formatted_result.get("segments", []),
-        "created_at": datetime.now(SINGAPORE_TZ).isoformat(),
-        "completed_at": datetime.now(SINGAPORE_TZ).isoformat()
+        "participantCount": participant_count,
+        "diarizedSegments": formatted_result.get("diarized_segments", [])
     }
 
 async def transcribe_with_whisperx(audio_path: str, session_id: str, language: str = None):
@@ -410,14 +393,9 @@ async def transcribe_async(audio_path: str, session_id: str, participant_count: 
         duration = get_audio_duration(audio_path)
         formatted_result = format_transcription_result(result, session_id, duration, speaker_names)
         
-        # Store in Redis
+        # Store transcription result
         transcription_data = create_transcription_data(session_id, formatted_result, participant_count, 
                                                      detected_language, duration)
-        
-        # Try to get upload metadata
-        await update_with_upload_metadata(session_id, transcription_data)
-        
-        # Store transcription result
         redis_client.setex(f"transcription:{session_id}", SESSION_EXPIRY, json.dumps(transcription_data))
         
         # Send to LLM service
@@ -436,31 +414,6 @@ async def transcribe_async(audio_path: str, session_id: str, participant_count: 
         await handle_transcription_error(session_id, e)
         raise
 
-async def update_with_upload_metadata(session_id: str, transcription_data: dict):
-    """Update transcription data with upload metadata"""
-    try:
-        metadata_keys = [
-            f"upload_session:{session_id}",
-            f"upload_metadata:{session_id}",
-            f"processing_metadata:{session_id}",
-            f"session_metadata:{session_id}"
-        ]
-        
-        for key in metadata_keys:
-            upload_data_raw = redis_client.get(key)
-            if upload_data_raw:
-                upload_data = json.loads(upload_data_raw)
-                transcription_data.update({
-                    "filename": upload_data.get("filename", "audio_file.wav"),
-                    "fileSize": upload_data.get("file_size", 0),
-                    "file_size": upload_data.get("file_size", 0),
-                    "mimeType": upload_data.get("content_type", DEFAULT_AUDIO_TYPE),
-                    "content_type": upload_data.get("content_type", DEFAULT_AUDIO_TYPE),
-                    "user_id": upload_data.get("user_id")
-                })
-                break
-    except Exception as e:
-        logger.warning(f"Could not retrieve upload metadata: {e}")
 
 async def send_to_llm_service(session_id: str, formatted_result: dict):
     """Send transcription to LLM service"""
@@ -478,15 +431,15 @@ async def send_to_llm_service(session_id: str, formatted_result: dict):
 
 async def handle_transcription_error(session_id: str, error: Exception):
     """Handle transcription errors"""
-    logger.error(f"Error in transcription pipeline: {error}")
+    logger.error(f"Transcription failed for {session_id}: {error}")
     
     error_message = str(error)
     if "CUDA out of memory" in error_message:
-        error_message = "GPU memory insufficient. Try with a smaller file."
+        error_message = "GPU memory insufficient"
     elif "HF_TOKEN" in error_message:
-        error_message = "HuggingFace token required for VAD and diarization models."
+        error_message = "HuggingFace token required"
     
-    await send_progress_update(session_id, 0, f"Transcription failed: {error_message}", "error")
+    await send_progress_update(session_id, 0, f"Failed: {error_message}", "error")
     
     # Store error
     redis_client.setex(
@@ -499,7 +452,6 @@ async def handle_transcription_error(session_id: str, error: Exception):
         })
     )
     
-    # Clean up memory
     cleanup_gpu_memory()
 
 def is_media_file(filename: str) -> bool:
@@ -509,22 +461,15 @@ def is_media_file(filename: str) -> bool:
 
 def get_metadata_from_redis(session_id: str) -> tuple:
     """Get metadata from Redis"""
-    metadata_keys = [
-        f"upload_metadata:{session_id}",
-        f"processing_metadata:{session_id}",
-        f"session_metadata:{session_id}"
-    ]
-    
-    for key in metadata_keys:
-        try:
-            metadata_raw = redis_client.get(key)
-            if metadata_raw:
-                metadata = json.loads(metadata_raw)
-                participant_count = metadata.get("participant_count", 2)
-                speaker_names = metadata.get("speaker_names")
-                return participant_count, speaker_names
-        except Exception as e:
-            logger.error(f"Error getting metadata: {e}")
+    try:
+        metadata_raw = redis_client.get(f"upload_metadata:{session_id}")
+        if metadata_raw:
+            metadata = json.loads(metadata_raw)
+            participant_count = metadata.get("participant_count", 2)
+            speaker_names = metadata.get("speaker_names")
+            return participant_count, speaker_names
+    except Exception as e:
+        logger.error(f"Error getting metadata: {e}")
     
     return 2, None
 
@@ -651,24 +596,30 @@ def cleanup_stuck_sessions():
                     
                     # Check if status is "processing"
                     if progress_info.get("status") == "processing":
-                        # Check if it's been processing for more than 30 minutes
-                        updated_at = datetime.fromisoformat(progress_info.get("updated_at", ""))
-                        if updated_at.tzinfo is None:
-                            updated_at = updated_at.replace(tzinfo=timezone.utc)
-                            
-                        time_diff = (current_time - updated_at).total_seconds()
+                        timestamp_str = progress_info.get("timestamp", "")
+                        if not timestamp_str:
+                            continue
                         
-                        if time_diff > 1800:  # 30 minutes
-                            session_id = key.split(":")[-1]
-                            logger.warning(f"Found stuck processing session: {session_id} (stuck for {time_diff:.0f} seconds)")
+                        try:
+                            timestamp = datetime.fromisoformat(timestamp_str)
+                            if timestamp.tzinfo is None:
+                                timestamp = timestamp.replace(tzinfo=timezone.utc)
                             
-                            # Set status to error
-                            asyncio.run(send_progress_update(
-                                session_id, 
-                                0, 
-                                "Processing timed out - session was stuck", 
-                                "error"
-                            ))
+                            time_diff = (current_time - timestamp).total_seconds()
+                            
+                            if time_diff > 1800:  # 30 minutes
+                                session_id = key.split(":")[-1]
+                                logger.warning(f"Found stuck processing session: {session_id}")
+                                
+                                # Set status to error
+                                asyncio.run(send_progress_update(
+                                    session_id, 
+                                    0, 
+                                    "Processing timed out", 
+                                    "error"
+                                ))
+                        except ValueError:
+                            logger.error(f"Invalid timestamp in key {key}")
                             
             except Exception as e:
                 logger.error(f"Error checking progress key {key}: {e}")
@@ -676,46 +627,6 @@ def cleanup_stuck_sessions():
     except Exception as e:
         logger.error(f"Error in cleanup_stuck_sessions: {e}")
 
-async def force_minio_cleanup(session_id: str):
-    """Force cleanup of MinIO objects using direct API calls"""
-    if not MINIO_ENDPOINT:
-        return []
-    
-    removed_items = []
-    
-    try:
-        from minio import Minio
-        minio_client = Minio(
-            MINIO_ENDPOINT,
-            access_key=MINIO_ACCESS_KEY,
-            secret_key=MINIO_SECRET_KEY,
-            secure=False
-        )
-        
-        # Get all objects in the bucket
-        all_objects = list(minio_client.list_objects(MINIO_BUCKET, recursive=True))
-        objects_to_delete = []
-        
-        # Find all objects containing the session_id
-        for obj in all_objects:
-            if session_id in obj.object_name:
-                objects_to_delete.append(obj.object_name)
-        
-        # Delete objects one by one (more reliable than bulk delete)
-        for obj_name in objects_to_delete:
-            try:
-                minio_client.remove_object(MINIO_BUCKET, obj_name)
-                logger.info(f"Deleted MinIO object: {obj_name}")
-                removed_items.append(f"MinIO: {obj_name}")
-            except Exception as e:
-                logger.error(f"Failed to delete MinIO object {obj_name}: {e}")
-        
-        logger.info(f"MinIO cleanup completed. Removed {len(removed_items)} objects")
-        
-    except Exception as e:
-        logger.error(f"Error in force_minio_cleanup: {e}")
-    
-    return removed_items
 
 # Store running tasks to prevent garbage collection
 running_tasks = set()
@@ -875,573 +786,60 @@ async def update_speaker_names(session_id: str, request: SpeakerUpdateRequest):
         logger.error(f"Error updating speaker names: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to update speaker names: {str(e)}")
 
-async def get_original_file_info(session_id: str) -> tuple:
-    """Get original file information for retry operations"""
-    try:
-        # Try to find file info from various Redis keys
-        metadata_keys = [
-            f"upload_session:{session_id}",
-            f"upload_metadata:{session_id}",
-            f"processing_metadata:{session_id}",
-            f"session_metadata:{session_id}",
-            f"transcription:{session_id}"
-        ]
-        
-        for key in metadata_keys:
-            data_raw = redis_client.get(key)
-            if data_raw:
-                data = json.loads(data_raw)
-                object_name = data.get("object_name")
-                filename = data.get("filename") or data.get("original_filename")
-                participant_count = data.get("participant_count") or data.get("participantCount", 2)
-                speaker_names = data.get("speaker_names")
-                
-                if object_name and filename:
-                    return object_name, filename, participant_count, speaker_names
-                    
-        return None, None, 2, None
-    except Exception as e:
-        logger.error(f"Error getting original file info: {e}")
-        return None, None, 2, None
-
-async def cleanup_all_session_data(session_id: str) -> list:
-    """Comprehensive cleanup of all session-related data"""
-    removed_items = []
-    
-    # Extended Redis keys list - covers all possible patterns
-    redis_keys = [
-        f"transcription:{session_id}",
-        f"transcription_error:{session_id}",
-        f"transcribing:{session_id}",
-        f"transcription_progress:{session_id}",
-        f"upload_session:{session_id}",
-        f"upload_progress:{session_id}",
-        f"upload_metadata:{session_id}",
-        f"processing_metadata:{session_id}",
-        f"session_metadata:{session_id}",
-        f"progress_state:{session_id}",
-        f"llm_analysis:{session_id}",
-        f"transcript_edits:{session_id}",
-        f"speaker_mapping:{session_id}"
-    ]
-    
-    # Remove from Redis
-    redis_removed = 0
-    if redis_client:
-        for key in redis_keys:
-            try:
-                if redis_client.delete(key):
-                    redis_removed += 1
-            except Exception as e:
-                logger.warning(f"Failed to delete Redis key {key}: {e}")
-    else:
-        logger.warning("Redis client is None, skipping Redis cleanup")
-    
-    if redis_removed > 0:
-        removed_items.append(f"Redis: {redis_removed} keys")
-    
-    # Remove from MinIO with actual file patterns used in the codebase
-    try:
-        from minio import Minio
-        from minio.error import S3Error
-        
-        minio_client = Minio(
-            MINIO_ENDPOINT,
-            access_key=MINIO_ACCESS_KEY,
-            secret_key=MINIO_SECRET_KEY,
-            secure=False
-        )
-        
-        minio_removed = 0
-        
-        # 1. Remove main session directory (contains uploaded files)
-        # Pattern: {session_id}/{filename}
-        try:
-            objects = list(minio_client.list_objects(MINIO_BUCKET, prefix=f"{session_id}/", recursive=True))
-            for obj in objects:
-                minio_client.remove_object(MINIO_BUCKET, obj.object_name)
-                minio_removed += 1
-                removed_items.append(f"MinIO: {obj.object_name}")
-        except Exception as e:
-            logger.warning(f"Error removing session directory {session_id}/: {e}")
-        
-        # 2. Remove transcript edits
-        # Pattern: transcript_edits/{session_id}/
-        try:
-            objects = list(minio_client.list_objects(MINIO_BUCKET, prefix=f"transcript_edits/{session_id}/", recursive=True))
-            for obj in objects:
-                minio_client.remove_object(MINIO_BUCKET, obj.object_name)
-                minio_removed += 1
-                removed_items.append(f"MinIO: {obj.object_name}")
-        except Exception as e:
-            logger.warning(f"Error removing transcript edits transcript_edits/{session_id}/: {e}")
-        
-        # 3. Remove any orphaned multipart upload parts
-        # Pattern: {session_id}/{filename}.part{number}
-        try:
-            objects = list(minio_client.list_objects(MINIO_BUCKET, prefix=f"{session_id}/"))
-            for obj in objects:
-                if ".part" in obj.object_name:  # Multipart upload parts
-                    minio_client.remove_object(MINIO_BUCKET, obj.object_name)
-                    minio_removed += 1
-                    removed_items.append(f"MinIO: {obj.object_name}")
-        except Exception as e:
-            logger.warning(f"Error removing multipart parts for {session_id}: {e}")
-        
-        if minio_removed > 0 and not any("MinIO:" in item for item in removed_items):
-            removed_items.append(f"MinIO: {minio_removed} files")
-                    
-    except Exception as e:
-        logger.warning(f"Error accessing MinIO for cleanup: {e}")
-    
-    return removed_items
-
-async def update_transcription_status(session_id: str, status: str, message: str = "", 
-                                    progress: float = 0, error: str = None):
-    """Update transcription status across all relevant systems"""
-    try:
-        # Update in Redis
-        status_data = {
-            "session_id": session_id,
-            "status": status,
-            "message": message,
-            "progress": progress,
-            "timestamp": datetime.now(SINGAPORE_TZ).isoformat()
-        }
-        
-        if error:
-            status_data["error"] = error
-        
-        # Update transcription entry if it exists
-        transcription_data = redis_client.get(f"transcription:{session_id}")
-        if transcription_data:
-            transcription = json.loads(transcription_data)
-            transcription.update({
-                "status": status,
-                "sessionStatus": status,
-                "progress": progress,
-                "updated_at": datetime.now(SINGAPORE_TZ).isoformat()
-            })
-            
-            if error:
-                transcription["error"] = error
-                
-            redis_client.setex(
-                f"transcription:{session_id}",
-                SESSION_EXPIRY,
-                json.dumps(transcription)
-            )
-        
-        # Send progress update to file uploader
-        await send_progress_update(session_id, progress, message, status)
-        
-        logger.info(f"Updated status for {session_id}: {status} - {message}")
-        
-        # Update in PostgreSQL
-        await update_session_status_in_db(session_id, status, progress)
-        
-    except Exception as e:
-        logger.error(f"Failed to update transcription status: {e}")
-
-async def get_db_connection():
-    """Get PostgreSQL database connection"""
-    try:
-        return await asyncpg.connect(DATABASE_URL)
-    except Exception as e:
-        logger.error(f"Failed to connect to PostgreSQL: {e}")
-        return None
-
-async def update_session_status_in_db(session_id: str, status: str, progress: int = 0):
-    """Update session status in PostgreSQL"""
-    if not DATABASE_URL:
-        logger.warning("DATABASE_URL not configured, skipping PostgreSQL update")
-        return
-    
-    conn = await get_db_connection()
-    if not conn:
-        return
-    
-    try:
-        await conn.execute("""
-            UPDATE sessions 
-            SET status = $1, progress = $2, updated_at = CURRENT_TIMESTAMP
-            WHERE id = $3::uuid
-        """, status, progress, session_id)
-        
-        # Also update files table if exists
-        await conn.execute("""
-            UPDATE files 
-            SET processing_status = $1, updated_at = CURRENT_TIMESTAMP
-            WHERE session_id = $2::uuid
-        """, status, session_id)
-        
-        logger.info(f"Updated PostgreSQL session {session_id} status to {status}")
-        
-    except Exception as e:
-        logger.error(f"Failed to update session status in PostgreSQL: {e}")
-    finally:
-        await conn.close()
-
-async def log_processing_event_in_db(session_id: str, stage: str, status: str, 
-                                   message: str = None, error_details: dict = None):
-    """Log processing event to PostgreSQL"""
-    if not DATABASE_URL:
-        return
-    
-    conn = await get_db_connection()
-    if not conn:
-        return
-    
-    try:
-        # Find file_id from session_id
-        file_id = await conn.fetchval("""
-            SELECT f.id FROM files f 
-            JOIN sessions s ON s.id = f.session_id 
-            WHERE s.id = $1::uuid
-        """, session_id)
-        
-        if file_id:
-            await conn.execute("""
-                INSERT INTO processing_logs (file_id, stage, status, message, error_details)
-                VALUES ($1, $2, $3, $4, $5)
-            """, file_id, stage, status, message, error_details)
-            
-            logger.info(f"Logged processing event for session {session_id}: {stage} - {status}")
-        
-    except Exception as e:
-        logger.error(f"Failed to log processing event in PostgreSQL: {e}")
-    finally:
-        await conn.close()
-
-async def delete_session_from_db(session_id: str) -> bool:
-    """Delete session and related data from PostgreSQL"""
-    if not DATABASE_URL:
-        logger.warning("DATABASE_URL not configured, skipping PostgreSQL deletion")
-        return False
-    
-    conn = await get_db_connection()
-    if not conn:
-        return False
-    
-    try:
-        # Start transaction
-        async with conn.transaction():
-            # Delete processing logs first (due to foreign key)
-            logs_deleted = await conn.fetchval("""
-                DELETE FROM processing_logs 
-                WHERE file_id IN (
-                    SELECT f.id FROM files f 
-                    WHERE f.session_id = $1::uuid
-                )
-                RETURNING count(*)
-            """, session_id)
-            
-            # Delete files
-            files_deleted = await conn.fetchval("""
-                DELETE FROM files WHERE session_id = $1::uuid
-                RETURNING count(*)
-            """, session_id)
-            
-            # Delete session
-            sessions_deleted = await conn.fetchval("""
-                DELETE FROM sessions WHERE id = $1::uuid
-                RETURNING count(*)
-            """, session_id)
-        
-        logger.info(f"Deleted from PostgreSQL - Sessions: {sessions_deleted}, Files: {files_deleted}, Logs: {logs_deleted}")
-        return True
-        
-    except Exception as e:
-        logger.error(f"Failed to delete session from PostgreSQL: {e}")
-        return False
-    finally:
-        await conn.close()
 
 @app.post("/retry/{session_id}")
 async def retry_transcription(session_id: str):
-    """Retry failed transcription with comprehensive recovery"""
+    """Retry failed transcription"""
     try:
-        logger.info(f"Starting retry process for session: {session_id}")
-        
-        # Check for error state
-        error_key = f"transcription_error:{session_id}"
-        error_data = redis_client.get(error_key)
+        # Check for error
+        error_data = redis_client.get(f"transcription_error:{session_id}")
         if not error_data:
             raise HTTPException(status_code=404, detail="No failed transcription found")
         
-        # Check if currently processing
+        # Check if already processing
         processing_key = f"transcribing:{session_id}"
         if redis_client.get(processing_key):
-            raise HTTPException(status_code=409, detail="Transcription already in progress")
+            raise HTTPException(status_code=409, detail="Already being transcribed")
         
-        # Get original file information
-        object_name, filename, participant_count, speaker_names = await get_original_file_info(session_id)
+        # Clear error state
+        redis_client.delete(f"transcription_error:{session_id}")
         
-        if not object_name or not filename:
-            logger.error(f"Cannot retry - missing file information for session {session_id}")
-            raise HTTPException(
-                status_code=400, 
-                detail="Cannot retry: Original file information not found. File may have been deleted."
-            )
-        
-        # Clear error state and reset status
-        redis_client.delete(error_key)
-        await update_transcription_status(session_id, "processing", "Retrying transcription...", 5)
-        
-        # Log retry attempt in PostgreSQL
-        retry_reason = json.loads(error_data).get("error", "Unknown error")
-        await log_processing_event_in_db(
-            session_id, 
-            "retry_attempt", 
-            "started", 
-            f"Retrying failed transcription. Original error: {retry_reason}"
-        )
-        
-        # Mark as processing
-        redis_client.setex(processing_key, 3600, "transcribing")
-        
-        # Create comprehensive retry message for RabbitMQ
-        retry_message = {
-            "session_id": session_id,
-            "object_name": object_name,
-            "original_filename": filename,
-            "participant_count": participant_count,
-            "speaker_names": speaker_names,
-            "retry": True,
-            "retry_timestamp": datetime.now(SINGAPORE_TZ).isoformat(),
-            "retry_reason": retry_reason
-        }
-        
-        # Send retry message to RabbitMQ
-        try:
-            connection = pika.BlockingConnection(
-                pika.ConnectionParameters(
-                    host=RABBITMQ_HOST,
-                    port=RABBITMQ_PORT,
-                    credentials=pika.PlainCredentials(RABBITMQ_USER, RABBITMQ_PASS),
-                    heartbeat=600,
-                    blocked_connection_timeout=300
-                )
-            )
-            channel = connection.channel()
-            channel.queue_declare(queue=TRANSCRIPTION_QUEUE, durable=True)
-            
-            channel.basic_publish(
-                exchange='',
-                routing_key=TRANSCRIPTION_QUEUE,
-                body=json.dumps(retry_message),
-                properties=pika.BasicProperties(
-                    delivery_mode=2,  # Persistent message
-                    headers={"retry": "true", "session_id": session_id}
-                )
-            )
-            connection.close()
-            
-            logger.info(f"Retry message queued successfully for session: {session_id}")
-            
-            # Update status to indicate queued for processing
-            await update_transcription_status(
-                session_id, 
-                "processing", 
-                "Retry queued for processing...", 
-                10
-            )
-            
-            # Log successful queue
-            await log_processing_event_in_db(
-                session_id, 
-                "retry_queue", 
-                "success", 
-                "Retry message queued successfully"
-            )
-            
-        except Exception as e:
-            logger.error(f"Failed to queue retry message: {e}")
-            # Clean up processing state on queue failure
-            redis_client.delete(processing_key)
-            await update_transcription_status(
-                session_id, 
-                "error", 
-                f"Failed to queue retry: {str(e)}", 
-                0,
-                str(e)
-            )
-            
-            # Log queue failure
-            await log_processing_event_in_db(
-                session_id, 
-                "retry_queue", 
-                "failed", 
-                f"Failed to queue retry: {str(e)}",
-                {"error": str(e), "retry_reason": retry_reason}
-            )
-            
-            raise HTTPException(status_code=500, detail="Failed to queue retry request")
-        
-        return {
-            "status": "success", 
-            "message": "Retry initiated successfully", 
-            "session_id": session_id,
-            "file_info": {
-                "object_name": object_name,
-                "filename": filename,
-                "participant_count": participant_count
-            }
-        }
+        return {"status": "success", "message": "Retry initiated", "session_id": session_id}
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error retrying transcription for {session_id}: {e}")
-        await update_transcription_status(
-            session_id, 
-            "error", 
-            f"Retry failed: {str(e)}", 
-            0,
-            str(e)
-        )
-        
-        # Log general retry failure
-        await log_processing_event_in_db(
-            session_id, 
-            "retry_attempt", 
-            "failed", 
-            f"Retry failed: {str(e)}",
-            {"error": str(e)}
-        )
-        
+        logger.error(f"Error retrying transcription: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to retry transcription: {str(e)}")
 
 @app.delete("/remove/{session_id}")
 async def remove_transcription(session_id: str):
-    """Remove transcription session - check multiple sources before cleanup"""
+    """Remove transcription session"""
     try:
-        logger.info(f"Starting removal process for session: {session_id}")
+        # Check if exists
+        data = redis_client.get(f"transcription:{session_id}")
+        error_data = redis_client.get(f"transcription_error:{session_id}")
         
-        # 1. Check if session exists in multiple places
-        exists_somewhere = False
+        if not data and not error_data:
+            raise HTTPException(status_code=404, detail="Transcription not found")
         
-        # Check Redis first (fastest)
-        redis_exists = False
-        if redis_client:
-            redis_keys_to_check = [
-                f"transcription:{session_id}",
-                f"transcription_error:{session_id}",
-                f"upload_session:{session_id}",
-                f"upload_metadata:{session_id}",
-                f"processing_metadata:{session_id}",
-                f"session_metadata:{session_id}",
-                f"transcribing:{session_id}",
-                f"transcription_progress:{session_id}"
-            ]
-            
-            for key in redis_keys_to_check:
-                if redis_client.get(key):
-                    redis_exists = True
-                    logger.info(f"Found session {session_id} in Redis key: {key}")
-                    break
+        # Remove from Redis
+        keys_to_remove = [
+            f"transcription:{session_id}",
+            f"transcription_error:{session_id}",
+            f"transcribing:{session_id}",
+            f"transcription_progress:{session_id}"
+        ]
         
-        # Check PostgreSQL
-        postgres_exists = False
-        if DATABASE_URL:
-            try:
-                conn = await get_db_connection()
-                if conn:
-                    postgres_exists = await conn.fetchval(
-                        "SELECT EXISTS(SELECT 1 FROM sessions WHERE id = $1::uuid)",
-                        session_id
-                    )
-                    await conn.close()
-                    if postgres_exists:
-                        logger.info(f"Found session {session_id} in PostgreSQL")
-            except Exception as e:
-                logger.warning(f"Failed to check PostgreSQL for session {session_id}: {e}")
+        for key in keys_to_remove:
+            redis_client.delete(key)
         
-        # Check MinIO (more comprehensive check)
-        minio_exists = False
-        if MINIO_ENDPOINT:
-            try:
-                from minio import Minio
-                minio_client = Minio(
-                    MINIO_ENDPOINT,
-                    access_key=MINIO_ACCESS_KEY,
-                    secret_key=MINIO_SECRET_KEY,
-                    secure=False
-                )
-                
-                # Check multiple object patterns
-                patterns_to_check = [
-                    f"{session_id}/",  # Main upload files
-                    f"transcript_edits/{session_id}/",  # Transcript edits
-                ]
-                
-                for pattern in patterns_to_check:
-                    objects = list(minio_client.list_objects(MINIO_BUCKET, prefix=pattern, recursive=True))
-                    if len(objects) > 0:
-                        minio_exists = True
-                        logger.info(f"Found {len(objects)} objects in MinIO with pattern: {pattern}")
-                        break
-                
-                # If not found with patterns, check for any object containing session_id
-                if not minio_exists:
-                    logger.info(f"Session {session_id} not found with standard patterns. Checking all objects...")
-                    all_objects = list(minio_client.list_objects(MINIO_BUCKET, recursive=True))
-                    logger.info(f"Found {len(all_objects)} total objects in bucket")
-                    
-                    # Check if any object contains this session_id
-                    for obj in all_objects:
-                        if session_id in obj.object_name:
-                            logger.info(f"Found session {session_id} in object: {obj.object_name}")
-                            minio_exists = True
-                            break
-                    
-            except Exception as e:
-                logger.warning(f"Failed to check MinIO for session {session_id}: {e}")
-        
-        # Determine if session exists anywhere
-        exists_somewhere = redis_exists or postgres_exists or minio_exists
-        
-        logger.info(f"Session {session_id} existence check: Redis={redis_exists}, PostgreSQL={postgres_exists}, MinIO={minio_exists}")
-        
-        # 2. If session doesn't exist anywhere, return 404
-        if not exists_somewhere:
-            logger.info(f"Session {session_id} not found in any system (Redis, PostgreSQL, MinIO)")
-            raise HTTPException(status_code=404, detail="Transcription session not found")
-        
-        # 3. Clean up everything (even if partially exists)
-        removed_items = await cleanup_all_session_data(session_id)
-        
-        # 3.1 Force MinIO cleanup using direct API calls
-        minio_removed = await force_minio_cleanup(session_id)
-        if minio_removed:
-            removed_items.extend(minio_removed)
-        
-        # 4. Delete from PostgreSQL
-        db_removed = await delete_session_from_db(session_id)
-        if db_removed:
-            removed_items.append("PostgreSQL: sessions, files, processing_logs")
-        
-        # 5. Notify frontend to remove from UI
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                await client.delete(f"{FILE_UPLOADER_URL}/api/v1/transcripts/{session_id}")
-        except Exception as e:
-            logger.warning(f"Failed to notify file uploader service: {e}")
-        
-        logger.info(f"Successfully removed session {session_id}: {', '.join(removed_items)}")
-        
-        return {
-            "status": "success", 
-            "message": "Transcription session removed successfully",
-            "session_id": session_id,
-            "removed_items": removed_items,
-            "timestamp": datetime.now(SINGAPORE_TZ).isoformat()
-        }
+        return {"status": "success", "message": "Transcription removed", "session_id": session_id}
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error removing transcription {session_id}: {e}")
+        logger.error(f"Error removing transcription: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to remove transcription: {str(e)}")
 
 @app.get("/health")
