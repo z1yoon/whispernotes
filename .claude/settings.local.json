@@ -47,7 +47,8 @@
       "WebFetch(domain:docs.salad.com)",
       "WebFetch(domain:min.io)",
       "Bash(claude auth login)",
-      "Bash(ldconfig:*)"
+      "Bash(ldconfig:*)",
+      "Bash(python3:*)"
     ],
     "deny": []
   }

@@ -47,15 +47,17 @@ ENV NVIDIA_VISIBLE_DEVICES=all \
 # Verify installation
 RUN python -c "import torch, whisperx; print('✅ All dependencies installed')"
 
-# Create necessary directories with proper permissions
-RUN mkdir -p /app/.cache/huggingface/hub && \
-    chmod -R 777 /app/.cache && \
-    chown -R root:root /app/.cache
+# Create user first, then set up directories with proper ownership
+RUN useradd -m -u 1000 whisperx
 
-# Security: non-root user
-RUN useradd -m -u 1000 whisperx && chown -R whisperx:whisperx /app
+# Create only the directories actually needed by the app
+RUN mkdir -p /tmp/whisper_temp /app/.cache/huggingface && \
+    chown -R whisperx:whisperx /app /tmp/whisper_temp && \
+    chmod -R 755 /app && \
+    chmod -R 777 /tmp/whisper_temp
+
+# Switch to non-root user
 USER whisperx
-RUN mkdir -p /home/whisperx/.cache
 
 # Health check and startup
 EXPOSE 8003
