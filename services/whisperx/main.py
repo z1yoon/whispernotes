@@ -136,7 +136,7 @@ def load_diarization_model():
         
     if "diarization" not in models:
         logger.info("Loading diarization model")
-        models["diarization"] = whisperx.DiarizationPipeline(
+        models["diarization"] = whisperx.diarize.DiarizationPipeline(
             use_auth_token=HF_TOKEN,
             device=DEVICE
         )
@@ -315,8 +315,8 @@ async def transcribe_with_whisperx(audio_path: str, session_id: str, language: s
     """Transcribe audio using WhisperX following official documentation"""
     await send_progress_update(session_id, 70, "Transcribing audio...", "processing")
     
-    # Load model following official WhisperX documentation
-    model = whisperx.load_model("large-v3", DEVICE, compute_type=COMPUTE_TYPE)
+    # Load model following official WhisperX documentation - use cached model
+    model = load_whisper_model("large-v3")
     
     # Load audio following official WhisperX documentation
     audio = whisperx.load_audio(audio_path)
@@ -337,7 +337,7 @@ async def align_transcription_segments(result: dict, detected_language: str, aud
     
     if model_a and metadata:
         audio = whisperx.load_audio(audio_path)
-        result = whisperx.align(result["segments"], model_a, metadata, audio, DEVICE)
+        result = whisperx.align(result["segments"], model_a, metadata, audio, DEVICE, return_char_alignments=False)
     
     return result
 
@@ -347,8 +347,8 @@ async def perform_speaker_diarization(audio_path: str, participant_count: int, r
     if participant_count > 1 and HF_TOKEN:
         await send_progress_update(session_id, 85, "Identifying speakers...", "processing")
         
-        # Load diarization pipeline following official WhisperX documentation
-        diarize_model = whisperx.DiarizationPipeline(use_auth_token=HF_TOKEN, device=DEVICE)
+        # Load diarization pipeline following official WhisperX documentation - use cached model
+        diarize_model = load_diarization_model()
         
         # Load audio for diarization
         audio = whisperx.load_audio(audio_path)
