@@ -302,7 +302,9 @@ const SpeakerAvatar = styled.div<SpeakerAvatarProps>`
       'linear-gradient(135deg, #0EA5E9 0%, #38BDF8 100%)', // Sky
       'linear-gradient(135deg, #7C3AED 0%, #A855F7 100%)', // Purple
     ];
-    const speakerNum = parseInt(props.speaker.replace('SPEAKER_', '')) || 0;
+    // Extract speaker number from formats like SPEAKER_03, SPEAKER_3, SPEAKER_00, etc.
+    const speakerMatch = props.speaker.match(/SPEAKER_(\d+)/);
+    const speakerNum = speakerMatch ? parseInt(speakerMatch[1], 10) : 0;
     return colors[speakerNum % colors.length];
   }};
   border: 2px solid rgba(255, 255, 255, 0.4);
@@ -904,7 +906,9 @@ const SpeakerAvatarLarge = styled.div<SpeakerAvatarProps>`
       'linear-gradient(135deg, #DC2626 0%, #EF4444 100%)', // Red
       'linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%)', // Amber
     ];
-    const speakerNum = parseInt(props.speaker.replace('SPEAKER_', '')) || 0;
+    // Extract speaker number from formats like SPEAKER_03, SPEAKER_3, SPEAKER_00, etc.
+    const speakerMatch = props.speaker.match(/SPEAKER_(\d+)/);
+    const speakerNum = speakerMatch ? parseInt(speakerMatch[1], 10) : 0;
     return gradients[speakerNum % gradients.length];
   }};
   display: flex;
