@@ -6,6 +6,7 @@
 stages:
   - build
   - deploy
+  - cleanup
 
 variables:
   # Use commit SHA for image tags
@@ -97,3 +98,27 @@ deploy:microk8s:
     url: https://whispernotes.leeseng.net
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
+
+# Cleanup stuck sessions - Manual job
+cleanup:stuck-sessions:
+  stage: cleanup
+  image: harbor.leeseng.net/whispernotes/ci-base:latest
+  variables:
+    KUBE_NAMESPACE: whispernotes
+  before_script:
+    - mkdir -p ~/.kube
+    - echo "$MICROK8S_KUBECONFIG_CONTENT" | base64 -d > ~/.kube/config
+  script:
+    - |
+      echo "🧹 Starting cleanup of stuck sessions..."
+      helm upgrade --install whispernotes-cleanup ./helm \
+        --namespace $KUBE_NAMESPACE \
+        --set cleanup.enabled=true \
+        --set global.imageRegistry=$HARBOR_REGISTRY/whispernotes \
+        --wait \
+        --timeout=5m
+      echo "✅ Cleanup job completed"
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: manual
+  allow_failure: true

@@ -1,0 +1,103 @@
+{{- if .Values.cleanup.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "whispernotes.fullname" . }}-cleanup-{{ randAlphaNum 8 | lower }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "whispernotes.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cleanup
+  annotations:
+    "helm.sh/hook": "pre-install,pre-upgrade"
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": "before-hook-creation,hook-succeeded"
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        {{- include "whispernotes.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: cleanup
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: cleanup
+        image: {{ .Values.cleanup.image }}
+        command: ["/bin/sh"]
+        args:
+          - -c
+          - |
+            echo "🧹 CLEANING STUCK WHISPER-NOTES SESSIONS"
+            echo "⚠️  Cleaning stuck sessions older than {{ .Values.cleanup.maxAgeHours }} hours"
+            echo ""
+            
+            # Install required tools
+            apk add --no-cache redis postgresql-client
+            
+            # Clean stuck Redis sessions
+            echo "🔥 Cleaning Redis stuck sessions..."
+            redis-cli -h ${REDIS_HOST} -p ${REDIS_PORT} -a ${REDIS_PASSWORD} --scan --pattern "progress:*" | \
+              xargs -I {} redis-cli -h ${REDIS_HOST} -p ${REDIS_PORT} -a ${REDIS_PASSWORD} --eval - {} << 'EOF'
+            local key = KEYS[1]
+            local ttl = redis.call('TTL', key)
+            if ttl == -1 then
+              redis.call('DEL', key)
+              return "DELETED: " .. key
+            end
+            return "SKIPPED: " .. key
+            EOF
+            echo "✅ Redis stuck sessions cleaned"
+            echo ""
+            
+            # Clean stuck PostgreSQL sessions
+            echo "🔥 Cleaning PostgreSQL stuck sessions..."
+            {{- if .Values.services.postgres.enabled }}
+            PGPASSWORD="${POSTGRES_PASSWORD}" psql \
+              -h ${POSTGRES_HOST} \
+              -p ${POSTGRES_PORT} \
+              -U ${POSTGRES_USER} \
+              -d ${POSTGRES_DB} \
+              -c "
+                DELETE FROM sessions WHERE status IN ('uploading', 'processing', 'transcribing') 
+                  AND created_at < NOW() - INTERVAL '{{ .Values.cleanup.maxAgeHours }} hours';
+                VACUUM ANALYZE sessions;
+              " && echo "✅ PostgreSQL cleaned" || echo "⚠️ PostgreSQL cleanup failed"
+            {{- else }}
+            echo "⚠️ PostgreSQL not enabled, skipping..."
+            {{- end }}
+            echo ""
+            
+            echo "📊 CLEANUP SUMMARY:"
+            echo "=================="
+            {{- if .Values.services.redis.enabled }}
+            echo "Redis keys remaining: $(redis-cli -h ${REDIS_HOST} -p ${REDIS_PORT} -a ${REDIS_PASSWORD} DBSIZE)"
+            {{- end }}
+            echo ""
+            echo "🎉 CLEANUP COMPLETED SUCCESSFULLY!"
+            echo "🚀 System is ready for new uploads"
+            
+        envFrom:
+        - configMapRef:
+            name: {{ include "whispernotes.configMapName" . }}
+        - secretRef:
+            name: {{ include "whispernotes.secretName" . }}
+        
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          capabilities:
+            drop:
+              - ALL
+{{- end }}

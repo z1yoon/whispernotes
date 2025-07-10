@@ -1188,8 +1188,14 @@ async def delete_transcript(session_id: str, user_id: str = None):
         transcription = json.loads(data)
         
         # Verify ownership if user_id is provided
-        if user_id and transcription.get("user_id") != user_id:
+        transcript_user_id = transcription.get("user_id")
+        logger.info(f"Delete request - provided user_id: {user_id}, transcript user_id: {transcript_user_id}")
+        
+        if user_id and transcript_user_id and transcript_user_id != user_id:
+            logger.warning(f"Authorization failed - user {user_id} tried to delete transcript owned by {transcript_user_id}")
             raise HTTPException(status_code=403, detail="Unauthorized to delete this transcript")
+        elif user_id and not transcript_user_id:
+            logger.warning(f"Transcript {session_id} has no user_id - allowing deletion for authenticated user {user_id}")
         
         # Delete main transcript key
         redis_client.delete(transcription_key)
