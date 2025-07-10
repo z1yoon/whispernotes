@@ -946,7 +946,7 @@ const Transcripts = () => {
 
     try {
       console.log(`Attempting to retry transcription for session: ${transcription.sessionId}`);
-      const response = await httpClient.post(`/api/v1/transcribe/retry/${transcription.sessionId}`);
+      const response = await httpClient.post(`/api/transcripts/retry/${transcription.sessionId}`);
 
       console.log(`Retry response status: ${response.status}`);
       
@@ -960,7 +960,7 @@ const Transcripts = () => {
       setTranscriptions(prev => 
         prev.map(t => 
           t.sessionId === transcription.sessionId 
-            ? { ...t, status: 'processing', progress: 0 }
+            ? { ...t, status: 'processing', progress: 5 }
             : t
         )
       );
@@ -988,7 +988,7 @@ const Transcripts = () => {
 
     try {
       console.log(`Attempting to remove transcription for session: ${transcription.sessionId}`);
-      const response = await httpClient.delete(`/api/v1/transcribe/remove/${transcription.sessionId}`);
+      const response = await httpClient.delete(`/api/transcripts/remove/${transcription.sessionId}`);
 
       console.log(`Remove response status: ${response.status}`);
       

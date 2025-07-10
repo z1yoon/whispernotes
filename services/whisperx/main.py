@@ -804,8 +804,12 @@ async def retry_transcription(session_id: str):
         if redis_client.get(processing_key):
             raise HTTPException(status_code=409, detail="Already being transcribed")
         
-        # Clear error state
+        # Clear error state and set to processing
         redis_client.delete(f"transcription_error:{session_id}")
+        redis_client.setex(processing_key, 3600, "retrying")
+        
+        # Send progress update
+        await send_progress_update(session_id, 5, "Retrying transcription...", "processing")
         
         return {"status": "success", "message": "Retry initiated", "session_id": session_id}
         
@@ -847,50 +851,11 @@ async def remove_transcription(session_id: str):
 
 @app.get("/health")
 async def health():
-    """Health check"""
-    memory_info = {}
-    if torch.cuda.is_available():
-        try:
-            memory_info["total_gpu_memory"] = torch.cuda.get_device_properties(0).total_memory
-            memory_info["allocated_gpu_memory"] = torch.cuda.memory_allocated(0)
-            memory_info["gpu_utilization"] = memory_info["allocated_gpu_memory"] / memory_info["total_gpu_memory"]
-        except Exception as e:
-            memory_info["gpu_error"] = str(e)
-    
-    memory_info["total_ram"] = psutil.virtual_memory().total
-    memory_info["available_ram"] = psutil.virtual_memory().available
-    memory_info["ram_percent"] = psutil.virtual_memory().percent
-    
-    # Check loaded models
-    model_info = {
-        "whisper_loaded": "whisper" in models,
-        "diarization_loaded": "diarization" in models,
-        "alignment_models": [k for k in models.keys() if k.startswith("alignment_")]
-    }
-    
-    redis_status = "ok"
-    try:
-        redis_client.ping()
-    except Exception as e:
-        redis_status = f"error: {str(e)}"
-    
+    """Simple health check"""
     return {
         "status": "ok",
         "service": "whisper-transcriber",
-        "version": "2.0.0",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "memory": memory_info,
-        "device": DEVICE,
-        "compute_type": COMPUTE_TYPE,
-        "batch_size": BATCH_SIZE,
-        "default_language": DEFAULT_LANGUAGE,
-        "min_speakers": MIN_SPEAKERS,
-        "max_speakers": MAX_SPEAKERS,
-        "models": model_info,
-        "dependencies": {
-            "redis": redis_status,
-            "hf_token": "configured" if HF_TOKEN else "missing"
-        }
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
 @app.on_event("startup")
