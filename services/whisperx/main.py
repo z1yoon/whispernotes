@@ -295,12 +295,12 @@ def get_audio_duration(audio_path: str) -> float:
         return 0.0
 
 def create_transcription_data(session_id: str, formatted_result: dict, participant_count: int, 
-                             detected_language: str, duration: float) -> dict:
+                             detected_language: str, duration: float, original_filename: str = None) -> dict:
     """Create transcription data for Redis storage"""
     timestamp = datetime.now(SINGAPORE_TZ).isoformat()
     return {
         "session_id": session_id,
-        "filename": "audio_file.wav",
+        "filename": original_filename or "audio_file.wav",
         "status": "completed",
         "progress": 100,
         "transcriptData": formatted_result,
@@ -353,8 +353,10 @@ async def perform_speaker_diarization(audio_path: str, participant_count: int, r
         # Load audio for diarization
         audio = whisperx.load_audio(audio_path)
         
-        # Run diarization following official WhisperX documentation
-        diarize_segments = diarize_model(audio, min_speakers=MIN_SPEAKERS, max_speakers=min(participant_count, MAX_SPEAKERS))
+        # Run diarization following official WhisperX documentation with improved parameters
+        # Use more sensitive parameters for better speaker detection
+        max_speakers_param = min(max(participant_count, 2), MAX_SPEAKERS)  # Ensure at least 2 speakers if participant_count > 1
+        diarize_segments = diarize_model(audio, min_speakers=min(2, participant_count), max_speakers=max_speakers_param)
         
         # Assign speakers to words following official WhisperX documentation
         result = whisperx.assign_word_speakers(diarize_segments, result)
@@ -366,7 +368,7 @@ async def perform_speaker_diarization(audio_path: str, participant_count: int, r
     return result
 
 async def transcribe_async(audio_path: str, session_id: str, participant_count: int, 
-                          language: str = None, speaker_names: List[str] = None):
+                          language: str = None, speaker_names: List[str] = None, original_filename: str = None):
     """Perform full transcription pipeline using WhisperX"""
     try:
         logger.info(f"Starting WhisperX transcription for session: {session_id}")
@@ -395,7 +397,7 @@ async def transcribe_async(audio_path: str, session_id: str, participant_count: 
         
         # Store transcription result
         transcription_data = create_transcription_data(session_id, formatted_result, participant_count, 
-                                                     detected_language, duration)
+                                                     detected_language, duration, original_filename)
         redis_client.setex(f"transcription:{session_id}", SESSION_EXPIRY, json.dumps(transcription_data))
         
         # Send to LLM service
@@ -507,7 +509,7 @@ def process_upload_message(ch, method, properties, body):
             
             # Start transcription
             try:
-                asyncio.run(transcribe_async(download_path, session_id, participant_count, None, speaker_names))
+                asyncio.run(transcribe_async(download_path, session_id, participant_count, None, speaker_names, original_filename))
                 logger.info(f"Transcription completed: {session_id}")
                 
                 # Clean up
@@ -678,7 +680,8 @@ async def transcribe_audio_endpoint(
                 session_id,
                 participant_count,
                 language,
-                parsed_speaker_names
+                parsed_speaker_names,
+                audio.filename
             )
         )
         running_tasks.add(transcription_task)
