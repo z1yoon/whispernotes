@@ -228,7 +228,7 @@ async def send_to_whisper_service(audio_path: str, session_id: str, participant_
         logger.error(f"Error sending to Whisper service: {e}")
         raise
 
-async def process_video_async(file_path: str, session_id: str, participant_count: int, speaker_names: Optional[List[str]] = None):
+async def process_video_async(file_path: str, session_id: str, participant_count: int, speaker_names: Optional[List[str]] = None, original_filename: Optional[str] = None):
     """Process video file asynchronously"""
     try:
         logger.info(f"Starting video processing for session: {session_id}")
@@ -388,7 +388,7 @@ def process_upload_message(ch, method, properties, body):
             speaker_names = metadata.get("speaker_names")
         
         # Start processing
-        asyncio.run(process_video_async(download_path, session_id, participant_count, speaker_names))
+        asyncio.run(process_video_async(download_path, session_id, participant_count, speaker_names, original_filename))
         
         # Acknowledge message
         ch.basic_ack(delivery_tag=method.delivery_tag)
