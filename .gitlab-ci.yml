@@ -111,12 +111,15 @@ cleanup:stuck-sessions:
   script:
     - |
       echo "🧹 Starting cleanup of stuck sessions..."
-      helm upgrade --install whispernotes-cleanup ./helm \
+      # Upgrade existing release to enable cleanup job
+      helm upgrade whispernotes ./helm \
         --namespace $KUBE_NAMESPACE \
+        --reuse-values \
         --set cleanup.enabled=true \
         --set global.imageRegistry=$HARBOR_REGISTRY/whispernotes \
         --wait \
         --timeout=5m
+      
       echo "✅ Cleanup job completed"
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
