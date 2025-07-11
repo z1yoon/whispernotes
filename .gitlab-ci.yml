@@ -111,16 +111,22 @@ cleanup:stuck-sessions:
   script:
     - |
       echo "🧹 Starting cleanup of stuck sessions..."
-      # Upgrade existing release to enable cleanup job
-      helm upgrade whispernotes ./helm \
-        --namespace $KUBE_NAMESPACE \
-        --reuse-values \
-        --set cleanup.enabled=true \
-        --set global.imageRegistry=$HARBOR_REGISTRY/whispernotes \
-        --wait \
-        --timeout=5m
       
-      echo "✅ Cleanup job completed"
+      # Apply the cleanup job
+      kubectl apply -f ./helm/cleanup-job-manual.yaml
+      
+      # Show job status
+      echo "🔍 Cleanup job status:"
+      kubectl get jobs -l component=cleanup -n $KUBE_NAMESPACE
+      
+      # Wait for completion and show logs
+      echo "⏳ Waiting for cleanup job to complete..."
+      kubectl wait --for=condition=complete job/whispernotes-cleanup-manual --timeout=300s -n $KUBE_NAMESPACE
+      
+      echo "📋 Cleanup job logs:"
+      kubectl logs job/whispernotes-cleanup-manual -n $KUBE_NAMESPACE
+      
+      echo "✅ Cleanup job completed successfully"
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
       when: manual

@@ -170,13 +170,3 @@ ports:
   llmService: 8004
   frontend: 3000
 
-# Cleanup job configuration
-cleanup:
-  # Enable cleanup job to run before every deployment
-  enabled: true
-  
-  # Clean stuck sessions older than 2 hours (keeps user data safe)
-  maxAgeHours: 2
-  
-  # Container image
-  image: "minio/mc:RELEASE.2024-07-08T20-59-24Z"

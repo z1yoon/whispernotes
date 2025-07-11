@@ -1,35 +1,30 @@
-{{- if .Values.cleanup.enabled }}
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ include "whispernotes.fullname" . }}-cleanup-{{ randAlphaNum 8 | lower }}
-  namespace: {{ .Release.Namespace }}
+  name: whispernotes-cleanup-manual
+  namespace: whispernotes
   labels:
-    {{- include "whispernotes.labels" . | nindent 4 }}
-    app.kubernetes.io/component: cleanup
-  annotations:
-    "helm.sh/hook": "pre-install,pre-upgrade"
-    "helm.sh/hook-weight": "-10"
-    "helm.sh/hook-delete-policy": "before-hook-creation,hook-succeeded"
+    app: whispernotes
+    component: cleanup
 spec:
-  ttlSecondsAfterFinished: 300
+  ttlSecondsAfterFinished: 600  # Keep job visible for 10 minutes
   backoffLimit: 2
   template:
     metadata:
       labels:
-        {{- include "whispernotes.selectorLabels" . | nindent 8 }}
-        app.kubernetes.io/component: cleanup
+        app: whispernotes
+        component: cleanup
     spec:
       restartPolicy: Never
       containers:
       - name: cleanup
-        image: {{ .Values.cleanup.image }}
+        image: minio/mc:RELEASE.2024-07-08T20-59-24Z
         command: ["/bin/sh"]
         args:
           - -c
           - |
             echo "🧹 CLEANING STUCK WHISPER-NOTES SESSIONS"
-            echo "⚠️  Cleaning stuck sessions older than {{ .Values.cleanup.maxAgeHours }} hours"
+            echo "⚠️  Cleaning stuck sessions older than 2 hours"
             echo ""
             
             # Install required tools
@@ -52,7 +47,6 @@ spec:
             
             # Clean stuck PostgreSQL sessions
             echo "🔥 Cleaning PostgreSQL stuck sessions..."
-            {{- if .Values.services.postgres.enabled }}
             PGPASSWORD="${POSTGRES_PASSWORD}" psql \
               -h ${POSTGRES_HOST} \
               -p ${POSTGRES_PORT} \
@@ -60,28 +54,23 @@ spec:
               -d ${POSTGRES_DB} \
               -c "
                 DELETE FROM sessions WHERE status IN ('uploading', 'processing', 'transcribing') 
-                  AND created_at < NOW() - INTERVAL '{{ .Values.cleanup.maxAgeHours }} hours';
+                  AND created_at < NOW() - INTERVAL '2 hours';
                 VACUUM ANALYZE sessions;
               " && echo "✅ PostgreSQL cleaned" || echo "⚠️ PostgreSQL cleanup failed"
-            {{- else }}
-            echo "⚠️ PostgreSQL not enabled, skipping..."
-            {{- end }}
             echo ""
             
             echo "📊 CLEANUP SUMMARY:"
             echo "=================="
-            {{- if .Values.services.redis.enabled }}
             echo "Redis keys remaining: $(redis-cli -h ${REDIS_HOST} -p ${REDIS_PORT} -a ${REDIS_PASSWORD} DBSIZE)"
-            {{- end }}
             echo ""
             echo "🎉 CLEANUP COMPLETED SUCCESSFULLY!"
             echo "🚀 System is ready for new uploads"
             
         envFrom:
         - configMapRef:
-            name: {{ include "whispernotes.configMapName" . }}
+            name: whispernotes-config
         - secretRef:
-            name: {{ include "whispernotes.secretName" . }}
+            name: whispernotes-secret
         
         resources:
           requests:
@@ -100,4 +89,3 @@ spec:
           capabilities:
             drop:
               - ALL
-{{- end }}
