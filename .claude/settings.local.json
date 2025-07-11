@@ -48,7 +48,8 @@
       "WebFetch(domain:min.io)",
       "Bash(claude auth login)",
       "Bash(ldconfig:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(kubectl get configmap:*)"
     ],
     "deny": []
   }

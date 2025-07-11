@@ -18,7 +18,7 @@ spec:
       restartPolicy: Never
       containers:
       - name: cleanup
-        image: minio/mc:RELEASE.2024-07-08T20-59-24Z
+        image: alpine:3.18
         command: ["/bin/sh"]
         args:
           - -c
@@ -28,7 +28,14 @@ spec:
             echo ""
             
             # Install required tools
-            apk add --no-cache redis postgresql-client
+            apk add --no-cache redis postgresql-client curl
+            
+            # Install MinIO client
+            wget https://dl.min.io/client/mc/release/linux-amd64/mc -O /usr/local/bin/mc
+            chmod +x /usr/local/bin/mc
+            
+            # Configure MinIO client
+            mc alias set minio http://${MINIO_HOST}:${MINIO_PORT} ${MINIO_ACCESS_KEY} ${MINIO_SECRET_KEY}
             
             # Clean stuck Redis sessions
             echo "🔥 Cleaning Redis stuck sessions..."
@@ -43,6 +50,33 @@ spec:
             return "SKIPPED: " .. key
             EOF
             echo "✅ Redis stuck sessions cleaned"
+            echo ""
+            
+            # Get stuck session IDs from PostgreSQL first
+            echo "🔥 Finding stuck PostgreSQL sessions..."
+            STUCK_SESSIONS=$(PGPASSWORD="${POSTGRES_PASSWORD}" psql \
+              -h ${POSTGRES_HOST} \
+              -p ${POSTGRES_PORT} \
+              -U ${POSTGRES_USER} \
+              -d ${POSTGRES_DB} \
+              -t -c "
+                SELECT id FROM sessions WHERE status IN ('uploading', 'processing', 'transcribing') 
+                  AND created_at < NOW() - INTERVAL '2 hours';
+              " | tr -d ' ' | grep -v '^$') || echo "No stuck sessions found"
+            
+            # Clean stuck video files from MinIO
+            if [ ! -z "$STUCK_SESSIONS" ]; then
+              echo "🔥 Cleaning MinIO stuck video files..."
+              echo "$STUCK_SESSIONS" | while read session_id; do
+                if [ ! -z "$session_id" ]; then
+                  echo "Removing video-files/${session_id}/"
+                  mc rm --recursive --force minio/video-files/${session_id}/ 2>/dev/null || true
+                fi
+              done
+              echo "✅ MinIO stuck files cleaned"
+            else
+              echo "⚠️ No stuck sessions to clean from MinIO"
+            fi
             echo ""
             
             # Clean stuck PostgreSQL sessions
