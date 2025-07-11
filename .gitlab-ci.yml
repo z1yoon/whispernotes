@@ -112,6 +112,9 @@ cleanup:stuck-sessions:
     - |
       echo "🧹 Starting cleanup of stuck sessions..."
       
+      # Delete any existing cleanup job first
+      kubectl delete job whispernotes-cleanup-manual -n $KUBE_NAMESPACE --ignore-not-found=true
+      
       # Apply the cleanup job
       kubectl apply -f ./helm/cleanup-job-manual.yaml
       
