@@ -70,7 +70,7 @@ spec:
         - configMapRef:
             name: whispernotes-config
         - secretRef:
-            name: whispernotes-secret
+            name: whispernotes-secrets
         
         resources:
           requests:
