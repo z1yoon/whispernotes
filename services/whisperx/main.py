@@ -649,9 +649,23 @@ def cleanup_stuck_sessions():
                             
                             if time_diff > 1800:  # 30 minutes
                                 session_id = key.split(":")[-1]
+                                
+                                # Check if transcription was actually completed successfully
+                                transcription_data = redis_client.get(f"transcription:{session_id}")
+                                if transcription_data:
+                                    try:
+                                        transcription = json.loads(transcription_data)
+                                        if transcription.get("status") == "completed":
+                                            logger.info(f"Session {session_id} is actually completed, skipping cleanup")
+                                            # Clean up the old progress key but don't mark as error
+                                            redis_client.delete(key)
+                                            continue
+                                    except json.JSONDecodeError:
+                                        logger.warning(f"Invalid transcription data for session {session_id}")
+                                
                                 logger.warning(f"Found stuck processing session: {session_id}")
                                 
-                                # Set status to error
+                                # Set status to error only if not completed
                                 asyncio.run(send_progress_update(
                                     session_id, 
                                     0, 
