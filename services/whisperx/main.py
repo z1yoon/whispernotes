@@ -276,6 +276,10 @@ def format_transcription_result(result, session_id: str, duration: float, speake
                     "text": segment["text"]
                 })
         
+        # Preserve original creation time if this is processing an existing file
+        # Use current time only for new transcriptions
+        transcript_timestamp = datetime.now(SINGAPORE_TZ).isoformat()
+        
         formatted_result = {
             "session_id": session_id,
             "language": language,
@@ -284,7 +288,8 @@ def format_transcription_result(result, session_id: str, duration: float, speake
             "diarized_segments": diarized_segments,
             "word_segments": result.get("word_segments", []),
             "speaker_names": speaker_names,
-            "timestamp": datetime.now(SINGAPORE_TZ).isoformat()
+            "timestamp": transcript_timestamp,
+            "created_at": transcript_timestamp  # Will be preserved for action items
         }
         
         return formatted_result

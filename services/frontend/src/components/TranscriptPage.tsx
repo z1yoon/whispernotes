@@ -60,6 +60,10 @@ interface ActionItem {
   category?: string;
   estimated_effort?: string;
   stakeholders?: string[];
+  // 30-day duration fields
+  created_at?: string;
+  due_date?: string;
+  duration_days?: number;
 }
 
 interface SpeakerMap {
