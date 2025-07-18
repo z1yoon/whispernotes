@@ -57,17 +57,10 @@ class LLMAnalyzer:
                 raise Exception("Empty transcript provided")
             
             # Only extract action items and to-do list - no other analysis
-            # Preserve original creation time from transcript if available
-            original_created_at = transcript_data.get("timestamp") or transcript_data.get("created_at")
-            action_items = await self._extract_action_items(full_transcript, speakers, original_created_at)
-            
-            # Preserve original transcript creation time for tracking
-            analysis_time = datetime.now(timezone(timedelta(hours=8))).isoformat()
-            transcript_created_at = original_created_at or analysis_time
+            action_items = await self._extract_action_items(full_transcript, speakers)
             
             return {
-                "analysis_completed_at": analysis_time,
-                "transcript_created_at": transcript_created_at,  # Preserve original time
+                "analysis_completed_at": datetime.now(timezone(timedelta(hours=8))).isoformat(),
                 "transcript_duration": duration,
                 "total_speakers": len(speakers),
                 "analysis": {
@@ -76,7 +69,7 @@ class LLMAnalyzer:
                 "metadata": {
                     "model_used": QWEN_MODEL,
                     "api_base": QWEN_API_BASE,
-                    "processing_time": analysis_time
+                    "processing_time": datetime.now(timezone(timedelta(hours=8))).isoformat()
                 }
             }
             
@@ -133,7 +126,7 @@ class LLMAnalyzer:
                 logger.error(f"❌ Qwen API error: {response.status_code} - {response.text}")
                 raise Exception(f"API call failed with status {response.status_code}")
     
-    async def _extract_action_items(self, transcript: str, speakers: List[str], created_at: str = None) -> List[Dict[str, Any]]:
+    async def _extract_action_items(self, transcript: str, speakers: List[str]) -> List[Dict[str, Any]]:
         """Extract action items and to-do items from transcript, or create summary if no clear actions exist"""
         
         logger.info(f"🔍 Extracting action items from transcript ({len(transcript)} characters)")
@@ -252,21 +245,10 @@ Generate {max_items} helpful, actionable todo items. Be generous - find valuable
                     cleaned_items = []
                     for item in action_items:
                         if isinstance(item, dict) and 'task' in item:
-                            # Add 30-day duration and preserve creation time
-                            from datetime import datetime, timedelta
-                            
-                            # Use original transcript creation time or current time
-                            created_time = created_at or datetime.now(timezone(timedelta(hours=8))).isoformat()
-                            due_time = (datetime.fromisoformat(created_time.replace('Z', '+00:00')) + timedelta(days=30)).isoformat()
-                            
-                            # Simple, content-focused format with 30-day duration
+                            # Simple, content-focused format
                             cleaned_item = {
                                 'task': item.get('task', '').strip(),
-                                'context': item.get('context', '').strip(),
-                                'created_at': created_time,
-                                'due_date': due_time,
-                                'duration_days': 30,
-                                'completed': False
+                                'context': item.get('context', '').strip()
                             }
                             # Only include items with meaningful content
                             if cleaned_item['task'] and len(cleaned_item['task']) > 5:
@@ -285,20 +267,20 @@ Generate {max_items} helpful, actionable todo items. Be generous - find valuable
                     return cleaned_items
                 else:
                     logger.warning("❌ Response is not a list, generating fallback todos")
-                    return self._generate_fallback_todos(transcript, speakers, max_items, created_at)
+                    return self._generate_fallback_todos(transcript, speakers, max_items)
                     
             except json.JSONDecodeError as e:
                 logger.error(f"❌ JSON parsing failed: {e}")
                 logger.error(f"🔧 Raw response: {response[:500]}...")
                 logger.error("❌ Unable to parse LLM response - generating fallback todos")
-                return self._generate_fallback_todos(transcript, speakers, max_items, created_at)
+                return self._generate_fallback_todos(transcript, speakers, max_items)
                 
         except Exception as e:
             logger.error(f"❌ Error extracting action items: {e}")
             logger.info("🔧 API unavailable - generating fallback todos")
             return self._generate_fallback_todos(transcript, speakers, max_items)
     
-    def _generate_fallback_todos(self, transcript: str, speakers: List[str], max_items: int, created_at: str = None) -> List[Dict[str, Any]]:
+    def _generate_fallback_todos(self, transcript: str, speakers: List[str], max_items: int) -> List[Dict[str, Any]]:
         """Generate useful todos from transcript using simple text analysis when API fails"""
         logger.info("🔄 Generating fallback todos from transcript content")
         
@@ -329,20 +311,11 @@ Generate {max_items} helpful, actionable todo items. Be generous - find valuable
         # Generate todos
         todos = []
         
-        # Add 30-day duration to fallback todos
-        from datetime import datetime, timedelta
-        created_time = created_at or datetime.now(timezone(timedelta(hours=8))).isoformat()
-        due_time = (datetime.fromisoformat(created_time.replace('Z', '+00:00')) + timedelta(days=30)).isoformat()
-        
         # Generate todos from common topics
         for topic in common_topics[:3]:
             todos.append({
                 "task": f"Follow up on {topic.title()} discussion",
-                "context": f"This topic was frequently mentioned during the conversation",
-                "created_at": created_time,
-                "due_date": due_time,
-                "duration_days": 30,
-                "completed": False
+                "context": f"This topic was frequently mentioned during the conversation"
             })
         
         # Generate todos from action sentences
@@ -352,54 +325,30 @@ Generate {max_items} helpful, actionable todo items. Be generous - find valuable
             clean_sentence = sentence[:80] + '...' if len(sentence) > 80 else sentence
             todos.append({
                 "task": f"Review: {clean_sentence}",
-                "context": "Action item identified from the conversation",
-                "created_at": created_time,
-                "due_date": due_time,
-                "duration_days": 30,
-                "completed": False
+                "context": "Action item identified from the conversation"
             })
         
         # Add generic helpful todos if we don't have enough
         generic_todos = [
             {
                 "task": f"Schedule follow-up meeting with {', '.join(speakers[:2])}",
-                "context": "Continue the discussion from this conversation",
-                "created_at": created_time,
-                "due_date": due_time,
-                "duration_days": 30,
-                "completed": False
+                "context": "Continue the discussion from this conversation"
             },
             {
                 "task": "Document key decisions and outcomes",
-                "context": "Capture important points from the conversation",
-                "created_at": created_time,
-                "due_date": due_time,
-                "duration_days": 30,
-                "completed": False
+                "context": "Capture important points from the conversation"
             },
             {
                 "task": "Share relevant information with team members",
-                "context": "Ensure everyone is informed about the discussion",
-                "created_at": created_time,
-                "due_date": due_time,
-                "duration_days": 30,
-                "completed": False
+                "context": "Ensure everyone is informed about the discussion"
             },
             {
                 "task": "Research topics mentioned in the conversation",
-                "context": "Gather more information on subjects discussed",
-                "created_at": created_time,
-                "due_date": due_time,
-                "duration_days": 30,
-                "completed": False
+                "context": "Gather more information on subjects discussed"
             },
             {
                 "task": "Prepare agenda for next discussion",
-                "context": "Build on topics covered in this conversation",
-                "created_at": created_time,
-                "due_date": due_time,
-                "duration_days": 30,
-                "completed": False
+                "context": "Build on topics covered in this conversation"
             }
         ]
         
@@ -414,19 +363,11 @@ Generate {max_items} helpful, actionable todo items. Be generous - find valuable
             todos = [
                 {
                     "task": f"Review conversation with {len(speakers)} participants",
-                    "context": "Follow up on the discussion points",
-                    "created_at": created_time,
-                    "due_date": due_time,
-                    "duration_days": 30,
-                    "completed": False
+                    "context": "Follow up on the discussion points"
                 },
                 {
                     "task": "Identify next steps from the conversation",
-                    "context": "Determine actionable items moving forward",
-                    "created_at": created_time,
-                    "due_date": due_time,
-                    "duration_days": 30,
-                    "completed": False
+                    "context": "Determine actionable items moving forward"
                 }
             ]
         
