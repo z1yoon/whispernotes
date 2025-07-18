@@ -6,7 +6,6 @@
 stages:
   - build
   - deploy
-  - cleanup
 
 variables:
   # Use commit SHA for image tags
@@ -99,38 +98,3 @@ deploy:microk8s:
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
 
-# Cleanup stuck sessions - Manual job
-cleanup:stuck-sessions:
-  stage: cleanup
-  image: harbor.leeseng.net/whispernotes/ci-base:latest
-  variables:
-    KUBE_NAMESPACE: whispernotes
-  before_script:
-    - mkdir -p ~/.kube
-    - echo "$MICROK8S_KUBECONFIG_CONTENT" | base64 -d > ~/.kube/config
-  script:
-    - |
-      echo "🧹 Starting cleanup of stuck sessions..."
-      
-      # Delete any existing cleanup job first
-      kubectl delete job whispernotes-cleanup-manual -n $KUBE_NAMESPACE --ignore-not-found=true
-      
-      # Apply the cleanup job
-      kubectl apply -f ./helm/cleanup-job-manual.yaml
-      
-      # Show job status
-      echo "🔍 Cleanup job status:"
-      kubectl get jobs -l component=cleanup -n $KUBE_NAMESPACE
-      
-      # Wait for completion and show logs
-      echo "⏳ Waiting for cleanup job to complete..."
-      kubectl wait --for=condition=complete job/whispernotes-cleanup-manual --timeout=300s -n $KUBE_NAMESPACE
-      
-      echo "📋 Cleanup job logs:"
-      kubectl logs job/whispernotes-cleanup-manual -n $KUBE_NAMESPACE
-      
-      echo "✅ Cleanup job completed successfully"
-  rules:
-    - if: $CI_COMMIT_BRANCH == "main"
-      when: manual
-  allow_failure: true
