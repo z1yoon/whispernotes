@@ -223,40 +223,6 @@ def map_speaker_names(transcript_result, speaker_names: List[str]):
     
     return transcript_result
 
-def normalize_speaker_ids(result):
-    """Normalize speaker IDs to start from SPEAKER_0 in order of appearance"""
-    if not result.get("segments"):
-        return result
-    
-    # Find unique speakers in order of first appearance
-    speaker_order = []
-    seen_speakers = set()
-    
-    for segment in result["segments"]:
-        speaker = segment.get("speaker")
-        if speaker and speaker not in seen_speakers:
-            speaker_order.append(speaker)
-            seen_speakers.add(speaker)
-    
-    # Create mapping from original IDs to normalized IDs
-    speaker_mapping = {}
-    for i, original_speaker in enumerate(speaker_order):
-        speaker_mapping[original_speaker] = f"SPEAKER_{i}"
-    
-    # Apply normalization to all segments
-    for segment in result["segments"]:
-        if "speaker" in segment and segment["speaker"] in speaker_mapping:
-            segment["speaker"] = speaker_mapping[segment["speaker"]]
-    
-    # Also normalize word-level speakers if they exist
-    if "word_segments" in result:
-        for word_segment in result["word_segments"]:
-            if "speaker" in word_segment and word_segment["speaker"] in speaker_mapping:
-                word_segment["speaker"] = speaker_mapping[word_segment["speaker"]]
-    
-    logger.info(f"Normalized speakers: {speaker_mapping}")
-    return result
-
 def format_transcription_result(result, session_id: str, duration: float, speaker_names: List[str] = None):
     """Format the final transcription result"""
     try:
@@ -400,9 +366,6 @@ async def perform_speaker_diarization(audio_path: str, participant_count: int, r
         
         # Assign speakers to words following official WhisperX documentation
         result = whisperx.assign_word_speakers(diarize_segments, result)
-        
-        # Normalize speaker IDs to start from SPEAKER_0
-        result = normalize_speaker_ids(result)
         
         # Map speaker names if provided
         if speaker_names:
