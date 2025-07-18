@@ -10,54 +10,59 @@
 
 ## Architecture Flow
 1. **Upload**: Large video files → MinIO (multipart upload)
-2. **Process**: RabbitMQ queues → WhisperX transcription → LLM todo generation
-3. **Store**: All results (transcripts + todos) → MinIO as JSON files
-4. **Track**: Metadata + progress → PostgreSQL + Redis
+2. **Process**: RabbitMQ queues → WhisperX transcription → Results stored in Redis
+3. **Track**: All session data & progress → Redis (with TTL auto-cleanup)
+4. **Auth**: User authentication → PostgreSQL only
 
-## Data Storage Strategy
+## Data Storage Strategy - **SIMPLIFIED REDIS-ONLY APPROACH**
 
-### MinIO (Object Storage) - **PERSISTENT LONG-TERM STORAGE**
-```
-video-files/
-  {sessionId}/original.mp4           # Original video files - KEPT FOREVER
-  
-transcripts/
-  {sessionId}/
-    transcript.json                  # WhisperX output with timestamps - KEPT FOREVER
-    todos.json                      # Generated todo list - KEPT FOREVER
-    summary.json                    # Optional: transcript summary - KEPT FOREVER
-```
-
-**✅ Files are kept indefinitely until user explicitly deletes them**
-- No TTL or automatic expiration
-- Users have full control over their data
-- Easy backup and data portability
-- Perfect for long-term reference and search
-
-### PostgreSQL (Metadata Only)
+### PostgreSQL (Authentication Only)
 ```sql
--- Core tracking table
-CREATE TABLE sessions (
+-- User authentication and access control only
+CREATE TABLE users (
   id UUID PRIMARY KEY,
-  user_id UUID NOT NULL,
-  filename VARCHAR(255),
-  status VARCHAR(50),     -- UPLOADING, PROCESSING, COMPLETED, FAILED
+  email VARCHAR(255) UNIQUE NOT NULL,
+  full_name VARCHAR(255) NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  is_admin BOOLEAN DEFAULT FALSE,
+  is_active BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMP,
-  updated_at TIMESTAMP,
-  
-  -- MinIO references (permanent links)
-  video_path VARCHAR(500),
-  transcript_path VARCHAR(500),
-  todos_path VARCHAR(500)
+  updated_at TIMESTAMP
+);
+
+CREATE TABLE access_requests (
+  id UUID PRIMARY KEY,
+  email VARCHAR(255) NOT NULL,
+  full_name VARCHAR(255) NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  reason TEXT NOT NULL,
+  status VARCHAR(50) DEFAULT 'pending',
+  requested_at TIMESTAMP,
+  reviewed_at TIMESTAMP,
+  reviewed_by UUID
 );
 ```
 
-### Redis (Temporary Data Only)
+### Redis (All Session Data with Auto-Cleanup)
 ```
-progress:{sessionId}     # Upload/processing progress (TTL: 24h)
-cache:recent:{userId}    # Recently viewed items (TTL: 1h)
-queue:stats             # Processing queue statistics (TTL: 5min)
+upload_session:{sessionId}        # File metadata & processing info (TTL: 24h)
+transcription:{sessionId}         # WhisperX transcript results (TTL: 24h)
+upload_progress:{sessionId}       # Real-time progress updates (TTL: 24h)
+user_sessions:{userId}            # User's session list (TTL: 1h)
 ```
+
+### MinIO (Video Files Only)
+```
+{sessionId}/original.mp4          # Original video files only
+transcript_edits/{sessionId}/     # Optional: transcript edit history
+```
+
+**✅ Benefits of This Simplified Approach:**
+- **Simpler**: No complex database schemas for temporary data
+- **Self-cleaning**: Redis TTL automatically removes old sessions
+- **Faster**: No PostgreSQL writes during upload/processing
+- **Stateless**: Perfect for container-based architecture
+- **Cost-effective**: Only store authentication data in PostgreSQL
 
 ## Real-time Progress Updates - **FINAL DECISION**
 
@@ -143,17 +148,23 @@ export const useProgressUpdates = (sessionId: string) => {
 - **Future-proof**: Built on web standards
 
 ### ✅ Clean Data Separation
-- **PostgreSQL**: Only lightweight metadata and user data
-- **MinIO**: All heavy content (videos, transcripts, todos)
-- **Redis**: Only temporary progress and cache data
+- **PostgreSQL**: Only user authentication and access control
+- **MinIO**: Video files storage only
+- **Redis**: All session data, transcripts, and progress (with auto-cleanup)
 
-## File Structure Example
+## Redis Data Structure Example
 ```json
-// transcripts/{sessionId}/todos.json (PERMANENT STORAGE)
+// transcription:{sessionId} (TTL: 24h)
 {
-  "generated_at": "2025-06-25T10:30:00Z",
   "session_id": "uuid-here",
-  "version": "1.0",
+  "user_id": "user-uuid",
+  "filename": "meeting.mp4",
+  "status": "completed",
+  "progress": 100,
+  "transcript": {
+    "segments": [...],
+    "speakers": {...}
+  },
   "todos": [
     {
       "id": "1",
@@ -164,20 +175,16 @@ export const useProgressUpdates = (sessionId: string) => {
       "completed": false
     }
   ],
-  "summary": "Meeting covered project timeline and deliverables",
-  "metadata": {
-    "total_todos": 1,
-    "high_priority": 1,
-    "estimated_time": "30 minutes"
-  }
+  "created_at": "2025-07-18T10:30:00Z",
+  "completed_at": "2025-07-18T10:35:00Z"
 }
 ```
 
 ## 🎯 **FINAL DECISION SUMMARY**
-1. **Long-term storage**: MinIO (files kept forever, user-controlled deletion)
-2. **Real-time updates**: Next.js Server-Sent Events with Redis
-3. **No WebSockets needed**: SSE is simpler and better for your use case
-4. **Modern & Future-proof**: Uses latest Next.js capabilities
-5. **Simple & Maintainable**: Clean separation of concerns
+1. **User data**: PostgreSQL (authentication only)
+2. **Session data**: Redis with TTL auto-cleanup (all transcripts, progress, metadata)
+3. **File storage**: MinIO (video files only)
+4. **Real-time updates**: Next.js Server-Sent Events with Redis
+5. **Simple & Stateless**: Perfect for container-based architecture
 
-This architecture is **modern, simple, scalable, and perfect** for your whisper-notes application!
+This **simplified Redis-only approach** is modern, simple, scalable, and perfect for your whisper-notes application!

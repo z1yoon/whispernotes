@@ -830,19 +830,25 @@ const Transcripts = () => {
   // Auto-navigate to transcript when processing completes
   useEffect(() => {
     if (mounted) {
-      processingSessions.forEach(sessionId => {
+      // Check ALL transcriptions for recent completion, not just processingSessions
+      transcriptions.forEach(transcription => {
+        const sessionId = transcription.sessionId;
         const progress = getProgress(sessionId);
-        if (progress?.status === 'completed') {
-          // Find the transcription to get the sessionId
-          const completedTranscription = transcriptions.find(t => t.sessionId === sessionId);
-          if (completedTranscription && completedTranscription.hasTranscript) {
-            // Auto-navigate to the completed transcript
-            router.push(`/transcript/${sessionId}`);
-          }
+        
+        console.log(`Checking session ${sessionId}:`, {
+          progressStatus: progress?.status,
+          hasTranscript: transcription.hasTranscript,
+          transcriptionStatus: transcription.status
+        });
+        
+        // Auto-navigate if Redis shows completed AND we have transcript data
+        if (progress?.status === 'completed' && transcription.hasTranscript) {
+          console.log(`Auto-navigating to completed transcript: ${sessionId}`);
+          router.push(`/transcript/${sessionId}`);
         }
       });
     }
-  }, [mounted, processingSessions, getProgress, transcriptions, router]);
+  }, [mounted, getProgress, transcriptions, router]);
 
   const loadTranscriptions = async () => {
     try {
