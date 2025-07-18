@@ -827,6 +827,23 @@ const Transcripts = () => {
     }
   }, [mounted]);
 
+  // Auto-navigate to transcript when processing completes
+  useEffect(() => {
+    if (mounted) {
+      processingSessions.forEach(sessionId => {
+        const progress = getProgress(sessionId);
+        if (progress?.status === 'completed') {
+          // Find the transcription to get the sessionId
+          const completedTranscription = transcriptions.find(t => t.sessionId === sessionId);
+          if (completedTranscription && completedTranscription.hasTranscript) {
+            // Auto-navigate to the completed transcript
+            router.push(`/transcript/${sessionId}`);
+          }
+        }
+      });
+    }
+  }, [mounted, processingSessions, getProgress, transcriptions, router]);
+
   const loadTranscriptions = async () => {
     try {
       const response = await httpClient.get('/api/transcripts');
