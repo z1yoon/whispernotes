@@ -807,7 +807,7 @@ const Transcripts = () => {
     .filter(t => ['uploading', 'processing', 'transcribing'].includes(t.status))
     .map(t => t.sessionId);
   
-  const { getProgress, isProcessing, getDetailedStatus } = useProgressUpdates(processingSessions);
+  const { getProgress, isProcessing, getDetailedStatus, getConsistentProgress } = useProgressUpdates(processingSessions);
 
   // Ensure component is mounted before using router
   useEffect(() => {
@@ -1086,20 +1086,6 @@ const Transcripts = () => {
     };
     
     return statusMessages[status as keyof typeof statusMessages] || statusMessages.default;
-  };
-
-  // Helper function to get consistent, non-decreasing progress value
-  const getConsistentProgress = (sessionId: string, fallbackProgress: number): number => {
-    const realtimeProgress = getProgress(sessionId);
-    const dbProgress = fallbackProgress || 0;
-    
-    // If we have real-time progress, use the higher of the two values
-    if (realtimeProgress && typeof realtimeProgress.progress === 'number') {
-      return Math.max(realtimeProgress.progress, dbProgress);
-    }
-    
-    // Fall back to database progress
-    return dbProgress;
   };
 
   // Don't render until mounted to avoid SSR issues

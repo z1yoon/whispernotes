@@ -287,17 +287,17 @@ const SpeakerAvatar = styled.div<SpeakerAvatarProps>`
   height: 40px;
   border-radius: 12px;
   background: ${props => {
-    // Vivid sparkling gradient color palette
+    // Use consistent color palette matching todo items
     const colors = [
-      'linear-gradient(135deg, #A855F7 0%, #D946EF 100%)', // Primary Purple
-      'linear-gradient(135deg, #10B981 0%, #34D399 100%)', // Success Green
-      'linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%)', // Warning Orange
-      'linear-gradient(135deg, #EF4444 0%, #F87171 100%)', // Error Red
-      'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)', // Indigo
-      'linear-gradient(135deg, #EC4899 0%, #F472B6 100%)', // Pink
-      'linear-gradient(135deg, #06B6D4 0%, #22D3EE 100%)', // Cyan
-      'linear-gradient(135deg, #8B5CF6 0%, #A78BFA 100%)', // Violet
-      'linear-gradient(135deg, #F97316 0%, #FB923C 100%)', // Orange
+      'linear-gradient(135deg, #A855F7 0%, #D946EF 100%)', // Primary Purple (matches todo high priority)
+      'linear-gradient(135deg, #10B981 0%, #34D399 100%)', // Success Green (matches todo low priority)
+      'linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%)', // Warning Orange (matches todo medium priority)
+      'linear-gradient(135deg, #EF4444 0%, #F87171 100%)', // Error Red (matches todo critical priority)
+      'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)', // Indigo (matches todo action category)
+      'linear-gradient(135deg, #EC4899 0%, #F472B6 100%)', // Pink (matches todo communication category)
+      'linear-gradient(135deg, #06B6D4 0%, #22D3EE 100%)', // Cyan (matches todo follow-up category)
+      'linear-gradient(135deg, #8B5CF6 0%, #A78BFA 100%)', // Violet (matches todo decision category)
+      'linear-gradient(135deg, #F97316 0%, #FB923C 100%)', // Orange (matches todo research category)
       'linear-gradient(135deg, #84CC16 0%, #A3E635 100%)', // Lime
       'linear-gradient(135deg, #0EA5E9 0%, #38BDF8 100%)', // Sky
       'linear-gradient(135deg, #7C3AED 0%, #A855F7 100%)', // Purple
@@ -891,29 +891,33 @@ const SpeakerAvatarLarge = styled.div<SpeakerAvatarProps>`
   height: 48px;
   border-radius: 12px;
   background: ${props => {
-    // More distinguishable color palette in purple family
-    const gradients = [
-      'linear-gradient(135deg, #374151 0%, #4B5563 100%)', // Modern gray
-      'linear-gradient(135deg, #1F2937 0%, #374151 100%)', // Dark gray
-      'linear-gradient(135deg, #0EA5E9 0%, #06B6D4 100%)', // Cyan
-      'linear-gradient(135deg, #475569 0%, #64748B 100%)', // Slate
-      'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)', // Deep slate
-      'linear-gradient(135deg, #6B7280 0%, #9CA3AF 100%)', // Cool gray
-      'linear-gradient(135deg, #111827 0%, #1F2937 100%)', // Very dark gray
-      'linear-gradient(135deg, #059669 0%, #10B981 100%)', // Emerald
-      'linear-gradient(135deg, #DC2626 0%, #EF4444 100%)', // Red
-      'linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%)', // Amber
+    // Use the same consistent color palette as the main speaker avatars
+    const colors = [
+      'linear-gradient(135deg, #A855F7 0%, #D946EF 100%)', // Primary Purple (matches todo high priority)
+      'linear-gradient(135deg, #10B981 0%, #34D399 100%)', // Success Green (matches todo low priority)
+      'linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%)', // Warning Orange (matches todo medium priority)
+      'linear-gradient(135deg, #EF4444 0%, #F87171 100%)', // Error Red (matches todo critical priority)
+      'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)', // Indigo (matches todo action category)
+      'linear-gradient(135deg, #EC4899 0%, #F472B6 100%)', // Pink (matches todo communication category)
+      'linear-gradient(135deg, #06B6D4 0%, #22D3EE 100%)', // Cyan (matches todo follow-up category)
+      'linear-gradient(135deg, #8B5CF6 0%, #A78BFA 100%)', // Violet (matches todo decision category)
+      'linear-gradient(135deg, #F97316 0%, #FB923C 100%)', // Orange (matches todo research category)
+      'linear-gradient(135deg, #84CC16 0%, #A3E635 100%)', // Lime
+      'linear-gradient(135deg, #0EA5E9 0%, #38BDF8 100%)', // Sky
+      'linear-gradient(135deg, #7C3AED 0%, #A855F7 100%)', // Purple
     ];
     const speakerNum = parseInt(props.speaker.replace('SPEAKER_', '')) || 0;
-    return gradients[speakerNum % gradients.length];
+    return colors[speakerNum % colors.length];
   }};
+  border: 2px solid rgba(255, 255, 255, 0.4);
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
   font-size: 1rem;
   font-weight: 700;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 8px 24px rgba(168, 85, 247, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 `;
 
 const SpeakerEditorInfo = styled.div`

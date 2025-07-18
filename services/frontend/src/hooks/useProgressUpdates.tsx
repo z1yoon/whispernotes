@@ -13,6 +13,7 @@ interface ProgressUpdate {
 
 export const useProgressUpdates = (sessionIds: string[]) => {
   const [progressMap, setProgressMap] = useState<Map<string, ProgressUpdate>>(new Map());
+  const [lastKnownProgress, setLastKnownProgress] = useState<Map<string, number>>(new Map());
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const mountedRef = useRef(true);
 
@@ -79,12 +80,32 @@ export const useProgressUpdates = (sessionIds: string[]) => {
           results.forEach(result => {
             if (result && result.progress.status !== 'unknown') {
               const previous = newMap.get(result.sessionId);
+              const lastProgress = lastKnownProgress.get(result.sessionId) || 0;
+              
+              // Ensure monotonic progress (never decrease unless status changes)
+              let adjustedProgress = result.progress.progress;
+              
+              // If status is the same but progress decreased, keep the higher value
+              if (previous && previous.status === result.progress.status) {
+                adjustedProgress = Math.max(lastProgress, result.progress.progress);
+              }
+              
+              // Update last known progress
+              setLastKnownProgress(prev => {
+                const newLastProgress = new Map(prev);
+                newLastProgress.set(result.sessionId, adjustedProgress);
+                return newLastProgress;
+              });
+              
               // Only update if progress actually changed
               if (!previous || 
-                  previous.progress !== result.progress.progress || 
+                  previous.progress !== adjustedProgress || 
                   previous.status !== result.progress.status ||
                   previous.message !== result.progress.message) {
-                newMap.set(result.sessionId, result.progress);
+                newMap.set(result.sessionId, {
+                  ...result.progress,
+                  progress: adjustedProgress
+                });
               }
             }
           });
@@ -111,7 +132,7 @@ export const useProgressUpdates = (sessionIds: string[]) => {
         clearInterval(intervalRef.current);
       }
     };
-  }, [sessionIds, progressMap]);
+  }, [sessionIds, progressMap, lastKnownProgress]);
 
   const getProgress = (sessionId: string): ProgressUpdate | null => {
     return progressMap.get(sessionId) || null;
@@ -129,5 +150,18 @@ export const useProgressUpdates = (sessionIds: string[]) => {
     return progress.message || progress.status;
   };
 
-  return { getProgress, isProcessing, getDetailedStatus, progressMap };
+  const getConsistentProgress = (sessionId: string, fallbackProgress: number): number => {
+    const realtimeProgress = getProgress(sessionId);
+    const lastProgress = lastKnownProgress.get(sessionId) || 0;
+    
+    // If we have real-time progress, use it but ensure it's monotonic
+    if (realtimeProgress && typeof realtimeProgress.progress === 'number') {
+      return Math.max(lastProgress, realtimeProgress.progress, fallbackProgress || 0);
+    }
+    
+    // Fall back to the higher of database progress or last known progress
+    return Math.max(lastProgress, fallbackProgress || 0);
+  };
+
+  return { getProgress, isProcessing, getDetailedStatus, progressMap, getConsistentProgress };
 };
