@@ -37,7 +37,7 @@ interface ProcessingOptions {
 
 interface SharedUploadProps {
   isAuthenticated?: boolean;
-  onStartProcessing?: (files: FileData[], options: ProcessingOptions) => void;
+  onStartProcessing?: (files: FileData[], options: ProcessingOptions, sessionIds: string[]) => void;
   onUploadClick?: (e: React.MouseEvent) => void;
   className?: string;
   showProcessingOverlay?: boolean; // Add this prop to control overlay
@@ -527,33 +527,36 @@ export const SharedUpload: React.FC<SharedUploadProps> = ({
     setProcessingStatus('Initializing uploads...');
     
     try {
-      // Start all file uploads in parallel in background
-      const uploadTasks = files.map(fileData => processFile(fileData));
-      
-      // Show brief loading state, then redirect immediately
-      setProcessingStatus('Starting uploads...');
+      // Start all file uploads to get session IDs
+      setProcessingStatus('Initializing uploads...');
       setProcessingProgress(5);
       
-      // Small delay to show user that uploads are starting
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Initialize uploads to get session IDs first
+      const sessionIds: string[] = [];
+      const uploadTasks = files.map(async (fileData) => {
+        try {
+          const sessionId = await processFile(fileData);
+          sessionIds.push(sessionId);
+          return sessionId;
+        } catch (error) {
+          console.error('Upload initialization error:', error);
+          return null;
+        }
+      });
       
-      // Clear UI state and redirect immediately
+      // Wait for all uploads to initialize and get session IDs
+      await Promise.all(uploadTasks);
+      
+      // Clear UI state and call parent callback with session IDs
       setFiles([]);
       setIsProcessing(false);
       setProcessingProgress(0);
       setProcessingStatus('');
       
-      // Call parent callback for immediate navigation to transcripts
-      if (onStartProcessing) {
-        onStartProcessing(files, options);
+      // Call parent callback with session IDs for tracking
+      if (onStartProcessing && sessionIds.length > 0) {
+        onStartProcessing(files, options, sessionIds.filter(id => id !== null) as string[]);
       }
-      
-      // Continue all uploads in parallel in background
-      // Don't await - this allows user to navigate away immediately
-      Promise.all(uploadTasks).catch(error => {
-        console.error('Background upload error:', error);
-        // User has already been redirected, they'll see the status on transcripts page
-      });
       
     } catch (error: any) {
       console.error('Processing error:', error);
