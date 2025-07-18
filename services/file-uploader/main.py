@@ -7,7 +7,6 @@ from urllib.parse import urlparse
 from typing import Optional
 from contextlib import asynccontextmanager
 import io
-import time
 import tempfile
 import sys
 
@@ -295,7 +294,7 @@ async def initialize_upload(request: UploadInitializationRequest):
             "user_id": request.user_id,  # Store the user_id
             "num_speakers": request.num_speakers or 2,  # Store speaker count
             "parts": [],
-            "creation_time": time.time()
+            "creation_time": datetime.now(timezone(timedelta(hours=8))).isoformat()
         }
         redis_client.set(f"upload_session:{session_id}", json.dumps(session_data), ex=86400)
         
@@ -550,7 +549,7 @@ async def complete_upload(session_id: str, request: CompletionRequest):
             # Update session data
             session_data["upload_complete"] = True
             session_data["etag"] = result.etag
-            session_data["completion_time"] = time.time()
+            session_data["completion_time"] = datetime.now(timezone(timedelta(hours=8))).isoformat()
             redis_client.set(f"upload_session:{session_id}", json.dumps(session_data), ex=86400)
             
             # Trigger video processing
@@ -631,7 +630,7 @@ async def direct_upload_file(session_id: str, file: UploadFile = File(...)):
         session_data["upload_complete"] = True
         session_data["etag"] = result.etag
         session_data["file_size"] = file_size
-        session_data["completion_time"] = time.time()
+        session_data["completion_time"] = datetime.now(timezone(timedelta(hours=8))).isoformat()
         redis_client.set(f"upload_session:{session_id}", json.dumps(session_data))
         
         # Trigger video processing
@@ -1138,6 +1137,15 @@ async def get_user_transcripts(user_id: str):
                     
                     # Only include if it belongs to this user
                     if session_info.get("user_id") == user_id:
+                        # Handle creation_time which might be Unix timestamp (old data) or ISO string (new data)
+                        creation_time = session_info.get("creation_time")
+                        if creation_time and isinstance(creation_time, (int, float)):
+                            # Convert Unix timestamp to ISO format with Singapore timezone (legacy data)
+                            created_at = datetime.fromtimestamp(creation_time, tz=timezone(timedelta(hours=8))).isoformat()
+                        else:
+                            # Use ISO string directly or create new one
+                            created_at = creation_time if creation_time else datetime.now(timezone(timedelta(hours=8))).isoformat()
+                        
                         transcription = {
                             "id": session_id,
                             "sessionId": session_id,
@@ -1150,7 +1158,7 @@ async def get_user_transcripts(user_id: str):
                             "progress": progress_info.get("progress", 0),
                             "hasTranscript": False,
                             "transcriptData": None,
-                            "createdAt": session_info.get("creation_time", datetime.now().isoformat()),
+                            "createdAt": created_at,
                             "completedAt": None,
                             "duration": 0,
                             "segmentCount": 0,
