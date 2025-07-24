@@ -353,7 +353,7 @@ async def perform_speaker_diarization(audio_path: str, participant_count: int, r
             try:
                 diarize_model = await asyncio.wait_for(
                     asyncio.to_thread(load_diarization_model), 
-                    timeout=60.0  # 60 second timeout
+                    timeout=300.0  # 5 minute timeout for model loading
                 )
             except asyncio.TimeoutError:
                 logger.warning("Diarization model loading timed out, skipping speaker identification")
@@ -369,7 +369,7 @@ async def perform_speaker_diarization(audio_path: str, participant_count: int, r
             try:
                 diarize_segments = await asyncio.wait_for(
                     asyncio.to_thread(diarize_model, audio, min_speakers=min_speakers_param, max_speakers=max_speakers_param),
-                    timeout=120.0  # 2 minute timeout for diarization
+                    timeout=600.0  # 10 minute timeout for diarization processing
                 )
                 
                 # Assign speakers to words
