@@ -748,6 +748,10 @@ async def update_progress(session_id: str, update: ProgressUpdate):
         
         if existing_transcription:
             transcription_data = json.loads(existing_transcription)
+            
+            # Preserve the original timestamp to prevent overwriting creation time
+            original_timestamp = transcription_data.get("timestamp")
+            
             # Update the status and progress in the main transcription entry
             transcription_data.update({
                 "status": update.status,
@@ -755,6 +759,10 @@ async def update_progress(session_id: str, update: ProgressUpdate):
                 "progress": update.progress,
                 "updated_at": datetime.now(timezone(timedelta(hours=8))).isoformat()
             })
+            
+            # Restore original timestamp to prevent overwriting creation time
+            if original_timestamp:
+                transcription_data["timestamp"] = original_timestamp
             
             # If completed, mark as completed (use Singapore time consistently)
             if update.status == "completed" or update.progress >= 100:
