@@ -297,14 +297,29 @@ def get_audio_duration(audio_path: str) -> float:
 def create_transcription_data(session_id: str, formatted_result: dict, participant_count: int, 
                              detected_language: str, duration: float, original_filename: str = None) -> dict:
     """Create transcription data for Redis storage"""
-    timestamp = datetime.now(SINGAPORE_TZ).isoformat()
+    # Try to get original creation time from upload session
+    creation_time = None
+    try:
+        if redis_client:
+            upload_session_data = redis_client.get(f"upload_session:{session_id}")
+            if upload_session_data:
+                session_info = json.loads(upload_session_data)
+                creation_time = session_info.get("creation_time")
+    except Exception as e:
+        logger.warning(f"Could not get original creation time for {session_id}: {e}")
+    
+    # Use original creation time if available, otherwise current time
+    timestamp = creation_time if creation_time else datetime.now(SINGAPORE_TZ).isoformat()
+    completion_time = datetime.now(SINGAPORE_TZ).isoformat()
+    
     return {
         "session_id": session_id,
         "filename": original_filename or "audio_file.wav",
         "status": "completed",
         "progress": 100,
         "transcriptData": formatted_result,
-        "timestamp": timestamp,
+        "timestamp": timestamp,  # Original creation time
+        "completed_at": completion_time,  # When transcription finished
         "duration": duration,
         "language": detected_language,
         "participantCount": participant_count,
