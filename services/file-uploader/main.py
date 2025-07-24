@@ -1108,7 +1108,7 @@ async def get_user_transcripts(user_id: str):
                         "hasTranscript": transcription.get("status") == "completed",
                         "transcriptData": transcription.get("transcriptData", transcription.get("transcript", None)),
                         "createdAt": transcription.get("createdAt", transcription.get("created_at", transcription.get("timestamp", datetime.now().isoformat()))),
-                        "completedAt": transcription.get("completedAt", transcription.get("completed_at", None)),
+                        "completedAt": transcription.get("completedAt", transcription.get("completed_at", transcription.get("timestamp") if transcription.get("status") == "completed" else None)),
                         "duration": transcription.get("duration", 0),
                         "segmentCount": len(transcription.get("diarizedSegments", transcription.get("diarized_segments", []))),
                         "language": transcription.get("language", "en"),
@@ -1142,9 +1142,13 @@ async def get_user_transcripts(user_id: str):
                         if creation_time and isinstance(creation_time, (int, float)):
                             # Convert Unix timestamp to ISO format with Singapore timezone (legacy data)
                             created_at = datetime.fromtimestamp(creation_time, tz=timezone(timedelta(hours=8))).isoformat()
+                        elif creation_time:
+                            # Use ISO string directly
+                            created_at = creation_time
                         else:
-                            # Use ISO string directly or create new one
-                            created_at = creation_time if creation_time else datetime.now(timezone(timedelta(hours=8))).isoformat()
+                            # Fallback: use upload session creation time from metadata or current time
+                            logger.warning(f"No creation_time found for session {session_id}, using current time")
+                            created_at = datetime.now(timezone(timedelta(hours=8))).isoformat()
                         
                         transcription = {
                             "id": session_id,

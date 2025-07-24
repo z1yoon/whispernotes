@@ -313,6 +313,7 @@ def create_transcription_data(session_id: str, formatted_result: dict, participa
     
     # Use original creation time if available, otherwise current time as fallback
     timestamp = original_timestamp if original_timestamp else datetime.now(SINGAPORE_TZ).isoformat()
+    completion_time = datetime.now(SINGAPORE_TZ).isoformat()
     
     data = {
         "session_id": session_id,
@@ -321,6 +322,7 @@ def create_transcription_data(session_id: str, formatted_result: dict, participa
         "progress": 100,
         "transcriptData": formatted_result,
         "timestamp": timestamp,  # Original upload time
+        "completed_at": completion_time,  # When transcription finished
         "duration": duration,
         "language": detected_language,
         "participantCount": participant_count,
