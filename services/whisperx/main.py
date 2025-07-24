@@ -297,19 +297,41 @@ def get_audio_duration(audio_path: str) -> float:
 def create_transcription_data(session_id: str, formatted_result: dict, participant_count: int, 
                              detected_language: str, duration: float, original_filename: str = None) -> dict:
     """Create transcription data for Redis storage"""
-    timestamp = datetime.now(SINGAPORE_TZ).isoformat()
-    return {
+    # Try to get original creation time and user_id from upload session
+    original_timestamp = None
+    user_id = None
+    try:
+        if redis_client:
+            upload_session_data = redis_client.get(f"upload_session:{session_id}")
+            if upload_session_data:
+                session_info = json.loads(upload_session_data)
+                original_timestamp = session_info.get("creation_time")
+                user_id = session_info.get("user_id")
+                logger.info(f"Retrieved original timestamp for {session_id}: {original_timestamp}, user_id: {user_id}")
+    except Exception as e:
+        logger.warning(f"Could not get original creation time for {session_id}: {e}")
+    
+    # Use original creation time if available, otherwise current time as fallback
+    timestamp = original_timestamp if original_timestamp else datetime.now(SINGAPORE_TZ).isoformat()
+    
+    data = {
         "session_id": session_id,
         "filename": original_filename or "audio_file.wav",
         "status": "completed",
         "progress": 100,
         "transcriptData": formatted_result,
-        "timestamp": timestamp,
+        "timestamp": timestamp,  # Original upload time
         "duration": duration,
         "language": detected_language,
         "participantCount": participant_count,
         "diarizedSegments": formatted_result.get("diarized_segments", [])
     }
+    
+    # Add user_id if available
+    if user_id:
+        data["user_id"] = user_id
+    
+    return data
 
 async def transcribe_with_whisperx(audio_path: str, session_id: str, language: str = None):
     """Transcribe audio using WhisperX following official documentation"""
