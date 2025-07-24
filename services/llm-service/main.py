@@ -140,19 +140,19 @@ class LLMAnalyzer:
         word_count = len(transcript.split())
         char_count = len(transcript)
         
-        # Determine appropriate max items based on content length
+        # Determine appropriate max items based on content length (max 5 items)
         if word_count < 500:  # Short conversation (< 5 minutes)
             max_items = 3
             content_guidance = "This is a short conversation. Focus only on explicit commitments or clear next steps."
         elif word_count < 1500:  # Medium conversation (5-15 minutes)
-            max_items = 7
+            max_items = 5
             content_guidance = "This is a medium-length conversation. Extract clear action items and commitments."
         elif word_count < 3000:  # Long conversation (15-30 minutes)
-            max_items = 12
-            content_guidance = "This is a longer conversation. Extract all actionable items, decisions, and follow-ups."
+            max_items = 5
+            content_guidance = "This is a longer conversation. Extract the most important actionable items, decisions, and follow-ups."
         else:  # Very long conversation (30+ minutes)
-            max_items = 20
-            content_guidance = "This is an extensive conversation. Extract comprehensive action items, decisions, and commitments."
+            max_items = 5
+            content_guidance = "This is an extensive conversation. Extract the top priority action items, decisions, and commitments."
         
         logger.info(f"📊 Content analysis: {word_count} words, max {max_items} action items")
         

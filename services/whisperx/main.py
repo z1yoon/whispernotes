@@ -332,8 +332,16 @@ async def align_transcription_segments(result: dict, detected_language: str, aud
     """Align transcription for better timestamps following official WhisperX documentation"""
     await send_progress_update(session_id, 80, "Improving timestamps...", "processing")
     
-    # Load alignment model following official WhisperX documentation
-    model_a, metadata = whisperx.load_align_model(language_code=detected_language, device=DEVICE)
+    try:
+        # Load alignment model following official WhisperX documentation
+        model_a, metadata = whisperx.load_align_model(language_code=detected_language, device=DEVICE)
+    except ValueError as e:
+        if "No default align-model for language" in str(e):
+            logger.warning(f"No alignment model for {detected_language}, falling back to English")
+            # Fallback to English alignment model
+            model_a, metadata = whisperx.load_align_model(language_code="en", device=DEVICE)
+        else:
+            raise e
     
     if model_a and metadata:
         audio = whisperx.load_audio(audio_path)
