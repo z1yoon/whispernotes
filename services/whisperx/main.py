@@ -321,9 +321,9 @@ async def transcribe_with_whisperx(audio_path: str, session_id: str, language: s
     # Load audio following official WhisperX documentation
     audio = whisperx.load_audio(audio_path)
     
-    # Transcribe following official WhisperX documentation
+    # Transcribe following official WhisperX documentation - force English for speed
     await send_progress_update(session_id, 75, "Transcribing audio...", "processing")
-    result = model.transcribe(audio, batch_size=BATCH_SIZE)
+    result = model.transcribe(audio, batch_size=BATCH_SIZE, language="en")
     
     logger.info(f"Transcription completed with {len(result.get('segments', []))} segments")
     return result
@@ -332,16 +332,8 @@ async def align_transcription_segments(result: dict, detected_language: str, aud
     """Align transcription for better timestamps following official WhisperX documentation"""
     await send_progress_update(session_id, 80, "Improving timestamps...", "processing")
     
-    try:
-        # Load alignment model following official WhisperX documentation
-        model_a, metadata = whisperx.load_align_model(language_code=detected_language, device=DEVICE)
-    except ValueError as e:
-        if "No default align-model for language" in str(e):
-            logger.warning(f"No alignment model for {detected_language}, falling back to English")
-            # Fallback to English alignment model
-            model_a, metadata = whisperx.load_align_model(language_code="en", device=DEVICE)
-        else:
-            raise e
+    # Always use English alignment model for speed and reliability
+    model_a, metadata = whisperx.load_align_model(language_code="en", device=DEVICE)
     
     if model_a and metadata:
         audio = whisperx.load_audio(audio_path)
@@ -388,10 +380,10 @@ async def transcribe_async(audio_path: str, session_id: str, participant_count: 
         # Load WhisperX model
         await send_progress_update(session_id, 65, "Loading WhisperX model...", "processing")
         
-        # Step 1: Transcribe
-        result = await transcribe_with_whisperx(audio_path, session_id, language)
-        detected_language = result.get("language", language or "en")
-        logger.info(f"Detected language: {detected_language}")
+        # Step 1: Transcribe - force English for speed
+        result = await transcribe_with_whisperx(audio_path, session_id, "en")
+        detected_language = "en"  # Always use English
+        logger.info(f"Using language: {detected_language}")
         
         # Step 2: Align for better timestamps
         result = await align_transcription_segments(result, detected_language, audio_path, session_id)
