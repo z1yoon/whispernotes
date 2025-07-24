@@ -345,45 +345,26 @@ async def perform_speaker_diarization(audio_path: str, participant_count: int, r
                                     speaker_names: List[str], session_id: str):
     """Perform speaker diarization following official WhisperX documentation"""
     if participant_count > 1 and HF_TOKEN:
-        try:
-            await send_progress_update(session_id, 85, "Identifying speakers...", "processing")
-            
-            # Load diarization pipeline with timeout protection
-            import asyncio
-            try:
-                diarize_model = await asyncio.wait_for(
-                    asyncio.to_thread(load_diarization_model), 
-                    timeout=300.0  # 5 minute timeout for model loading
-                )
-            except asyncio.TimeoutError:
-                logger.warning("Diarization model loading timed out, skipping speaker identification")
-                return result
-            
-            # Load audio for diarization
-            audio = whisperx.load_audio(audio_path)
-            
-            # Run diarization with timeout protection
-            min_speakers_param = min(max(participant_count, 1), MAX_SPEAKERS)
-            max_speakers_param = min(max(participant_count, 1), MAX_SPEAKERS)
-            
-            try:
-                diarize_segments = await asyncio.wait_for(
-                    asyncio.to_thread(diarize_model, audio, min_speakers=min_speakers_param, max_speakers=max_speakers_param),
-                    timeout=600.0  # 10 minute timeout for diarization processing
-                )
-                
-                # Assign speakers to words
-                result = whisperx.assign_word_speakers(diarize_segments, result)
-                
-                # Map speaker names if provided
-                if speaker_names:
-                    result = map_speaker_names(result, speaker_names)
-                    
-            except asyncio.TimeoutError:
-                logger.warning("Speaker diarization timed out, continuing without speaker identification")
-                
-        except Exception as e:
-            logger.warning(f"Speaker diarization failed: {e}, continuing without speaker identification")
+        await send_progress_update(session_id, 85, "Identifying speakers...", "processing")
+        
+        # Load diarization pipeline following official WhisperX documentation - use cached model
+        diarize_model = load_diarization_model()
+        
+        # Load audio for diarization
+        audio = whisperx.load_audio(audio_path)
+        
+        # Run diarization following official WhisperX documentation with improved parameters
+        # Use user-specified speaker count, minimum 1 speaker
+        min_speakers_param = min(max(participant_count, 1), MAX_SPEAKERS)
+        max_speakers_param = min(max(participant_count, 1), MAX_SPEAKERS)
+        diarize_segments = diarize_model(audio, min_speakers=min_speakers_param, max_speakers=max_speakers_param)
+        
+        # Assign speakers to words following official WhisperX documentation
+        result = whisperx.assign_word_speakers(diarize_segments, result)
+        
+        # Map speaker names if provided
+        if speaker_names:
+            result = map_speaker_names(result, speaker_names)
     
     return result
 
@@ -887,8 +868,8 @@ async def remove_transcription(session_id: str):
         raise HTTPException(status_code=500, detail=f"Failed to remove transcription: {str(e)}")
 
 @app.get("/health")
-async def health():
-    """Simple health check"""
+def health():
+    """Simple health check - always returns ok to prevent pod restarts during processing"""
     return {
         "status": "ok",
         "service": "whisper-transcriber",
