@@ -1107,7 +1107,7 @@ async def get_user_transcripts(user_id: str):
                         "progress": transcription.get("progress", 0),
                         "hasTranscript": transcription.get("status") == "completed",
                         "transcriptData": transcription.get("transcriptData", transcription.get("transcript", None)),
-                        "createdAt": transcription.get("createdAt", transcription.get("created_at", datetime.now().isoformat())),
+                        "createdAt": transcription.get("createdAt", transcription.get("created_at", transcription.get("timestamp", datetime.now().isoformat()))),
                         "completedAt": transcription.get("completedAt", transcription.get("completed_at", None)),
                         "duration": transcription.get("duration", 0),
                         "segmentCount": len(transcription.get("diarizedSegments", transcription.get("diarized_segments", []))),
